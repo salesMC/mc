@@ -7,16 +7,51 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
-    .step-active { border-color: #FF6A3D; background: rgba(255,106,61,0.1); }
-    .input-dark {
-      width: 100%; padding: 0.95rem 1.25rem; background: #161B22; border: 1px solid #1F2937;
-      border-radius: 0.5rem; color: white; transition: all 0.2s ease;
+    .step-active { 
+      border-color: #FF6A3D; 
+      background: rgba(255,106,61,0.1); 
+      color: white;
     }
-    .input-dark.error { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.3) !important; }
-    .label-dark { display: block; font-size: 0.875rem; font-weight: 500; color: #8B949E; margin-bottom: 0.5rem; }
-    .error-msg { color: #ef4444; font-size: 0.8rem; margin-top: 4px; min-height: 20px; }
+    .input-dark {
+      width: 100%; 
+      padding: 0.95rem 1.25rem; 
+      background: #161B22; 
+      border: 1px solid #1F2937;
+      border-radius: 0.5rem; 
+      color: white; 
+      transition: all 0.2s ease;
+      font-size: 1rem;
+    }
+    .input-dark:focus {
+      border-color: #FF6A3D;
+      box-shadow: 0 0 0 3px rgba(255,106,61,0.15);
+    }
+    .input-dark.error { 
+      border-color: #ef4444 !important; 
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.2) !important; 
+    }
+    .label-dark { 
+      display: block; 
+      font-size: 0.875rem; 
+      font-weight: 500; 
+      color: #8B949E; 
+      margin-bottom: 0.5rem; 
+    }
+    .error-msg { 
+      color: #ef4444; 
+      font-size: 0.8rem; 
+      margin-top: 4px; 
+      min-height: 20px; 
+    }
+    .vin-result { color: #BEF264; font-weight: 500; }
+    .vin-error { color: #F87171; }
+
     .btn-transport { transition: all 0.2s; }
-    .btn-transport.active { background: #FF6A3D; color: white; border-color: #FF6A3D; }
+    .btn-transport.active { 
+      background: #FF6A3D; 
+      color: white; 
+      border-color: #FF6A3D; 
+    }
 
     .upload-zone {
       border: 2px dashed #374151;
@@ -24,32 +59,14 @@
       border-radius: 12px;
       transition: all 0.2s ease;
     }
-    .upload-zone:hover { border-color: #FF6A3D; background: #1F2937; }
+    .upload-zone:hover { 
+      border-color: #FF6A3D; 
+      background: #1F2937; 
+    }
 
-    .photo-preview {
-      position: relative;
-    }
-    .photo-preview img {
-      width: 100%;
-      height: 110px;
-      object-fit: cover;
-      border-radius: 8px;
-      border: 1px solid #374151;
-    }
-    .delete-photo {
-      position: absolute;
-      top: -8px;
-      right: -8px;
-      background: #ef4444;
-      color: white;
-      width: 26px;
-      height: 26px;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 16px;
-      cursor: pointer;
+    @media (max-width: 640px) {
+      .step-item { padding: 0.75rem 1rem !important; font-size: 0.95rem; }
+      .tile { padding: 1.5rem !important; }
     }
   </style>
 </head>
@@ -61,33 +78,51 @@
     <div class="glow-orange" style="top: -100px; left: -120px;"></div>
     <div class="glow-cyan" style="bottom: -80px; right: -100px;"></div>
 
-    <div class="relative max-w-7xl mx-auto px-6 lg:px-8">
+    <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
       <div class="grid lg:grid-cols-12 gap-8">
 
+        <!-- Sidebar -->
         <div class="lg:col-span-4 xl:col-span-3">
-          <div class="tile p-8 sticky top-24">
+          <div class="tile p-6 lg:p-8 sticky top-24">
             <h2 class="text-2xl font-bold text-white mb-8">Request a Quote</h2>
-            <div id="steps" class="space-y-3">
-              <div onclick="goToStep(0)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl step-active" data-step="0">1. Contact</div>
-              <div onclick="goToStep(1)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="1">2. Vehicle</div>
-              <div onclick="goToStep(2)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="2">3. Route & Price</div>
-              <div onclick="goToStep(3)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="3">4. Summary</div>
-              <div onclick="goToStep(4)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="4">5. Payment</div>
+            <div id="steps" class="space-y-2">
+              <div onclick="goToStep(0)" class="step-item flex items-center gap-3 cursor-pointer p-4 rounded-xl step-active text-sm" data-step="0">
+                <span class="font-mono text-orange-400">1</span> Contact
+              </div>
+              <div onclick="goToStep(1)" class="step-item flex items-center gap-3 cursor-pointer p-4 rounded-xl text-sm" data-step="1">
+                <span class="font-mono text-orange-400">2</span> Vehicle
+              </div>
+              <div onclick="goToStep(2)" class="step-item flex items-center gap-3 cursor-pointer p-4 rounded-xl text-sm" data-step="2">
+                <span class="font-mono text-orange-400">3</span> Route
+              </div>
+              <div onclick="goToStep(3)" class="step-item flex items-center gap-3 cursor-pointer p-4 rounded-xl text-sm" data-step="3">
+                <span class="font-mono text-orange-400">4</span> Summary
+              </div>
+              <div onclick="goToStep(4)" class="step-item flex items-center gap-3 cursor-pointer p-4 rounded-xl text-sm" data-step="4">
+                <span class="font-mono text-orange-400">5</span> Payment
+              </div>
             </div>
 
-            <div class="mt-16 pt-8 border-t border-[var(--line)]">
-              <div class="text-sm text-muted">Live Estimated Total</div>
-              <div id="totalPriceSidebar" class="text-5xl font-bold text-[var(--orange)] mt-1">$0</div>
+            <div class="mt-12 pt-8 border-t border-[var(--line)]">
+              <div class="text-sm text-muted">Estimated Total</div>
+              <div id="totalPriceSidebar" class="text-4xl lg:text-5xl font-bold text-[var(--orange)] mt-1">$0</div>
             </div>
           </div>
         </div>
 
+        <!-- Main Content -->
         <div class="lg:col-span-8 xl:col-span-9">
-          <div class="tile p-8 md:p-12 min-h-[620px]" id="stepContent"></div>
+          <div class="tile p-6 md:p-10 lg:p-12 min-h-[620px]" id="stepContent"></div>
 
-          <div class="flex justify-between mt-8">
-            <button onclick="prevStep()" id="prevBtn" class="btn btn-ghost px-8 py-4 hidden">← Previous</button>
-            <button onclick="nextStep()" id="nextBtn" class="btn btn-primary px-10 py-4 ml-auto">Next →</button>
+          <div class="flex flex-col sm:flex-row justify-between gap-4 mt-8">
+            <button onclick="prevStep()" id="prevBtn" 
+                    class="btn btn-ghost px-8 py-4 hidden w-full sm:w-auto">
+              ← Previous
+            </button>
+            <button onclick="nextStep()" id="nextBtn" 
+                    class="btn btn-primary px-10 py-4 w-full sm:w-auto">
+              Next →
+            </button>
           </div>
         </div>
       </div>
@@ -97,16 +132,11 @@
   <%- include('partials/footer') %>
 
   <script>
-    // ==================== CALCULATOR CONFIG ====================
+    // ==================== CONFIG ====================
     let calculatorConfig = {
       baseFee: 120,
-      tiers: [
-        { max: 30, rate: 3.00 },
-        { max: 70, rate: 2.20 },
-        { max: 110, rate: 1.80 },
-        { max: 160, rate: 1.50 },
-        { max: Infinity, rate: 1.30 }
-      ],
+      tiers: [{ max: 30, rate: 3.00 }, { max: 70, rate: 2.20 }, { max: 110, rate: 1.80 }, 
+              { max: 160, rate: 1.50 }, { max: Infinity, rate: 1.30 }],
       multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20 },
       addons: { inoperable: 75, modified: 100, urgent: 100 }
     };
@@ -115,33 +145,38 @@
     if (saved) calculatorConfig = JSON.parse(saved);
 
     let currentStep = 0;
-    let fromAutocomplete, toAutocomplete;
-    let distanceService;
+    let fromAutocomplete, toAutocomplete, distanceService;
 
     let formData = {
-      contact: {},
+      contact: { fullName: '', email: '', phone: '' },
       vehicle: {
         year: '', make: '', model: '', vin: '',
         type: 'sedan', condition: 'operable',
         modified: false, urgent: false,
-        runsAndDrives: true,
-        hasKeys: true,
+        runsAndDrives: true, hasKeys: true,
         photos: []
       },
-      location: {},
-      pickupDate: '',
-      mustPickupBy: '',
+      location: { pickup: '', delivery: '' },
+      pickupDate: '', mustPickupBy: '',
       transportType: 'open',
       total: 0
     };
 
+    // ==================== VIN DECODER ====================
+    async function decodeVIN(vin) {
+      try {
+        const res = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`);
+        const data = await res.json();
+        return data.Results && data.Results[0] ? data.Results[0] : null;
+      } catch (e) {
+        console.error('VIN decode error:', e);
+        return null;
+      }
+    }
+
     // ==================== GOOGLE MAPS ====================
     function initGoogleAutocomplete() {
-      const options = {
-        types: ['address'],
-        componentRestrictions: { country: 'us' }
-      };
-
+      const options = { types: ['address'], componentRestrictions: { country: 'us' } };
       fromAutocomplete = new google.maps.places.Autocomplete(document.getElementById('pickupAddr'), options);
       toAutocomplete = new google.maps.places.Autocomplete(document.getElementById('deliveryAddr'), options);
 
@@ -155,8 +190,7 @@
       if (!pickup || !delivery || !distanceService) return;
 
       distanceService.getDistanceMatrix({
-        origins: [pickup],
-        destinations: [delivery],
+        origins: [pickup], destinations: [delivery],
         travelMode: google.maps.TravelMode.DRIVING,
         unitSystem: google.maps.UnitSystem.IMPERIAL
       }, (response, status) => {
@@ -168,7 +202,7 @@
       });
     }
 
-    // ==================== PRICE ====================
+    // ==================== PRICE CALCULATION ====================
     function calculateAndUpdateTotal() {
       const miles = parseFloat(document.getElementById('distance')?.value) || 0;
       let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
@@ -179,14 +213,15 @@
       let subtotal = calculatorConfig.baseFee + (cpm * miles);
       const vType = formData.vehicle.type || 'sedan';
       if (calculatorConfig.multipliers[vType]) subtotal *= calculatorConfig.multipliers[vType];
-
       if (formData.vehicle.condition === 'inoperable') subtotal += calculatorConfig.addons.inoperable;
       if (formData.vehicle.modified) subtotal += calculatorConfig.addons.modified;
       if (formData.vehicle.urgent) subtotal += calculatorConfig.addons.urgent;
 
       formData.total = Math.round(subtotal);
       document.getElementById('totalPriceSidebar').textContent = '$' + formData.total.toLocaleString();
-      if (document.getElementById('finalTotal2')) document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+      if (document.getElementById('finalTotal2')) {
+        document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+      }
     }
 
     // ==================== PHOTO UPLOAD ====================
@@ -201,15 +236,10 @@
 
           const reader = new FileReader();
           reader.onload = (e) => {
-            formData.vehicle.photos.push({
-              name: file.name,
-              data: e.target.result,
-              type: file.type
-            });
-
+            formData.vehicle.photos.push({ name: file.name, data: e.target.result });
             const div = document.createElement('div');
             div.className = 'photo-preview relative';
-            div.innerHTML = `<img src="${e.target.result}"><div class="delete-photo" onclick="removePhoto(this)">×</div>`;
+            div.innerHTML = `<img src="${e.target.result}"><div class="delete-photo absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs cursor-pointer" onclick="removePhoto(this)">×</div>`;
             preview.appendChild(div);
           };
           reader.readAsDataURL(file);
@@ -223,18 +253,39 @@
       el.parentElement.remove();
     };
 
-    // ==================== STEPS HTML ====================
-    const stepsHTML = [ /* ... тот же код шагов, что и в предыдущей версии ... */ 
-      // Step 0
-      `<h2 class="text-3xl font-bold text-white mb-8">Contact Information</h2>
+    // ==================== YEAR SELECT ====================
+    function createYearSelect() {
+      const select = document.createElement('select');
+      select.id = 'year';
+      select.className = 'input-dark';
+      select.required = true;
+
+      const defaultOpt = document.createElement('option');
+      defaultOpt.value = '';
+      defaultOpt.textContent = 'Select year';
+      select.appendChild(defaultOpt);
+
+      for (let y = 2030; y >= 1900; y--) {
+        const opt = document.createElement('option');
+        opt.value = y;
+        opt.textContent = y;
+        select.appendChild(opt);
+      }
+      return select;
+    }
+
+    // ==================== STEPS ====================
+    const stepsHTML = [
+      // 0 Contact
+      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Contact Information</h2>
        <div class="space-y-6">
-         <div><label class="label-dark">Full Name *</label><input type="text" id="fullName" class="input-dark" required><div id="fullNameError" class="error-msg"></div></div>
-         <div><label class="label-dark">Email *</label><input type="email" id="email" class="input-dark" required><div id="emailError" class="error-msg"></div></div>
-         <div><label class="label-dark">Phone *</label><input type="tel" id="phone" class="input-dark" required><div id="phoneError" class="error-msg"></div></div>
+         <div><label class="label-dark">Full Name <span class="text-red-400">*</span></label><input type="text" id="fullName" class="input-dark" required><div id="fullNameError" class="error-msg"></div></div>
+         <div><label class="label-dark">Email <span class="text-red-400">*</span></label><input type="email" id="email" class="input-dark" required><div id="emailError" class="error-msg"></div></div>
+         <div><label class="label-dark">Phone <span class="text-red-400">*</span></label><input type="tel" id="phone" class="input-dark" required><div id="phoneError" class="error-msg"></div></div>
        </div>`,
 
-      // Step 1 Vehicle + Photos
-      `<h2 class="text-3xl font-bold text-white mb-8">Vehicle Details</h2>
+      // 1 Vehicle
+      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Vehicle Details</h2>
        <div class="space-y-8">
          <div>
            <label class="label-dark">Transport Type</label>
@@ -244,13 +295,18 @@
            </div>
          </div>
 
-         <div class="grid grid-cols-3 gap-4">
-           <div><label class="label-dark">Year *</label><input type="number" id="year" min="1900" max="2030" class="input-dark" required></div>
-           <div><label class="label-dark">Make *</label><input type="text" id="make" class="input-dark" required></div>
-           <div><label class="label-dark">Model *</label><input type="text" id="model" class="input-dark" required></div>
+         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+           <div><label class="label-dark">Year <span class="text-red-400">*</span></label><div id="yearContainer"></div><div id="yearError" class="error-msg"></div></div>
+           <div><label class="label-dark">Make <span class="text-red-400">*</span></label><input type="text" id="make" class="input-dark" required></div>
+           <div><label class="label-dark">Model <span class="text-red-400">*</span></label><input type="text" id="model" class="input-dark" required></div>
          </div>
 
-         <div><label class="label-dark">VIN (optional)</label><input type="text" id="vin" class="input-dark uppercase" maxlength="17"></div>
+         <div>
+           <label class="label-dark">VIN (optional)</label>
+           <input type="text" id="vin" maxlength="17" class="input-dark uppercase tracking-widest" placeholder="1HGCM82633A123456">
+           <div id="vinResult" class="vin-result mt-2 text-sm hidden"></div>
+           <div id="vinError" class="vin-error mt-2 text-sm hidden"></div>
+         </div>
 
          <div>
            <label class="label-dark">Vehicle Type</label>
@@ -261,53 +317,52 @@
            </select>
          </div>
 
-         <div>
-           <label class="label-dark">Condition</label>
-           <div class="flex gap-6">
-             <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="condition" value="operable" checked> Operable</label>
-             <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="condition" value="inoperable"> Inoperable</label>
-           </div>
+         <div class="flex flex-wrap gap-6">
+           <label class="flex items-center gap-2"><input type="radio" name="condition" value="operable" checked> Operable</label>
+           <label class="flex items-center gap-2"><input type="radio" name="condition" value="inoperable"> Inoperable</label>
          </div>
 
          <div class="grid grid-cols-2 gap-6">
-           <div><label class="label-dark">Runs and drives *</label><select id="runsAndDrives" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
-           <div><label class="label-dark">Has keys *</label><select id="hasKeys" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
+           <div><label class="label-dark">Runs and drives</label><select id="runsAndDrives" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
+           <div><label class="label-dark">Has keys</label><select id="hasKeys" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
          </div>
 
-         <div class="flex items-center gap-3"><input type="checkbox" id="modifiedCheck" onchange="formData.vehicle.modified=this.checked; calculateAndUpdateTotal()"><label for="modifiedCheck">Modified / Custom vehicle</label></div>
-         <div class="flex items-center gap-3"><input type="checkbox" id="urgentCheck" onchange="formData.vehicle.urgent=this.checked; calculateAndUpdateTotal()"><label for="urgentCheck">Urgent Delivery</label></div>
+         <div class="space-y-3">
+           <label class="flex items-center gap-3"><input type="checkbox" id="modifiedCheck" onchange="formData.vehicle.modified=this.checked; calculateAndUpdateTotal()"> Modified / Custom vehicle</label>
+           <label class="flex items-center gap-3"><input type="checkbox" id="urgentCheck" onchange="formData.vehicle.urgent=this.checked; calculateAndUpdateTotal()"> Urgent Delivery</label>
+         </div>
 
          <div>
-           <label class="label-dark">Photos of the vehicle <span class="text-muted">(optional)</span></label>
+           <label class="label-dark">Vehicle Photos (optional)</label>
            <div class="upload-zone p-8 text-center">
              <input type="file" id="vehiclePhotos" accept="image/*" multiple class="hidden">
              <label for="vehiclePhotos" class="cursor-pointer block">
                <i class="fas fa-cloud-upload-alt text-4xl text-[var(--orange)] mb-3"></i>
-               <span class="font-medium text-[var(--orange)] block">Upload photos</span>
+               <span class="font-medium text-[var(--orange)]">Upload photos</span>
              </label>
            </div>
            <div id="photoPreview" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3"></div>
          </div>
        </div>`,
 
-      // Step 2 Route
-      `<h2 class="text-3xl font-bold text-white mb-8">Route & Pickup Dates</h2>
+      // 2 Route
+      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Route & Pickup Dates</h2>
        <div class="space-y-6">
-         <div><label class="label-dark">Pickup Address *</label><input type="text" id="pickupAddr" class="input-dark" required></div>
-         <div><label class="label-dark">Delivery Address *</label><input type="text" id="deliveryAddr" class="input-dark" required></div>
+         <div><label class="label-dark">Pickup Address <span class="text-red-400">*</span></label><input type="text" id="pickupAddr" class="input-dark" required></div>
+         <div><label class="label-dark">Delivery Address <span class="text-red-400">*</span></label><input type="text" id="deliveryAddr" class="input-dark" required></div>
          <div><label class="label-dark">Distance (miles)</label><input type="number" id="distance" class="input-dark" oninput="calculateAndUpdateTotal()"></div>
          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-           <div><label class="label-dark">First possible pickup *</label><input type="date" id="pickupDate" class="input-dark" required></div>
-           <div><label class="label-dark">Must pickup by *</label><input type="date" id="mustPickupBy" class="input-dark" required></div>
+           <div><label class="label-dark">First possible pickup <span class="text-red-400">*</span></label><input type="date" id="pickupDate" class="input-dark" required></div>
+           <div><label class="label-dark">Must pickup by <span class="text-red-400">*</span></label><input type="date" id="mustPickupBy" class="input-dark" required></div>
          </div>
        </div>`,
 
-      // Step 3 Summary
-      `<h2 class="text-3xl font-bold text-white mb-8">Order Summary</h2>
-       <div id="summaryContent" class="bg-deep p-8 rounded-2xl"></div>`,
+      // 3 Summary
+      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Order Summary</h2>
+       <div id="summaryContent" class="bg-deep p-8 rounded-2xl space-y-4 text-dim"></div>`,
 
-      // Step 4 Payment
-      `<h2 class="text-3xl font-bold text-white mb-8">Secure Payment</h2>
+      // 4 Payment
+      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Secure Payment</h2>
        <div class="text-center py-12">
          <i class="fas fa-credit-card text-6xl text-[var(--orange)] mb-6"></i>
          <p class="text-2xl mb-8">Total: <span id="finalTotal2" class="font-bold text-orange-400"></span></p>
@@ -315,115 +370,147 @@
        </div>`
     ];
 
-    // ==================== RENDER & NAVIGATION ====================
-    function renderStep(step) {
-      saveFormData();
-      if (step > currentStep && !validateCurrentStep()) return;
+    function selectTransport(btn) {
+      document.querySelectorAll('.btn-transport').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      formData.transportType = btn.dataset.type;
+    }
 
-      currentStep = step;
+    // ==================== VALIDATION ====================
+    function validateCurrentStep() {
       clearErrors();
+      let valid = true;
+
+      if (currentStep === 0) {
+        if (!document.getElementById('fullName').value.trim()) { showError('fullName', 'Full name is required'); valid = false; }
+        if (!document.getElementById('email').value.trim()) { showError('email', 'Email is required'); valid = false; }
+        if (!document.getElementById('phone').value.trim()) { showError('phone', 'Phone is required'); valid = false; }
+      } else if (currentStep === 1) {
+        if (!document.getElementById('year').value) { showError('year', 'Year is required'); valid = false; }
+        if (!document.getElementById('make').value.trim()) { showError('make', 'Make is required'); valid = false; }
+        if (!document.getElementById('model').value.trim()) { showError('model', 'Model is required'); valid = false; }
+      } else if (currentStep === 2) {
+        if (!document.getElementById('pickupAddr').value.trim()) { showError('pickupAddr', 'Pickup address required'); valid = false; }
+        if (!document.getElementById('deliveryAddr').value.trim()) { showError('deliveryAddr', 'Delivery address required'); valid = false; }
+        if (!document.getElementById('pickupDate').value) { showError('pickupDate', 'Pickup date required'); valid = false; }
+        if (!document.getElementById('mustPickupBy').value) { showError('mustPickupBy', 'Must pickup by date required'); valid = false; }
+      }
+      return valid;
+    }
+
+    function showError(id, msg) {
+      const err = document.getElementById(id + 'Error') || document.getElementById('yearError');
+      if (err) err.textContent = msg;
+      const input = document.getElementById(id);
+      if (input) input.classList.add('error');
+    }
+
+    function clearErrors() {
+      document.querySelectorAll('.error-msg').forEach(el => el.textContent = '');
+      document.querySelectorAll('.input-dark').forEach(el => el.classList.remove('error'));
+    }
+
+    // ==================== RENDER ====================
+    function renderStep(step) {
+      if (step > currentStep && !validateCurrentStep()) return;
+      saveFormData();
+      currentStep = step;
 
       document.getElementById('stepContent').innerHTML = stepsHTML[step];
 
-      document.querySelectorAll('.step-item').forEach((item, i) => item.classList.toggle('step-active', i === step));
+      document.querySelectorAll('.step-item').forEach((el, i) => {
+        el.classList.toggle('step-active', i === step);
+      });
+
       document.getElementById('prevBtn').classList.toggle('hidden', step === 0);
       document.getElementById('nextBtn').textContent = step === 4 ? 'Confirm & Pay Now' : 'Next →';
 
-      if (step === 1) setTimeout(initPhotoUpload, 100);
-      if (step === 2) setTimeout(() => {
-        initGoogleAutocomplete();
-        distanceService = new google.maps.DistanceMatrixService();
-      }, 300);
+      if (step === 1) {
+        setTimeout(() => {
+          document.getElementById('yearContainer').appendChild(createYearSelect());
+          initPhotoUpload();
+
+          // VIN listener
+          const vinInput = document.getElementById('vin');
+          vinInput.addEventListener('input', async () => {
+            const vin = vinInput.value.trim().toUpperCase();
+            const resultDiv = document.getElementById('vinResult');
+            const errorDiv = document.getElementById('vinError');
+            resultDiv.classList.add('hidden');
+            errorDiv.classList.add('hidden');
+
+            if (vin.length === 17) {
+              const vehicle = await decodeVIN(vin);
+              if (vehicle && vehicle.Make) {
+                resultDiv.textContent = `${vehicle.ModelYear || ''} ${vehicle.Make} ${vehicle.Model || ''}`;
+                resultDiv.classList.remove('hidden');
+                // Автозаполнение, если возможно
+                if (vehicle.ModelYear) document.getElementById('year').value = vehicle.ModelYear;
+                if (vehicle.Make) document.getElementById('make').value = vehicle.Make;
+                if (vehicle.Model) document.getElementById('model').value = vehicle.Model;
+              } else {
+                errorDiv.textContent = "Could not decode VIN";
+                errorDiv.classList.remove('hidden');
+              }
+            }
+          });
+        }, 50);
+      }
+
+      if (step === 2) {
+        setTimeout(() => {
+          initGoogleAutocomplete();
+          distanceService = new google.maps.DistanceMatrixService();
+        }, 100);
+      }
 
       if (step === 3) renderSummary();
       if (step === 1 || step === 2) calculateAndUpdateTotal();
-      if (step === 4) document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+      if (step === 4 && document.getElementById('finalTotal2')) {
+        document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+      }
     }
 
     function saveFormData() {
-      const el = document.getElementById('stepContent');
-      if (!el) return;
-
       if (currentStep === 0) {
         formData.contact = {
-          fullName: el.querySelector('#fullName')?.value.trim() || '',
-          email: el.querySelector('#email')?.value.trim() || '',
-          phone: el.querySelector('#phone')?.value.trim() || ''
+          fullName: document.getElementById('fullName')?.value.trim() || '',
+          email: document.getElementById('email')?.value.trim() || '',
+          phone: document.getElementById('phone')?.value.trim() || ''
         };
       } else if (currentStep === 1) {
         formData.vehicle = {
-          year: el.querySelector('#year')?.value || '',
-          make: el.querySelector('#make')?.value.trim() || '',
-          model: el.querySelector('#model')?.value.trim() || '',
-          vin: el.querySelector('#vin')?.value.trim() || '',
-          type: el.querySelector('#vehicleType')?.value || 'sedan',
+          year: document.getElementById('year')?.value || '',
+          make: document.getElementById('make')?.value.trim() || '',
+          model: document.getElementById('model')?.value.trim() || '',
+          vin: document.getElementById('vin')?.value.trim() || '',
+          type: document.getElementById('vehicleType')?.value || 'sedan',
           condition: document.querySelector('input[name="condition"]:checked')?.value || 'operable',
-          modified: document.getElementById('modifiedCheck').checked,
-          urgent: document.getElementById('urgentCheck').checked,
-          runsAndDrives: document.getElementById('runsAndDrives').value === 'yes',
-          hasKeys: document.getElementById('hasKeys').value === 'yes',
+          modified: document.getElementById('modifiedCheck')?.checked || false,
+          urgent: document.getElementById('urgentCheck')?.checked || false,
+          runsAndDrives: document.getElementById('runsAndDrives')?.value === 'yes',
+          hasKeys: document.getElementById('hasKeys')?.value === 'yes',
           photos: formData.vehicle.photos || []
         };
       } else if (currentStep === 2) {
         formData.location = {
-          pickup: el.querySelector('#pickupAddr')?.value.trim() || '',
-          delivery: el.querySelector('#deliveryAddr')?.value.trim() || ''
+          pickup: document.getElementById('pickupAddr')?.value.trim() || '',
+          delivery: document.getElementById('deliveryAddr')?.value.trim() || ''
         };
-        formData.pickupDate = el.querySelector('#pickupDate')?.value || '';
-        formData.mustPickupBy = el.querySelector('#mustPickupBy')?.value || '';
+        formData.pickupDate = document.getElementById('pickupDate')?.value || '';
+        formData.mustPickupBy = document.getElementById('mustPickupBy')?.value || '';
       }
-    }
-
-    function validateCurrentStep() {
-      clearErrors();
-      let isValid = true;
-
-      if (currentStep === 0) {
-        if (!document.getElementById('fullName').value.trim()) { showFieldError('fullName', 'Full name is required'); isValid = false; }
-        if (!document.getElementById('email').value.trim()) { showFieldError('email', 'Email is required'); isValid = false; }
-        if (!document.getElementById('phone').value.trim()) { showFieldError('phone', 'Phone is required'); isValid = false; }
-      } else if (currentStep === 1) {
-        if (!document.getElementById('year').value) { showFieldError('year', 'Year is required'); isValid = false; }
-        if (!document.getElementById('make').value.trim()) { showFieldError('make', 'Make is required'); isValid = false; }
-        if (!document.getElementById('model').value.trim()) { showFieldError('model', 'Model is required'); isValid = false; }
-      } else if (currentStep === 2) {
-        if (!document.getElementById('pickupAddr').value.trim()) { showFieldError('pickupAddr', 'Pickup address is required'); isValid = false; }
-        if (!document.getElementById('deliveryAddr').value.trim()) { showFieldError('deliveryAddr', 'Delivery address is required'); isValid = false; }
-        if (!document.getElementById('pickupDate').value) { showFieldError('pickupDate', 'Pickup date is required'); isValid = false; }
-        if (!document.getElementById('mustPickupBy').value) { showFieldError('mustPickupBy', 'Must pickup by date is required'); isValid = false; }
-      }
-      return isValid;
-    }
-
-    function showFieldError(fieldId, message) {
-      const input = document.getElementById(fieldId);
-      const errorEl = document.getElementById(fieldId + 'Error');
-      if (input) input.classList.add('error');
-      if (errorEl) errorEl.textContent = message;
-    }
-
-    function clearErrors() {
-      document.querySelectorAll('.input-dark').forEach(el => el.classList.remove('error'));
-      document.querySelectorAll('.error-msg').forEach(el => el.textContent = '');
     }
 
     function renderSummary() {
-      let photosHtml = '';
-      if (formData.vehicle.photos && formData.vehicle.photos.length > 0) {
-        photosHtml = `<div class="mt-6"><strong class="text-white">Vehicle Photos:</strong> <div class="grid grid-cols-4 gap-2 mt-3">` +
-          formData.vehicle.photos.map(p => `<img src="${p.data}" class="rounded-lg border border-gray-700 h-20 object-cover">`).join('') + `</div></div>`;
-      }
-
       const html = `
-        <div class="space-y-6 text-dim">
+        <div class="space-y-4 text-dim">
           <div><strong class="text-white">Contact:</strong> ${formData.contact.fullName || '—'}</div>
           <div><strong class="text-white">Vehicle:</strong> ${formData.vehicle.year} ${formData.vehicle.make} ${formData.vehicle.model}</div>
-          ${photosHtml}
+          <div><strong class="text-white">VIN:</strong> ${formData.vehicle.vin || '—'}</div>
           <div><strong class="text-white">From:</strong> ${formData.location.pickup || '—'}</div>
           <div><strong class="text-white">To:</strong> ${formData.location.delivery || '—'}</div>
-          <div><strong class="text-white">First pickup:</strong> ${formData.pickupDate || '—'}</div>
-          <div><strong class="text-white">Must pickup by:</strong> ${formData.mustPickupBy || '—'}</div>
-          <div class="pt-8 text-3xl font-bold text-[var(--orange)]">Total: $${formData.total.toLocaleString()}</div>
+          <div class="pt-6 text-3xl font-bold text-[var(--orange)]">Total: $${formData.total.toLocaleString()}</div>
         </div>`;
       document.getElementById('summaryContent').innerHTML = html;
     }
@@ -445,8 +532,6 @@
         createdAt: new Date().toISOString()
       };
 
-      console.log("Sending order:", orderData); // Для отладки
-
       try {
         const res = await fetch('/api/orders', {
           method: 'POST',
@@ -455,19 +540,17 @@
         });
 
         if (res.ok) {
-          const result = await res.json();
-          alert(`✅ Order #${orderData.id} created successfully!`);
+          alert(`✅ Order #${orderData.id} successfully created!`);
           window.location.href = '/quote-success';
         } else {
-          alert("Server error. Please try again.");
+          alert("Failed to create order. Please try again.");
         }
       } catch (e) {
         console.error(e);
-        alert("Connection error. Please check your internet connection.");
+        alert("Connection error. Please check your internet.");
       }
     }
 
-    // ==================== NAVIGATION ====================
     function nextStep() {
       if (validateCurrentStep()) {
         saveFormData();
@@ -489,14 +572,13 @@
     // ==================== INIT ====================
     window.addEventListener('load', () => {
       renderStep(0);
-    });
 
-    // Google Maps
-    const googleScript = document.createElement('script');
-    googleScript.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyADY34xlNO8-qSU_2Lq7qZ7l1jydiRL74w&libraries=places";
-    googleScript.async = true;
-    googleScript.defer = true;
-    document.head.appendChild(googleScript);
+      const script = document.createElement('script');
+      script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyADY34xlNO8-qSU_2Lq7qZ7l1jydiRL74w&libraries=places";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+    });
   </script>
 </body>
 </html>
