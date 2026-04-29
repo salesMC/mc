@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About Us | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <!-- HERO -->
+  <section class="relative overflow-hidden py-24 md:py-32">
+    <div class="glow-orange" style="top: -140px; left: -120px;"></div>
+    <div class="glow-cyan" style="bottom: -80px; right: -100px;"></div>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+
+        <div>
+          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(255,106,61,0.3)] bg-[rgba(255,106,61,0.08)] text-xs font-medium text-[var(--orange)] mb-8">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)]"></span>
+            About MC Transportation
+          </div>
+
+          <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.02] tracking-tight">
+            <span class="text-dim">More than</span><br>
+            <span class="text-white">a carrier.</span>
+          </h1>
+
+          <div class="mt-8 space-y-5 text-lg md:text-xl text-dim leading-relaxed">
+            <p>Founded in <span class="text-white font-semibold">2013</span>, MC Transportation started with a simple mission — to provide reliable and efficient vehicle transportation services.</p>
+            <p>What began as a small operation has grown into a trusted carrier serving automobile manufacturers, dealerships, auctions, and logistics partners across the country.</p>
+            <p class="text-white font-medium">We are more than just a carrier — we are your reliable partner on the road.</p>
+          </div>
+
+          <div class="mt-10 flex flex-wrap gap-3">
+            <a href="/contact" class="btn btn-primary">Contact the Team</a>
+            <a href="/careers" class="btn btn-ghost">Join Our Team</a>
+          </div>
+        </div>
+
+        <div class="relative flex justify-center lg:justify-end">
+          <div class="w-full max-w-md rounded-2xl overflow-hidden border border-[var(--line)] shadow-2xl shadow-orange-500/10">
+            <video class="w-full h-auto" autoplay muted loop playsinline preload="none" poster="/images/truck-vertical-poster.jpg">
+              <source src="/videos/truck-vertical.mp4" type="video/mp4">
+            </video>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="horizon"></div>
+
+  <!-- VALUES -->
+  <section class="py-24 md:py-32 relative">
+    <div class="max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="max-w-3xl mb-16">
+        <div class="eyebrow text-[var(--cyan)] mb-5">What Drives Us</div>
+        <h2 class="text-4xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight">
+          Professionalism, relationships, <span class="text-dim">dependability.</span>
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="tile">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+            <i class="fas fa-handshake"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Strong Relationships</h3>
+          <p class="text-dim leading-relaxed text-[15px]">Long-term partnerships with dealers, auctions, and manufacturers — built on trust and consistency.</p>
+        </div>
+        <div class="tile">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--cyan)]" style="background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3);">
+            <i class="fas fa-briefcase"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">True Professionalism</h3>
+          <p class="text-dim leading-relaxed text-[15px]">Every interaction, every pickup, every delivery — handled with the discipline of an enterprise carrier.</p>
+        </div>
+        <div class="tile">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--purple)]" style="background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3);">
+            <i class="fas fa-road"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Dependable Service</h3>
+          <p class="text-dim leading-relaxed text-[15px]">On time, every time. The kind of reliability that lets our customers focus on their own business.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

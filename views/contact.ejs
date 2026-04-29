@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us – MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    textarea.input-dark { resize: none; min-height: 140px; }
+  </style>
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <!-- HERO -->
+  <section class="relative overflow-hidden">
+    <div class="hero-photo" style="background-image: url('/images/trucks-night-contact.jpg');"></div>
+    <div class="hero-dark-v"></div>
+    <div class="hero-dark-h"></div>
+    <div class="hero-tint"></div>
+    <div class="glow-orange" style="top: -140px; left: -100px;"></div>
+    <div class="glow-cyan" style="bottom: -120px; right: -80px;"></div>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8 pt-24 pb-28 md:pt-32 md:pb-36">
+      <div class="max-w-3xl">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(255,106,61,0.3)] bg-[rgba(255,106,61,0.08)] text-xs font-medium text-[var(--orange)] mb-8">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)] animate-pulse"></span>
+          We respond within 1 business hour
+        </div>
+
+        <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.02] tracking-tight">
+          <span class="text-dim">We're ready.</span><br>
+          <span class="text-white">Let's <span class="text-[var(--orange)]">connect.</span></span>
+        </h1>
+
+        <p class="mt-8 text-lg md:text-xl text-dim max-w-2xl leading-relaxed">
+          Whether you're shipping a single vehicle or managing a multi-state fleet, our team is ready to help.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <div class="horizon"></div>
+
+  <!-- CONTACT GRID -->
+  <main class="py-20 md:py-28 relative">
+    <div class="max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="grid lg:grid-cols-2 gap-8 lg:gap-12">
+
+        <!-- Left: Contact Details -->
+        <div class="space-y-5 order-2 lg:order-1">
+          <div class="tile">
+            <div class="flex items-center gap-4 mb-5">
+              <div class="w-12 h-12 rounded-lg flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+                <i class="fas fa-headset"></i>
+              </div>
+              <h3 class="text-2xl font-semibold text-white">Direct Contact</h3>
+            </div>
+            <div class="space-y-4 text-[15px]">
+              <a href="mailto:mctransportation1986@gmail.com" class="flex items-center gap-3 text-dim hover:text-white transition-colors">
+                <i class="fas fa-envelope text-[var(--orange)] w-5"></i>
+                mctransportation1986@gmail.com
+              </a>
+              <a href="tel:5024178040" class="flex items-center gap-3 text-dim hover:text-white transition-colors">
+                <i class="fas fa-phone text-[var(--orange)] w-5"></i>
+                (502) 417-8040
+              </a>
+            </div>
+          </div>
+
+          <div class="tile">
+            <div class="flex items-center gap-4 mb-5">
+              <div class="w-12 h-12 rounded-lg flex items-center justify-center text-[var(--cyan)]" style="background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3);">
+                <i class="fas fa-map-marker-alt"></i>
+              </div>
+              <h3 class="text-2xl font-semibold text-white">Headquarters</h3>
+            </div>
+            <p class="text-dim text-[15px] leading-relaxed">4022 Bardstown Rd<br>Louisville, KY 40218</p>
+          </div>
+
+          <div class="tile">
+            <div class="flex items-center gap-4 mb-5">
+              <div class="w-12 h-12 rounded-lg flex items-center justify-center text-[var(--purple)]" style="background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3);">
+                <i class="fas fa-clock"></i>
+              </div>
+              <h3 class="text-2xl font-semibold text-white">Hours</h3>
+            </div>
+            <div class="text-dim text-[15px] leading-relaxed space-y-1">
+              <div class="flex justify-between"><span>Mon–Fri</span><span class="text-white">8 AM – 8 PM</span></div>
+              <div class="flex justify-between"><span>Saturday</span><span class="text-white">9 AM – 5 PM</span></div>
+              <div class="flex justify-between"><span>Sunday</span><span class="text-white">Dispatch only</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Form -->
+        <div class="order-1 lg:order-2">
+          <div class="tile p-8 md:p-10">
+            <h2 class="text-3xl md:text-4xl font-bold text-white mb-2 tracking-tight">Send a secure message</h2>
+            <p class="text-dim mb-8">We'll get back to you within the hour.</p>
+
+            <form id="contactForm" action="https://formspree.io/f/mnjodggp" method="POST" class="space-y-4">
+              <div>
+                <label class="label-dark">Full Name</label>
+                <input name="name" type="text" placeholder="Your name" required class="input-dark">
+              </div>
+              <div>
+                <label class="label-dark">Email Address</label>
+                <input name="email" type="email" placeholder="you@example.com" required class="input-dark">
+              </div>
+              <div>
+                <label class="label-dark">Phone (Optional)</label>
+                <input name="phone" type="tel" placeholder="(555) 555-5555" class="input-dark">
+              </div>
+              <div>
+                <label class="label-dark">Message</label>
+                <textarea name="message" rows="5" placeholder="Tell us about your shipment..." required class="input-dark"></textarea>
+              </div>
+
+              <button type="submit" class="btn btn-primary w-full justify-center mt-2 py-4">
+                Send Message
+                <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+              </button>
+            </form>
+
+            <!-- Success -->
+            <div id="successMessage" class="hidden text-center py-10">
+              <div class="w-16 h-16 mx-auto mb-4 rounded-full flex items-center justify-center text-[var(--lime)]" style="background: rgba(190,242,100,0.12); border: 1px solid rgba(190,242,100,0.4);">
+                <i class="fas fa-check text-2xl"></i>
+              </div>
+              <h3 class="text-2xl font-bold text-white">Message sent</h3>
+              <p class="text-dim mt-2">Thanks — we'll get back to you shortly.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Google Map -->
+    <section class="w-full mt-16 md:mt-20 border-y border-[var(--line)] relative z-10">
+      <iframe src="https://maps.google.com/maps?q=4022+Bardstown+Rd,+Louisville,+KY+40218&amp;hl=en&amp;z=16&amp;output=embed"
+              width="100%" height="450" style="border:0; filter: invert(0.92) hue-rotate(180deg) contrast(0.9);" allowfullscreen="" loading="lazy"></iframe>
+    </section>
+  </main>
+
+  <%- include('partials/footer') %>
+
+  <script>
+    const form = document.getElementById('contactForm');
+    const successMessage = document.getElementById('successMessage');
+
+    form.addEventListener('submit', function() {
+      setTimeout(() => {
+        form.style.display = 'none';
+        successMessage.classList.remove('hidden');
+      }, 800);
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,185 @@
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg: #0D1117;
+    --bg-panel: #161B22;
+    --bg-deep: #08090C;
+    --line: #1F2937;
+    --line-soft: #2A3441;
+    --ink: #FFFFFF;
+    --ink-dim: #C9D1D9;
+    --ink-muted: #8B949E;
+
+    /* Accents */
+    --orange: #FF6A3D;
+    --orange-hover: #FF814D;
+    --cyan: #22D3EE;
+    --purple: #A78BFA;
+    --lime: #BEF264;
+    --pink: #F472B6;
+  }
+  html, body { font-family: 'Inter', system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    letter-spacing: -0.011em;
+    position: relative;
+  }
+
+  /* Global dot-grid backdrop */
+  body::before {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image: radial-gradient(circle at 1px 1px, rgba(255,255,255,0.06) 1px, transparent 0);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+    -webkit-mask-image: radial-gradient(ellipse at center, black 20%, transparent 75%);
+  }
+
+  /* Global subtle grain/noise */
+  body::after {
+    content: '';
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 0.5 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  }
+
+  nav, main, section, footer { position: relative; z-index: 1; }
+  .text-dim { color: var(--ink-dim); }
+  .text-muted { color: var(--ink-muted); }
+  .text-orange { color: var(--orange); }
+  .text-cyan { color: var(--cyan); }
+  .text-purple { color: var(--purple); }
+  .text-lime { color: var(--lime); }
+  .text-pink { color: var(--pink); }
+  .bg-panel { background: var(--bg-panel); }
+  .bg-deep { background: var(--bg-deep); }
+  .bg-orange { background: var(--orange); }
+  .border-line { border-color: var(--line); }
+
+  /* ===== Shared button system ===== */
+  .btn {
+    display: inline-flex; align-items: center; gap: 0.55rem;
+    padding: 0.95rem 1.6rem; font-weight: 600; font-size: 0.95rem;
+    border-radius: 0.5rem; transition: all 0.18s ease; white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--orange); color: white;
+    box-shadow: 0 0 0 1px rgba(255,106,61,0.4), 0 12px 32px -10px rgba(255,106,61,0.55);
+  }
+  .btn-primary:hover { background: var(--orange-hover); transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,106,61,0.6), 0 18px 40px -10px rgba(255,106,61,0.7); }
+  .btn-cyan { background: rgba(34,211,238,0.12); color: var(--cyan); border: 1px solid rgba(34,211,238,0.35); }
+  .btn-cyan:hover { background: rgba(34,211,238,0.2); border-color: rgba(34,211,238,0.6); }
+  .btn-ghost { background: rgba(255,255,255,0.04); color: white; border: 1px solid rgba(255,255,255,0.18); }
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.08); }
+
+  /* ===== Animations ===== */
+  @keyframes drift1 { 0%,100% { transform: translate(0,0) scale(1); } 33% { transform: translate(60px,40px) scale(1.1); } 66% { transform: translate(-30px,70px) scale(0.95); } }
+  @keyframes drift2 { 0%,100% { transform: translate(0,0) scale(1); } 50% { transform: translate(-80px,50px) scale(1.15); } }
+  @keyframes drift3 { 0%,100% { transform: translate(0,0) scale(1); } 40% { transform: translate(40px,-30px) scale(1.08); } 80% { transform: translate(-50px,20px) scale(0.92); } }
+
+  /* ===== Glow orbs ===== */
+  .glow-orange { position: absolute; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle, rgba(255,106,61,0.35), transparent 60%); filter: blur(70px); pointer-events: none; animation: drift1 22s ease-in-out infinite; }
+  .glow-cyan { position: absolute; width: 460px; height: 460px; border-radius: 50%; background: radial-gradient(circle, rgba(34,211,238,0.25), transparent 60%); filter: blur(80px); pointer-events: none; animation: drift2 26s ease-in-out infinite; }
+  .glow-purple { position: absolute; width: 480px; height: 480px; border-radius: 50%; background: radial-gradient(circle, rgba(167,139,250,0.22), transparent 60%); filter: blur(80px); pointer-events: none; animation: drift3 26s ease-in-out infinite; }
+  .glow-lime { position: absolute; width: 440px; height: 440px; border-radius: 50%; background: radial-gradient(circle, rgba(190,242,100,0.18), transparent 60%); filter: blur(80px); pointer-events: none; animation: drift1 24s ease-in-out infinite; }
+  .glow-pink { position: absolute; width: 460px; height: 460px; border-radius: 50%; background: radial-gradient(circle, rgba(244,114,182,0.22), transparent 60%); filter: blur(80px); pointer-events: none; animation: drift2 28s ease-in-out infinite; }
+
+  /* ===== Horizon divider ===== */
+  .horizon { height: 1px; width: 100%; background: linear-gradient(90deg, transparent, rgba(255,106,61,0.55) 20%, rgba(34,211,238,0.55) 50%, rgba(167,139,250,0.55) 80%, transparent); position: relative; z-index: 1; }
+  .horizon::after { content: ''; position: absolute; inset: -2px 0; background: inherit; filter: blur(6px); opacity: 0.7; }
+
+  /* ===== Tile (dark panel card) ===== */
+  .tile { background: var(--bg-panel); border: 1px solid var(--line); border-radius: 0.875rem; padding: 2rem; transition: all 0.25s ease; position: relative; overflow: hidden; }
+  .tile:hover { border-color: var(--line-soft); transform: translateY(-3px); background: #1C2128; }
+
+  /* ===== Eyebrow ===== */
+  .eyebrow { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; display: inline-block; }
+
+  /* ===== Hero photo backdrop ===== */
+  .hero-photo { position: absolute; inset: 0; background-size: cover; background-position: center; filter: grayscale(0.55) brightness(0.32) contrast(1.05); }
+  .hero-dark-v { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(13,17,23,0.85) 0%, rgba(13,17,23,0.55) 50%, rgba(13,17,23,0.95) 100%); }
+  .hero-dark-h { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(13,17,23,0.88) 0%, rgba(13,17,23,0.3) 65%, rgba(13,17,23,0) 100%); }
+  .hero-tint { position: absolute; inset: 0; background: linear-gradient(135deg, rgba(255,106,61,0.08) 0%, transparent 50%, rgba(34,211,238,0.05) 100%); }
+
+  /* ===== Form inputs (dark) ===== */
+  .input-dark {
+    width: 100%;
+    padding: 0.95rem 1.25rem;
+    background: var(--bg-panel);
+    border: 1px solid var(--line);
+    border-radius: 0.5rem;
+    color: var(--ink);
+    font-size: 1rem;
+    transition: all 0.18s ease;
+    outline: none;
+  }
+  .input-dark::placeholder { color: var(--ink-muted); }
+  .input-dark:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255,106,61,0.15); }
+  .label-dark { display: block; font-size: 0.875rem; font-weight: 500; color: var(--ink-dim); margin-bottom: 0.5rem; }
+</style>
+
+<nav class="bg-[var(--bg)]/90 border-b border-[var(--line)] sticky top-0 z-50 backdrop-blur-md">
+  <div class="max-w-7xl mx-auto px-5 sm:px-6 lg:px-8">
+    <div class="h-16 md:h-[72px] flex items-center justify-between">
+
+      <a href="/" class="flex items-center gap-2 flex-shrink-0 group">
+        <span class="text-xl md:text-[22px] font-bold tracking-tight text-white">MC</span>
+        <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)] mx-1 group-hover:shadow-[0_0_12px_var(--orange)] transition-shadow"></span>
+        <span class="text-[10px] md:text-[11px] tracking-[0.22em] uppercase text-[var(--ink-muted)] font-medium pt-0.5">Transportation</span>
+      </a>
+
+      <div class="hidden lg:flex items-center gap-8 text-[15px] font-medium text-[var(--ink-dim)]">
+        <a href="/auctions"    class="hover:text-white transition-colors">Auctions</a>
+        <a href="/dealers"     class="hover:text-white transition-colors">Dealers</a>
+        <a href="/oems"        class="hover:text-white transition-colors">OEMs</a>
+        <a href="/fleet"       class="hover:text-white transition-colors">Fleet</a>
+        <a href="/individuals" class="hover:text-white transition-colors">Individuals</a>
+      </div>
+
+      <div class="flex items-center gap-3 flex-shrink-0">
+        <a href="/contact" class="hidden md:inline-flex text-[15px] font-medium text-[var(--ink-dim)] hover:text-white transition-colors px-2">
+          Contact
+        </a>
+        <a href="/admin"
+           class="hidden md:inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-md transition-all text-white border border-[var(--line-soft)] hover:border-[var(--orange)] hover:text-[var(--orange)]">
+          <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
+          Sign In
+        </a>
+        <button id="mobile-menu-btn" class="lg:hidden w-10 h-10 flex items-center justify-center text-white active:scale-95">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="mobile-menu" class="hidden lg:hidden border-t border-[var(--line)] bg-[var(--bg)]">
+    <div class="px-6 py-6 space-y-4 text-[15px] font-medium text-[var(--ink-dim)]">
+      <a href="/auctions"    class="block hover:text-white">Auctions</a>
+      <a href="/dealers"     class="block hover:text-white">Dealers</a>
+      <a href="/oems"        class="block hover:text-white">OEMs</a>
+      <a href="/fleet"       class="block hover:text-white">Fleet</a>
+      <a href="/individuals" class="block hover:text-white">Individuals</a>
+      <a href="/team"        class="block hover:text-white">About</a>
+      <a href="/careers"     class="block hover:text-white">Careers</a>
+      <a href="/contact"     class="block hover:text-white">Contact</a>
+      <a href="/admin" class="mt-4 inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white rounded-md border border-[var(--line-soft)]">
+        <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
+        Sign In
+      </a>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      const btn = document.getElementById('mobile-menu-btn');
+      const menu = document.getElementById('mobile-menu');
+      if (!btn || !menu) return;
+      btn.addEventListener('click', () => menu.classList.toggle('hidden'));
+    })();
+  </script>
+</nav>

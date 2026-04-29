@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign In | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <main class="relative overflow-hidden min-h-[80vh] flex items-center py-20">
+    <div class="glow-orange" style="top: -100px; left: -80px;"></div>
+    <div class="glow-cyan" style="bottom: -100px; right: -80px;"></div>
+
+    <div class="relative max-w-md mx-auto px-6 lg:px-8 w-full">
+
+      <div class="text-center mb-10">
+        <div class="w-14 h-14 mx-auto mb-6 rounded-xl flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+          <i class="fas fa-right-to-bracket"></i>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Welcome back</h1>
+        <p class="text-dim mt-3">Sign in to manage your shipments and payments.</p>
+      </div>
+
+      <div class="tile p-8 md:p-10">
+        <form id="signInForm" class="space-y-5">
+          <div>
+            <label class="label-dark">Email</label>
+            <input id="signInEmail" type="email" placeholder="you@example.com" required class="input-dark">
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="label-dark mb-0">Password</label>
+              <a href="#" class="text-xs text-[var(--cyan)] hover:text-white transition-colors">Forgot password?</a>
+            </div>
+            <input id="signInPassword" type="password" placeholder="••••••••" required class="input-dark">
+          </div>
+
+          <label class="flex items-center gap-3 cursor-pointer text-sm text-dim">
+            <input type="checkbox" class="w-4 h-4">
+            Keep me signed in
+          </label>
+
+          <div id="signInError" class="hidden text-sm text-red-400 flex items-center gap-2">
+            <i class="fas fa-circle-exclamation"></i>
+            <span>Incorrect email or password.</span>
+          </div>
+
+          <button type="submit" class="btn btn-primary w-full justify-center py-4">
+            Sign In
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </button>
+        </form>
+
+        <div class="flex items-center gap-3 my-7">
+          <div class="flex-1 h-px bg-[var(--line)]"></div>
+          <span class="text-xs text-muted uppercase tracking-wider">or</span>
+          <div class="flex-1 h-px bg-[var(--line)]"></div>
+        </div>
+
+        <p class="text-center text-sm text-dim">
+          New to MC Transportation?
+          <a href="/contact" class="text-[var(--orange)] hover:text-white transition-colors font-medium">Create an account</a>
+        </p>
+      </div>
+
+      <script>
+        (function () {
+          const ADMIN_PASSWORD = "mcadmin2026";
+          const form = document.getElementById('signInForm');
+          const pwField = document.getElementById('signInPassword');
+          const errEl = document.getElementById('signInError');
+
+          form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            errEl.classList.add('hidden');
+            if (pwField.value === ADMIN_PASSWORD) {
+              sessionStorage.setItem('mcAdminAuth', '1');
+              window.location.href = '/admin';
+            } else {
+              errEl.classList.remove('hidden');
+              pwField.focus();
+              pwField.select();
+            }
+          });
+        })();
+      </script>
+
+      <p class="text-center text-xs text-muted mt-8">
+        By signing in you agree to our Terms &amp; Privacy Policy.
+      </p>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Choose Your Path | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <main class="relative overflow-hidden py-24 md:py-32 min-h-[80vh] flex items-center">
+    <div class="glow-orange" style="top: 10%; left: -100px;"></div>
+    <div class="glow-cyan" style="bottom: 10%; right: -100px;"></div>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8 w-full">
+      <div class="text-center mb-16">
+        <div class="eyebrow text-muted mb-5">Which path fits?</div>
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-[1.1] tracking-tight">
+          Tell us who you are <span class="text-dim">and we'll route you to the right team.</span>
+        </h1>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- DEALERS & AUCTIONS -->
+        <a href="/contact" class="tile p-10 md:p-14 group flex flex-col" style="border-color: rgba(255,106,61,0.25);">
+          <div class="inline-flex items-center gap-2 text-xs tracking-[0.22em] uppercase font-semibold text-[var(--orange)] mb-6">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)]"></span>
+            For Shippers
+          </div>
+          <h2 class="text-4xl md:text-5xl font-bold text-white leading-tight tracking-tight">
+            Dealers &<br><span class="text-[var(--orange)]">Auctions.</span>
+          </h2>
+          <p class="mt-6 text-dim leading-relaxed text-lg flex-grow">
+            Join hundreds of dealerships and auctions leveraging MC Transportation's nationwide logistics network.
+          </p>
+          <div class="mt-10 flex items-center gap-2 text-white font-semibold">
+            Connect with MC
+            <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </div>
+        </a>
+
+        <!-- SHIP MY CAR -->
+        <a href="/calculator" class="tile p-10 md:p-14 group flex flex-col" style="border-color: rgba(34,211,238,0.25);">
+          <div class="inline-flex items-center gap-2 text-xs tracking-[0.22em] uppercase font-semibold text-[var(--cyan)] mb-6">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"></span>
+            For Individuals
+          </div>
+          <h2 class="text-4xl md:text-5xl font-bold text-white leading-tight tracking-tight">
+            Ship my<br><span class="text-[var(--cyan)]">car.</span>
+          </h2>
+          <p class="mt-6 text-dim leading-relaxed text-lg flex-grow">
+            Fast, secure, direct vehicle delivery with real-time tracking to your doorstep.
+          </p>
+          <div class="mt-10 flex items-center gap-2 text-white font-semibold">
+            Get an Instant Quote
+            <svg class="w-4 h-4 transition-transform group-hover:translate-x-1" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </div>
+        </a>
+
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

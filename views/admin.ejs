@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin · MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .input-admin {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      background: var(--bg-deep);
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      color: var(--ink);
+      font-size: 1rem;
+      transition: all 0.18s ease;
+      outline: none;
+    }
+    .input-admin:focus { 
+      border-color: var(--orange); 
+      box-shadow: 0 0 0 3px rgba(255,106,61,0.15); 
+    }
+
+    table { border-collapse: collapse; width: 100%; }
+    th, td { 
+      padding: 14px 16px; 
+      text-align: left; 
+      border-bottom: 1px solid var(--line); 
+    }
+    th { 
+      background: var(--bg-panel); 
+      font-weight: 600; 
+      color: var(--ink-dim); 
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+    }
+
+    .status-badge {
+      padding: 5px 12px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .modal { animation: modalFade 0.2s ease forwards; }
+    @keyframes modalFade {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    tr:hover {
+      background: rgba(255,106,61,0.08);
+    }
+
+    /* Accordion */
+    .accordion-header {
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .accordion-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+    }
+    .accordion-content.open {
+      max-height: 1200px;
+    }
+  </style>
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <div class="relative py-16 md:py-24 overflow-hidden">
+    <div class="glow-orange" style="top: -100px; right: -80px;"></div>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8">
+
+      <!-- ==================== LOGIN SCREEN ==================== -->
+      <div id="passwordScreen" class="max-w-md mx-auto">
+        <div class="text-center mb-10">
+          <div class="w-14 h-14 mx-auto mb-6 rounded-xl flex items-center justify-center text-[var(--orange)]" 
+               style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+            <i class="fas fa-right-to-bracket"></i>
+          </div>
+          <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Welcome back</h1>
+          <p class="text-dim mt-3">Sign in to access the admin panel</p>
+        </div>
+
+        <div class="tile p-8 md:p-10">
+          <form id="signInForm" onsubmit="return false" class="space-y-5">
+            <div>
+              <label class="label-dark">Email</label>
+              <input id="signInEmail" type="email" placeholder="you@example.com" class="input-dark" required>
+            </div>
+            <div>
+              <label class="label-dark">Password</label>
+              <input id="passwordInput" type="password" placeholder="••••••••" class="input-dark" required>
+            </div>
+
+            <p id="passwordError" class="hidden text-sm text-red-400 flex items-center gap-2">
+              <i class="fas fa-circle-exclamation"></i>
+              <span>Incorrect email or password.</span>
+            </p>
+
+            <button type="button" onclick="checkPassword()" 
+                    class="btn btn-primary w-full py-4 text-base font-semibold">
+              Sign In
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- ==================== ADMIN DASHBOARD ==================== -->
+      <div id="adminForm" class="hidden space-y-12">
+
+        <!-- ==================== ORDERS SECTION (теперь сверху) ==================== -->
+        <div class="tile">
+          <div class="flex justify-between items-center mb-8">
+            <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+              <i class="fas fa-clipboard-list"></i> 
+              Orders / Quotes
+            </h2>
+            <button onclick="loadOrders()" class="btn btn-cyan flex items-center gap-2">
+              <i class="fas fa-sync-alt"></i> Refresh
+            </button>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr>
+                  <th>Order ID</th>
+                  <th>Date</th>
+                  <th>Customer</th>
+                  <th>Email</th>
+                  <th>Vehicle</th>
+                  <th>Total</th>
+                  <th>Status</th>
+                  <th class="w-28 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ordersBody" class="text-dim"></tbody>
+            </table>
+          </div>
+
+          <div id="noOrdersMessage" class="hidden text-center py-16 text-muted">
+            <i class="fas fa-inbox text-6xl mb-6 opacity-40"></i>
+            <p>No orders yet</p>
+          </div>
+        </div>
+
+        <!-- ==================== CALCULATOR SETTINGS (в аккордеоне) ==================== -->
+        <div class="tile">
+          <div onclick="toggleCalculator()" id="calculatorHeader"
+               class="accordion-header flex justify-between items-center py-4 border-b border-[var(--line)]">
+            <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+              <i class="fas fa-calculator"></i> 
+              Calculator Settings
+            </h2>
+            <i id="calculatorIcon" class="fas fa-chevron-down text-xl transition-transform"></i>
+          </div>
+
+          <div id="calculatorContent" class="accordion-content pt-6">
+            <div class="mb-8">
+              <label class="label-dark mb-3">Base Fee ($)</label>
+              <input id="baseFee" type="number" value="120" class="input-admin text-2xl">
+            </div>
+
+            <div class="mb-10">
+              <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-semibold text-white">Price per Mile (CPM Tiers)</h3>
+                <button onclick="addTier()" class="btn btn-cyan text-sm">
+                  <i class="fas fa-plus"></i> Add Tier
+                </button>
+              </div>
+              <table class="w-full">
+                <thead>
+                  <tr class="text-left text-muted border-b border-[var(--line)]">
+                    <th class="pb-4">Up to Miles</th>
+                    <th class="pb-4">Rate per Mile ($)</th>
+                    <th class="pb-4 w-12"></th>
+                  </tr>
+                </thead>
+                <tbody id="tiersBody"></tbody>
+              </table>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+              <div>
+                <label class="label-dark">Sedan / Compact SUV</label>
+                <input id="multSedan" type="number" step="0.01" value="1.00" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Mid-size SUV</label>
+                <input id="multMid" type="number" step="0.01" value="1.10" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Full-size SUV</label>
+                <input id="multFull" type="number" step="0.01" value="1.20" class="input-admin">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+              <div>
+                <label class="label-dark">Inoperable</label>
+                <input id="addonInop" type="number" value="75" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Modified / Custom</label>
+                <input id="addonMod" type="number" value="100" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Urgent Delivery</label>
+                <input id="addonUrgent" type="number" value="100" class="input-admin">
+              </div>
+            </div>
+
+            <div class="flex gap-3">
+              <button onclick="saveConfig()" class="flex-1 btn btn-primary py-5">
+                <i class="fas fa-save"></i> Save Settings
+              </button>
+              <button onclick="resetConfig()" class="flex-1 btn btn-ghost py-5">
+                <i class="fas fa-rotate-left"></i> Reset to Default
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Order Detail Modal -->
+  <div id="orderModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center sticky top-0 bg-panel z-10">
+        <h3 class="text-2xl font-bold text-white" id="modalOrderId">Order Details</h3>
+        <button onclick="closeModal()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+
+      <div class="p-8 space-y-8" id="modalContent"></div>
+
+      <div class="p-6 border-t border-[var(--line)] flex justify-end">
+        <button onclick="closeModal()" class="btn btn-ghost px-8 py-3">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <%- include('partials/footer') %>
+
+  <script>
+    const ADMIN_PASSWORD = "mcadmin2026";
+
+    // ==================== LOGIN ====================
+    function checkPassword() {
+      const pw = document.getElementById('passwordInput').value;
+      const err = document.getElementById('passwordError');
+
+      if (pw === ADMIN_PASSWORD) {
+        sessionStorage.setItem('mcAdminAuth', '1');
+        document.getElementById('passwordScreen').classList.add('hidden');
+        document.getElementById('adminForm').classList.remove('hidden');
+        loadCurrentConfig();
+        loadOrders();
+      } else {
+        err.classList.remove('hidden');
+      }
+    }
+
+    // ==================== ACCORDION FOR CALCULATOR ====================
+    function toggleCalculator() {
+      const content = document.getElementById('calculatorContent');
+      const icon = document.getElementById('calculatorIcon');
+      content.classList.toggle('open');
+      icon.classList.toggle('rotate-180');
+    }
+
+    // ==================== CALCULATOR SETTINGS ====================
+    let config = {
+      baseFee: 120,
+      tiers: [
+        { max: 30, rate: 3.00 },
+        { max: 70, rate: 2.20 },
+        { max: 110, rate: 1.80 },
+        { max: 160, rate: 1.50 },
+        { max: Infinity, rate: 1.30 }
+      ],
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20 },
+      addons: { inoperable: 75, modified: 100, urgent: 100 }
+    };
+
+    function loadCurrentConfig() {
+      const saved = localStorage.getItem('calculatorConfig');
+      if (saved) config = JSON.parse(saved);
+
+      document.getElementById('baseFee').value = config.baseFee;
+      document.getElementById('multSedan').value = config.multipliers.sedan;
+      document.getElementById('multMid').value = config.multipliers['mid-suv'];
+      document.getElementById('multFull').value = config.multipliers['full-suv'];
+      document.getElementById('addonInop').value = config.addons.inoperable;
+      document.getElementById('addonMod').value = config.addons.modified;
+      document.getElementById('addonUrgent').value = config.addons.urgent;
+
+      renderTiers();
+    }
+
+    function renderTiers() {
+      const tbody = document.getElementById('tiersBody');
+      tbody.innerHTML = '';
+      config.tiers.forEach((tier, i) => {
+        const row = document.createElement('tr');
+        row.className = 'border-t border-[var(--line)]';
+        const maxDisplay = tier.max === Infinity ? '∞' : tier.max;
+        row.innerHTML = `
+          <td class="py-4"><input type="text" value="${maxDisplay}" class="input-admin w-28" onchange="updateTier(${i}, 'max', this.value)"></td>
+          <td class="py-4"><input type="number" step="0.01" value="${tier.rate}" class="input-admin w-32" onchange="updateTier(${i}, 'rate', this.value)"></td>
+          <td class="py-4 text-right">
+            ${config.tiers.length > 1 ? `<button onclick="deleteTier(${i}); event.stopImmediatePropagation()" class="text-red-400 hover:text-red-500"><i class="fas fa-trash"></i></button>` : ''}
+          </td>
+        `;
+        tbody.appendChild(row);
+      });
+    }
+
+    function updateTier(i, field, value) {
+      if (field === 'max') {
+        config.tiers[i].max = (value === '∞' || value.toLowerCase() === 'infinity') ? Infinity : parseFloat(value) || 0;
+      } else {
+        config.tiers[i].rate = parseFloat(value) || 0;
+      }
+    }
+
+    function addTier() {
+      const last = config.tiers.pop();
+      config.tiers.push({ max: 200, rate: 1.40 });
+      config.tiers.push(last);
+      renderTiers();
+    }
+
+    function deleteTier(i) {
+      if (config.tiers.length <= 1) return;
+      if (confirm('Delete this tier?')) {
+        config.tiers.splice(i, 1);
+        renderTiers();
+      }
+    }
+
+    function saveConfig() {
+      config.baseFee = parseFloat(document.getElementById('baseFee').value) || 120;
+      config.multipliers.sedan = parseFloat(document.getElementById('multSedan').value) || 1;
+      config.multipliers['mid-suv'] = parseFloat(document.getElementById('multMid').value) || 1.1;
+      config.multipliers['full-suv'] = parseFloat(document.getElementById('multFull').value) || 1.2;
+      config.addons.inoperable = parseFloat(document.getElementById('addonInop').value) || 75;
+      config.addons.modified = parseFloat(document.getElementById('addonMod').value) || 100;
+      config.addons.urgent = parseFloat(document.getElementById('addonUrgent').value) || 100;
+
+      localStorage.setItem('calculatorConfig', JSON.stringify(config));
+      alert('✅ Calculator settings saved!');
+    }
+
+    function resetConfig() {
+      if (confirm('Reset all calculator settings to default?')) {
+        localStorage.removeItem('calculatorConfig');
+        location.reload();
+      }
+    }
+
+    // ==================== ORDERS MANAGEMENT ====================
+    async function loadOrders() {
+      try {
+        const res = await fetch('/api/orders');
+        const orders = await res.json();
+        const tbody = document.getElementById('ordersBody');
+        tbody.innerHTML = '';
+
+        if (orders.length === 0) {
+          document.getElementById('noOrdersMessage').classList.remove('hidden');
+          return;
+        }
+        document.getElementById('noOrdersMessage').classList.add('hidden');
+
+        const statusClasses = {
+          'New': 'bg-blue-500/10 text-blue-400 hover:bg-blue-500/20',
+          'In Work': 'bg-amber-500/10 text-amber-400 hover:bg-amber-500/20',
+          'Done': 'bg-lime-500/10 text-lime-400 hover:bg-lime-500/20'
+        };
+
+        orders.forEach(order => {
+          const tr = document.createElement('tr');
+          tr.className = "cursor-pointer";
+          tr.innerHTML = `
+            <td class="font-mono text-orange-400">${order.id}</td>
+            <td class="text-xs">${order.date || (order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '')}</td>
+            <td class="font-medium text-white">${order.contact?.fullName || '—'}</td>
+            <td class="text-sm">${order.contact?.email || '—'}</td>
+            <td class="text-sm">${(order.vehicle?.year || '')} ${order.vehicle?.make || ''} ${order.vehicle?.model || ''}</td>
+            <td class="font-semibold text-[var(--orange)]">$${Number(order.total || 0).toLocaleString()}</td>
+            <td>
+              <span onclick="event.stopImmediatePropagation(); changeOrderStatus('${order.id}', this)" 
+                    class="status-badge ${statusClasses[order.status] || statusClasses['New']}">
+                ${order.status || 'New'}
+              </span>
+            </td>
+            <td class="text-center">
+              <button onclick="event.stopImmediatePropagation(); showOrderDetail('${order.id}')" 
+                      class="text-cyan-400 hover:text-white p-2">
+                <i class="fas fa-eye"></i>
+              </button>
+              ${order.status === 'Done' ? `
+                <button onclick="event.stopImmediatePropagation(); deleteOrder('${order.id}', this)" 
+                        class="text-red-400 hover:text-red-500 p-2 ml-1">
+                  <i class="fas fa-trash"></i>
+                </button>
+              ` : ''}
+            </td>
+          `;
+          tr.onclick = (e) => {
+            if (!e.target.closest('button')) showOrderDetail(order.id);
+          };
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error('Error loading orders:', e);
+      }
+    }
+
+    
+    async function changeOrderStatus(orderId, element) {
+      event.stopImmediatePropagation();
+      const currentStatus = element.textContent.trim();
+      const statuses = ['New', 'In Work', 'Done'];
+      let nextStatus = statuses[(statuses.indexOf(currentStatus) + 1) % 3];
+
+      if (confirm(`Change status of order ${orderId} to "${nextStatus}"?`)) {
+        try {
+          const res = await fetch(`/api/orders/${orderId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: nextStatus })
+          });
+
+          if (res.ok) loadOrders();
+        } catch (err) {
+          alert('Error updating status');
+        }
+      }
+    }
+
+    async function deleteOrder(orderId) {
+      if (!confirm(`Delete order ${orderId} permanently?`)) return;
+      try {
+        const res = await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
+        if (res.ok) loadOrders();
+      } catch (err) {
+        alert('Error deleting order');
+      }
+    }
+
+    async function showOrderDetail(orderId) {
+      try {
+        const res = await fetch('/api/orders');
+        const orders = await res.json();
+        const order = orders.find(o => o.id === orderId);
+        if (!order) return;
+
+        document.getElementById('modalOrderId').textContent = `Order ${order.id}`;
+
+        const vehicle = order.vehicle || {};
+        const location = order.location || {};
+        const contact = order.contact || {};
+
+        const html = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+              <h4 class="font-semibold text-white mb-3">Contact Information</h4>
+              <p><strong>Name:</strong> ${contact.fullName || '—'}</p>
+              <p><strong>Email:</strong> ${contact.email || '—'}</p>
+              <p><strong>Phone:</strong> ${contact.phone || '—'}</p>
+            </div>
+            <div>
+  <h4 class="font-semibold text-white mb-3">Vehicle Information</h4>
+  <p><strong>Year:</strong> ${vehicle.year || '—'}</p>
+  <p><strong>Make:</strong> ${vehicle.make || '—'}</p>
+  <p><strong>Model:</strong> ${vehicle.model || '—'}</p>
+  <p><strong>VIN:</strong> ${vehicle.vin || '—'}</p>
+  <p><strong>Type:</strong> ${vehicle.type || '—'}</p>
+  <p><strong>Condition:</strong> ${vehicle.condition || '—'}</p>
+  <p><strong>Runs and drives:</strong> ${vehicle.runsAndDrives ? 'Yes' : 'No'}</p>
+  <p><strong>Has keys:</strong> ${vehicle.hasKeys ? 'Yes' : 'No'}</p>
+  <p><strong>Modified:</strong> ${vehicle.modified ? 'Yes' : 'No'}</p>
+  <p><strong>Urgent:</strong> ${vehicle.urgent ? 'Yes' : 'No'}</p>
+
+  ${vehicle.photos && vehicle.photos.length ? `
+    <div class="mt-6">
+      <strong class="text-white block mb-2">Vehicle Photos (${vehicle.photos.length})</strong>
+      <div class="grid grid-cols-3 gap-2">
+        ${vehicle.photos.map(photo => `
+          <img src="${photo.data}" class="rounded-lg border border-[var(--line)] object-cover h-28" alt="vehicle photo">
+        `).join('')}
+      </div>
+    </div>
+  ` : ''}
+</div>
+          </div>
+
+          <div class="mt-8">
+            <h4 class="font-semibold text-white mb-3">Route</h4>
+            <p><strong>Pickup:</strong> ${location.pickup || '—'}</p>
+            <p><strong>Delivery:</strong> ${location.delivery || '—'}</p>
+          </div>
+
+          <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div>
+              <h4 class="font-semibold text-white mb-3">Pickup Dates</h4>
+              <p><strong>First possible:</strong> ${order.pickupDate || '—'}</p>
+              <p><strong>Must pickup by:</strong> ${order.mustPickupBy || '—'}</p>
+            </div>
+            <div>
+              <h4 class="font-semibold text-white mb-3">Other</h4>
+              <p><strong>Transport Type:</strong> ${order.transportType || '—'}</p>
+            </div>
+          </div>
+
+          <div class="mt-10 pt-6 border-t border-[var(--line)] flex justify-between items-center">
+            <div>
+              <p class="text-muted text-sm">Total Amount</p>
+              <p class="text-4xl font-bold text-[var(--orange)]">$${Number(order.total || 0).toLocaleString()}</p>
+            </div>
+            <div class="text-right">
+              <p class="text-muted text-sm">Status</p>
+              <span class="status-badge ${order.status === 'Done' ? 'bg-lime-500/10 text-lime-400' : order.status === 'In Work' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}">
+                ${order.status || 'New'}
+              </span>
+            </div>
+          </div>
+        `;
+
+        document.getElementById('modalContent').innerHTML = html;
+        document.getElementById('orderModal').classList.remove('hidden');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('orderModal').classList.add('hidden');
+    }
+
+    // Auto-login
+    if (sessionStorage.getItem('mcAdminAuth') === '1') {
+      document.getElementById('passwordScreen').classList.add('hidden');
+      document.getElementById('adminForm').classList.remove('hidden');
+      loadCurrentConfig();
+      loadOrders();
+    }
+
+    document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') checkPassword();
+    });
+  </script>
+</body>
+</html>

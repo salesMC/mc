@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ship Your Car – Individuals | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    #open-btn, #enclosed-btn { transition: all 0.2s ease; }
+    #open-btn.bg-sky-600, #enclosed-btn.bg-sky-600 { color: white !important; }
+  </style>
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <main>
+    <!-- HERO -->
+    <section class="relative overflow-hidden">
+      <div class="hero-photo" style="background-image: url('/images/individual-car.jpg');"></div>
+      <div class="hero-dark-v"></div>
+      <div class="hero-dark-h"></div>
+      <div class="hero-tint"></div>
+      <div class="glow-pink" style="top: -140px; left: -100px;"></div>
+      <div class="glow-orange" style="bottom: -120px; right: -80px;"></div>
+
+      <div class="relative max-w-7xl mx-auto px-6 lg:px-8 pt-24 pb-28 md:pt-32 md:pb-36">
+        <div class="max-w-3xl">
+          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(244,114,182,0.3)] bg-[rgba(244,114,182,0.08)] text-xs font-medium text-[var(--pink)] mb-8">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--pink)]"></span>
+            05 · Individuals
+          </div>
+
+          <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.02] tracking-tight">
+            <span class="text-dim">Ship your car.</span><br>
+            <span class="text-white">Door <span class="text-[var(--pink)]">to door.</span></span>
+          </h1>
+
+          <div class="mt-8 space-y-5 text-lg md:text-xl text-dim max-w-2xl leading-relaxed">
+            <p>Shipping your vehicle should feel simple and worry-free. We handle every detail with care and precision — so you don't have to.</p>
+            <p>Seamlessly managed from pickup to delivery, anywhere in the United States.</p>
+          </div>
+
+          <div class="mt-10 flex flex-wrap gap-3">
+            <a href="/calculator" class="btn btn-primary">Get an Instant Quote</a>
+            <a href="/contact" class="btn btn-ghost">Ask a Question</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="horizon"></div>
+
+    <!-- HOW IT WORKS -->
+    <section class="py-24 md:py-32 relative">
+      <div class="max-w-7xl mx-auto px-6 lg:px-8">
+        <div class="max-w-3xl mb-16">
+          <div class="eyebrow text-[var(--pink)] mb-5">How It Works</div>
+          <h2 class="text-4xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight">
+            Three simple steps <span class="text-dim">from pickup to delivery.</span>
+          </h2>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div class="tile">
+            <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--pink)]" style="background: rgba(244,114,182,0.12); border: 1px solid rgba(244,114,182,0.3);">
+              <i class="fas fa-calculator"></i>
+            </div>
+            <div class="text-xs font-mono text-muted tracking-widest mb-2">01 / QUOTE</div>
+            <h3 class="text-xl font-semibold text-white mb-3">Get an Instant Estimate</h3>
+            <p class="text-dim leading-relaxed text-[15px]">Enter your pickup and delivery addresses, vehicle details, and get a live price in seconds.</p>
+          </div>
+          <div class="tile">
+            <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--cyan)]" style="background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3);">
+              <i class="fas fa-truck-ramp-box"></i>
+            </div>
+            <div class="text-xs font-mono text-muted tracking-widest mb-2">02 / PICKUP</div>
+            <h3 class="text-xl font-semibold text-white mb-3">Door-Side Pickup</h3>
+            <p class="text-dim leading-relaxed text-[15px]">Our driver arrives at your specified pickup address and inspects the vehicle before loading.</p>
+          </div>
+          <div class="tile">
+            <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+              <i class="fas fa-flag-checkered"></i>
+            </div>
+            <div class="text-xs font-mono text-muted tracking-widest mb-2">03 / DELIVERY</div>
+            <h3 class="text-xl font-semibold text-white mb-3">On-Schedule Delivery</h3>
+            <p class="text-dim leading-relaxed text-[15px]">Track your shipment live, and receive your vehicle at the delivery address with full inspection.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="horizon"></div>
+
+    <!-- CTA -->
+    <section class="py-24 md:py-32 relative overflow-hidden bg-deep">
+      <div class="glow-pink" style="top: 10%; left: -100px;"></div>
+      <div class="relative max-w-4xl mx-auto px-6 lg:px-8 text-center">
+        <h2 class="text-4xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight">
+          Ready to ship your vehicle?
+        </h2>
+        <p class="mt-6 text-lg text-dim leading-relaxed">
+          Get a live price now — no email required to see the estimate.
+        </p>
+        <div class="mt-10 flex flex-wrap justify-center gap-3">
+          <a href="/calculator" class="btn btn-primary">Get Instant Quote</a>
+          <a href="/contact" class="btn btn-ghost">Talk to a Human</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ORPHANED PRICE MODAL (preserved for any future JS that targets these IDs) -->
+  <div id="priceModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+    <div class="bg-panel rounded-2xl max-w-2xl w-full p-8 md:p-12 text-center border border-[var(--line)]">
+      <i class="fas fa-check-circle text-6xl text-[var(--orange)] mb-6"></i>
+      <h2 class="text-3xl font-bold text-white mb-2">Your Estimated Price</h2>
+      <p class="text-dim mb-8">This is a live calculation. We will confirm the exact quote shortly.</p>
+
+      <div id="priceBreakdown" class="bg-deep rounded-xl p-6 mb-8 text-left space-y-3 text-base border border-[var(--line)]"></div>
+
+      <div class="text-5xl font-bold text-[var(--orange)] mb-8" id="totalPriceBig">$0</div>
+
+      <div class="max-w-md mx-auto mb-8 text-left">
+        <label class="label-dark">Email (for quote delivery)</label>
+        <input type="email" id="email" placeholder="your@email.com" required class="input-dark">
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <a href="/" class="flex-1 btn btn-primary justify-center">Back to Home</a>
+        <a href="/contact" class="flex-1 btn btn-ghost justify-center">Ask a Question</a>
+      </div>
+
+      <button id="closePriceModal" class="mt-8 text-muted hover:text-white transition-colors">Close</button>
+    </div>
+  </div>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

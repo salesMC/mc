@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MC Transportation — We Ship Cars Nationwide</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .btn {
+      display: inline-flex; align-items: center; gap: 0.55rem;
+      padding: 0.95rem 1.6rem; font-weight: 600; font-size: 0.95rem;
+      border-radius: 0.5rem; transition: all 0.18s ease; white-space: nowrap;
+    }
+    .btn-primary {
+      background: var(--orange); color: white;
+      box-shadow: 0 0 0 1px rgba(255,106,61,0.4), 0 12px 32px -10px rgba(255,106,61,0.55);
+    }
+    .btn-primary:hover { background: var(--orange-hover); transform: translateY(-1px); box-shadow: 0 0 0 1px rgba(255,106,61,0.6), 0 18px 40px -10px rgba(255,106,61,0.7); }
+    .btn-ghost { background: rgba(255,255,255,0.04); color: white; border: 1px solid rgba(255,255,255,0.18); }
+    .btn-ghost:hover { border-color: rgba(255,255,255,0.5); background: rgba(255,255,255,0.08); }
+
+    /* Hero color glow (animated) */
+    @keyframes drift1 {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      33%      { transform: translate(60px,40px) scale(1.1); }
+      66%      { transform: translate(-30px,70px) scale(0.95); }
+    }
+    @keyframes drift2 {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      50%      { transform: translate(-80px,50px) scale(1.15); }
+    }
+    @keyframes drift3 {
+      0%, 100% { transform: translate(0,0) scale(1); }
+      40%      { transform: translate(40px,-30px) scale(1.08); }
+      80%      { transform: translate(-50px,20px) scale(0.92); }
+    }
+    .hero-glow-orange {
+      position: absolute; width: 560px; height: 560px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,106,61,0.38), rgba(255,106,61,0) 60%);
+      filter: blur(60px); top: -120px; left: -120px; pointer-events: none;
+      animation: drift1 18s ease-in-out infinite;
+    }
+    .hero-glow-cyan {
+      position: absolute; width: 520px; height: 520px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(34,211,238,0.25), rgba(34,211,238,0) 60%);
+      filter: blur(70px); top: 80px; right: -80px; pointer-events: none;
+      animation: drift2 22s ease-in-out infinite;
+    }
+    .hero-glow-purple {
+      position: absolute; width: 480px; height: 480px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(167,139,250,0.22), rgba(167,139,250,0) 60%);
+      filter: blur(80px); bottom: -100px; left: 40%; pointer-events: none;
+      animation: drift3 26s ease-in-out infinite;
+    }
+
+    /* Decorative route-line SVG */
+    .route-line {
+      position: absolute; inset: 0; pointer-events: none;
+      opacity: 0.4; mix-blend-mode: screen;
+    }
+
+    /* Horizon glow between sections */
+    .horizon {
+      height: 1px; width: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,106,61,0.55) 20%, rgba(34,211,238,0.55) 50%, rgba(167,139,250,0.55) 80%, transparent);
+      position: relative;
+    }
+    .horizon::after {
+      content: ''; position: absolute; inset: -2px 0 -2px 0;
+      background: inherit; filter: blur(6px); opacity: 0.7;
+    }
+
+    /* Gradient text for "Better." */
+    .gradient-word {
+      background: linear-gradient(100deg, var(--orange) 0%, #FFB366 50%, var(--cyan) 100%);
+      -webkit-background-clip: text; background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    /* Service row */
+    .svc-row {
+      display: grid;
+      grid-template-columns: 120px 1fr auto;
+      gap: 2.5rem;
+      padding: 2.25rem 0;
+      border-top: 1px solid var(--line);
+      align-items: center;
+      transition: all 0.2s ease;
+      position: relative;
+    }
+    .svc-row::before {
+      content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--svc-color, var(--orange)), transparent);
+      opacity: 0; transition: opacity 0.25s ease;
+    }
+    .svc-row:hover::before { opacity: 0.6; }
+    .svc-row:hover { padding-left: 1.25rem; padding-right: 1.25rem; }
+    .svc-row:last-child { border-bottom: 1px solid var(--line); }
+    .svc-chip {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.35rem 0.75rem; border-radius: 999px;
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.08em;
+      background: rgba(var(--svc-rgb, 255,106,61), 0.12);
+      color: var(--svc-color, var(--orange));
+      border: 1px solid rgba(var(--svc-rgb, 255,106,61), 0.25);
+      width: fit-content;
+    }
+    .svc-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--svc-color, var(--orange)); box-shadow: 0 0 12px var(--svc-color, var(--orange)); }
+    .svc-row .arrow { transition: all 0.25s ease; opacity: 0.4; color: var(--svc-color, var(--orange)); }
+    .svc-row:hover .arrow { opacity: 1; transform: translateX(6px); }
+    .svc-row:hover .svc-title { color: var(--svc-color, var(--orange)); }
+    .svc-title { transition: color 0.2s ease; }
+    @media (max-width: 640px) {
+      .svc-row { grid-template-columns: 1fr; gap: 0.75rem; padding: 1.75rem 0; }
+    }
+
+    /* Feature tile */
+    .tile {
+      background: var(--bg-panel);
+      border: 1px solid var(--line);
+      border-radius: 0.875rem;
+      padding: 2rem;
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+    .tile::after {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(circle at top right, rgba(var(--tile-rgb, 255,106,61), 0.1), transparent 60%);
+      opacity: 0; transition: opacity 0.3s ease; pointer-events: none;
+    }
+    .tile:hover { border-color: rgba(var(--tile-rgb, 255,106,61), 0.4); transform: translateY(-3px); }
+    .tile:hover::after { opacity: 1; }
+
+    /* Stat numbers */
+    .stat-num { background: linear-gradient(135deg, #fff 0%, #C9D1D9 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  </style>
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <!-- ==================== HERO ==================== -->
+  <section class="relative overflow-hidden">
+    <!-- Background: truck-highwayvan photo, darkened & desaturated -->
+    <div class="absolute left-0 right-0 bottom-0 bg-cover bg-center"
+         style="top: -25%; background-image: url('/images/truck-highwayvan.jpg'); background-position: center bottom; filter: grayscale(0.35) brightness(0.6) contrast(1.05);"></div>
+    <!-- Vertical dark gradient for readability -->
+    <div class="absolute inset-0" style="background: linear-gradient(180deg, rgba(13,17,23,0.75) 0%, rgba(13,17,23,0.25) 45%, rgba(13,17,23,0.85) 100%);"></div>
+    <!-- Horizontal left-weight fade so left side is darker for text -->
+    <div class="absolute inset-0" style="background: linear-gradient(90deg, rgba(13,17,23,0.8) 0%, rgba(13,17,23,0.2) 60%, rgba(13,17,23,0) 100%);"></div>
+    <!-- Color tint overlay so photo matches our palette -->
+    <div class="absolute inset-0" style="background: linear-gradient(135deg, rgba(255,106,61,0.07) 0%, transparent 50%, rgba(34,211,238,0.06) 100%);"></div>
+
+    <div class="hero-glow-orange"></div>
+    <div class="hero-glow-cyan"></div>
+    <div class="hero-glow-purple"></div>
+
+    <!-- Decorative route line SVG -->
+    <svg class="route-line" viewBox="0 0 1440 900" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="routeGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#FF6A3D" stop-opacity="0"/>
+          <stop offset="25%" stop-color="#FF6A3D" stop-opacity="0.6"/>
+          <stop offset="55%" stop-color="#22D3EE" stop-opacity="0.6"/>
+          <stop offset="85%" stop-color="#A78BFA" stop-opacity="0.5"/>
+          <stop offset="100%" stop-color="#A78BFA" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d="M -100 720 Q 360 600 620 680 T 1100 520 T 1600 440" fill="none" stroke="url(#routeGrad)" stroke-width="1.5" stroke-dasharray="2 6"/>
+      <path d="M -100 800 Q 300 740 580 780 T 1040 660 T 1600 600" fill="none" stroke="url(#routeGrad)" stroke-width="1" stroke-dasharray="1 8" opacity="0.5"/>
+    </svg>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8 pt-24 pb-28 md:pt-36 md:pb-40">
+      <div class="max-w-4xl">
+
+        <h1 class="text-5xl sm:text-6xl md:text-7xl lg:text-[5.5rem] font-bold leading-[1.02] tracking-tight">
+          <span class="text-dim">We ship cars.</span><br>
+          <span class="gradient-word">Better.</span>
+        </h1>
+
+        <p class="mt-8 text-lg md:text-xl text-dim max-w-2xl leading-relaxed">
+          Vehicle logistics for dealerships, auctions, manufacturers, and private owners — delivered quickly, safely, and on schedule across the United States.
+        </p>
+
+        <div class="mt-10 flex flex-wrap gap-3">
+          <a href="/calculator" class="btn btn-primary">
+            Ship with MC
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </a>
+          <a href="/haul-with-mc" class="btn btn-ghost">
+            Haul with MC
+          </a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== STATS STRIP ==================== -->
+  <div class="horizon"></div>
+  <section class="bg-deep relative overflow-hidden">
+    <div class="absolute inset-0 opacity-30 pointer-events-none"
+         style="background-image: repeating-linear-gradient(115deg, transparent, transparent 22px, rgba(255,255,255,0.025) 22px, rgba(255,255,255,0.025) 23px);"></div>
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8 py-14 grid grid-cols-1 md:grid-cols-3 divide-x divide-[var(--line)]">
+      <div class="px-6 first:pl-0">
+        <div class="text-4xl font-bold stat-num">2013</div>
+        <div class="text-[11px] tracking-[0.18em] uppercase text-[var(--orange)] font-semibold mt-2">Established</div>
+      </div>
+      <div class="px-6">
+        <div class="text-4xl font-bold stat-num">Nationwide</div>
+        <div class="text-[11px] tracking-[0.18em] uppercase text-[var(--cyan)] font-semibold mt-2">Coverage</div>
+      </div>
+      <div class="px-6">
+        <div class="text-4xl font-bold stat-num">Insured</div>
+        <div class="text-[11px] tracking-[0.18em] uppercase text-[var(--lime)] font-semibold mt-2">& Licensed</div>
+      </div>
+    </div>
+  </section>
+  <div class="horizon"></div>
+
+  <!-- ==================== WHY US ==================== -->
+  <section class="py-24 md:py-32 relative">
+    <div class="max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="max-w-3xl mb-16">
+        <div class="text-xs tracking-[0.22em] uppercase font-semibold text-[var(--orange)] mb-5">Why MC Transportation</div>
+        <h2 class="text-4xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight">
+          Built for moving vehicles — <span class="text-dim">not just freight.</span>
+        </h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="tile" style="--tile-rgb: 255,106,61;">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+            <i class="fas fa-truck-fast"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Speed &amp; Reliability</h3>
+          <p class="text-dim leading-relaxed text-[15px]">Our carrier network moves vehicles quickly while keeping safety the top priority on every mile.</p>
+        </div>
+        <div class="tile" style="--tile-rgb: 34,211,238;">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--cyan)]" style="background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3);">
+            <i class="fas fa-location-dot"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Real-Time Tracking</h3>
+          <p class="text-dim leading-relaxed text-[15px]">Live status updates so you always know exactly where your vehicle is and when it will arrive.</p>
+        </div>
+        <div class="tile" style="--tile-rgb: 167,139,250;">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--purple)]" style="background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3);">
+            <i class="fas fa-shield-halved"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Trusted Network</h3>
+          <p class="text-dim leading-relaxed text-[15px]">Dealerships, auctions, fleets, and private customers choose us every day for reliable nationwide shipping.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== SERVICES (editorial list with color chips) ==================== -->
+  <div class="horizon"></div>
+  <section class="py-24 md:py-32 bg-deep relative overflow-hidden">
+    <!-- Floating animated glows -->
+    <div class="absolute top-0 left-0 w-[400px] h-[400px] rounded-full opacity-40 pointer-events-none"
+         style="background: radial-gradient(circle, rgba(255,106,61,0.25), transparent 60%); filter: blur(80px); animation: drift1 24s ease-in-out infinite;"></div>
+    <div class="absolute bottom-20 right-0 w-[450px] h-[450px] rounded-full opacity-30 pointer-events-none"
+         style="background: radial-gradient(circle, rgba(34,211,238,0.2), transparent 60%); filter: blur(80px); animation: drift2 28s ease-in-out infinite;"></div>
+
+    <!-- Subtle diagonal lines pattern -->
+    <div class="absolute inset-0 opacity-[0.04] pointer-events-none"
+         style="background-image: repeating-linear-gradient(-45deg, transparent, transparent 50px, white 50px, white 51px);"></div>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="max-w-3xl mb-16">
+        <div class="text-xs tracking-[0.22em] uppercase font-semibold text-[var(--cyan)] mb-5">Services</div>
+        <h2 class="text-4xl md:text-5xl font-bold text-white leading-[1.1] tracking-tight">
+          Solutions for every kind <span class="text-dim">of shipper.</span>
+        </h2>
+      </div>
+
+      <div>
+        <a href="/auctions" class="svc-row" style="--svc-color: #FF6A3D; --svc-rgb: 255,106,61;">
+          <div class="svc-chip"><span class="svc-dot"></span>01 · AUCTIONS</div>
+          <div>
+            <div class="svc-title text-2xl md:text-3xl font-semibold text-white tracking-tight">Vehicle transport for auto auctions</div>
+            <p class="text-dim mt-2 max-w-2xl leading-relaxed">Consolidated transport for dealers and buyers — fast, dependable delivery from every major auction.</p>
+          </div>
+          <div class="arrow">
+            <svg class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </div>
+        </a>
+
+        <a href="/dealers" class="svc-row" style="--svc-color: #22D3EE; --svc-rgb: 34,211,238;">
+          <div class="svc-chip"><span class="svc-dot"></span>02 · DEALERS</div>
+          <div>
+            <div class="svc-title text-2xl md:text-3xl font-semibold text-white tracking-tight">Inventory logistics for dealerships</div>
+            <p class="text-dim mt-2 max-w-2xl leading-relaxed">Dependable transport built around the needs of modern dealerships — from acquisition to customer delivery.</p>
+          </div>
+          <div class="arrow">
+            <svg class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </div>
+        </a>
+
+        <a href="/fleet" class="svc-row" style="--svc-color: #BEF264; --svc-rgb: 190,242,100;">
+          <div class="svc-chip"><span class="svc-dot"></span>03 · FLEETS</div>
+          <div>
+            <div class="svc-title text-2xl md:text-3xl font-semibold text-white tracking-tight">Scalable transport for fleet operators</div>
+            <p class="text-dim mt-2 max-w-2xl leading-relaxed">Optimized routing, intelligent load bundling, and seamless nationwide coverage for fleet operators.</p>
+          </div>
+          <div class="arrow">
+            <svg class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </div>
+        </a>
+
+        <a href="/oems" class="svc-row" style="--svc-color: #A78BFA; --svc-rgb: 167,139,250;">
+          <div class="svc-chip"><span class="svc-dot"></span>04 · OEMs</div>
+          <div>
+            <div class="svc-title text-2xl md:text-3xl font-semibold text-white tracking-tight">Factory-to-market delivery for OEMs</div>
+            <p class="text-dim mt-2 max-w-2xl leading-relaxed">Real-time shipment visibility and dependable nationwide delivery for production and distribution.</p>
+          </div>
+          <div class="arrow">
+            <svg class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </div>
+        </a>
+
+        <a href="/individuals" class="svc-row" style="--svc-color: #F472B6; --svc-rgb: 244,114,182;">
+          <div class="svc-chip"><span class="svc-dot"></span>05 · INDIVIDUALS</div>
+          <div>
+            <div class="svc-title text-2xl md:text-3xl font-semibold text-white tracking-tight">Door-to-door shipping for private owners</div>
+            <p class="text-dim mt-2 max-w-2xl leading-relaxed">Easy, reliable, worry-free vehicle shipping — from pickup at your door through delivery.</p>
+          </div>
+          <div class="arrow">
+            <svg class="w-7 h-7" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </div>
+        </a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================== TWO-PATH CTA ==================== -->
+  <div class="horizon"></div>
+  <section class="py-24 md:py-32 relative overflow-hidden">
+    <div class="absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full opacity-40 pointer-events-none"
+         style="background: radial-gradient(circle, rgba(34,211,238,0.2), transparent 60%); filter: blur(90px); animation: drift2 20s ease-in-out infinite;"></div>
+    <div class="absolute top-10 left-10 w-[400px] h-[400px] rounded-full opacity-30 pointer-events-none"
+         style="background: radial-gradient(circle, rgba(255,106,61,0.2), transparent 60%); filter: blur(90px); animation: drift3 24s ease-in-out infinite;"></div>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+        <div class="tile p-10 md:p-12" style="--tile-rgb: 255,106,61;">
+          <div class="inline-flex items-center gap-2 text-xs tracking-[0.22em] uppercase font-semibold text-[var(--orange)] mb-5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)]"></span>
+            For Shippers
+          </div>
+          <h3 class="text-3xl md:text-4xl font-bold text-white leading-tight tracking-tight">
+            Ship your<br>vehicle today.
+          </h3>
+          <p class="mt-5 text-dim leading-relaxed">
+            Get an instant quote in under a minute, or speak with a dispatcher about your route.
+          </p>
+          <a href="/calculator" class="mt-8 btn btn-primary">
+            Get Instant Quote
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </a>
+        </div>
+
+        <div class="tile p-10 md:p-12" style="--tile-rgb: 34,211,238;">
+          <div class="inline-flex items-center gap-2 text-xs tracking-[0.22em] uppercase font-semibold text-[var(--cyan)] mb-5">
+            <span class="w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"></span>
+            For Carriers
+          </div>
+          <h3 class="text-3xl md:text-4xl font-bold text-white leading-tight tracking-tight">
+            Haul with<br>a partner.
+          </h3>
+          <p class="mt-5 text-dim leading-relaxed">
+            Consistent loads, fast payment, and dispatch that respects your business.
+          </p>
+          <a href="/haul-with-mc" class="mt-8 btn" style="background: rgba(34,211,238,0.12); color: var(--cyan); border: 1px solid rgba(34,211,238,0.35);">
+            Become a Carrier
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </a>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <%- include('partials/footer') %>
+
+</body>
+</html>

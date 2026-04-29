@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <!-- HERO -->
+  <section class="relative overflow-hidden py-24 md:py-32">
+    <div class="glow-orange" style="top: -100px; right: -80px;"></div>
+    <div class="glow-cyan" style="bottom: -100px; left: -80px;"></div>
+
+    <div class="relative max-w-4xl mx-auto px-6 lg:px-8 text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(255,106,61,0.3)] bg-[rgba(255,106,61,0.08)] text-xs font-medium text-[var(--orange)] mb-8">
+        <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)]"></span>
+        Insights
+      </div>
+      <h1 class="text-5xl md:text-6xl lg:text-7xl font-bold leading-[1.02] tracking-tight">
+        <span class="text-dim">MC Transportation</span><br>
+        <span class="text-white">Blog.</span>
+      </h1>
+      <p class="mt-8 text-lg md:text-xl text-dim max-w-2xl mx-auto leading-relaxed">
+        Industry tips, shipping guides, and carrier news — coming soon.
+      </p>
+    </div>
+  </section>
+
+  <div class="horizon"></div>
+
+  <!-- CATEGORIES -->
+  <section class="py-24 md:py-32 relative">
+    <div class="max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="tile">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+            <i class="fas fa-book-open"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Shipping Guides</h3>
+          <p class="text-dim leading-relaxed text-[15px]">Everything you need to know before shipping your vehicle.</p>
+        </div>
+        <div class="tile">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--cyan)]" style="background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3);">
+            <i class="fas fa-newspaper"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Industry News</h3>
+          <p class="text-dim leading-relaxed text-[15px]">What's happening in auto transport and fleet logistics.</p>
+        </div>
+        <div class="tile">
+          <div class="w-12 h-12 mb-6 rounded-lg flex items-center justify-center text-[var(--purple)]" style="background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3);">
+            <i class="fas fa-truck-fast"></i>
+          </div>
+          <h3 class="text-xl font-semibold text-white mb-3">Carrier Stories</h3>
+          <p class="text-dim leading-relaxed text-[15px]">Drivers and partners who keep the wheels turning.</p>
+        </div>
+      </div>
+
+      <div class="text-center mt-16">
+        <a href="/" class="btn btn-primary">Back to Home</a>
+      </div>
+    </div>
+  </section>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

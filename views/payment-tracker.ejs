@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Tracker | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <main class="relative overflow-hidden py-20 md:py-28 min-h-[75vh]">
+    <div class="glow-cyan" style="top: -100px; right: -80px;"></div>
+    <div class="glow-orange" style="bottom: -100px; left: -80px;"></div>
+
+    <div class="relative max-w-2xl mx-auto px-6 lg:px-8">
+      <div class="text-center mb-10">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(34,211,238,0.3)] bg-[rgba(34,211,238,0.08)] text-xs font-medium text-[var(--cyan)] mb-6">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"></span>
+          For Carriers
+        </div>
+        <h1 class="text-4xl md:text-5xl font-bold text-white tracking-tight">Payment Tracker</h1>
+        <p class="text-dim mt-4 text-lg">Check the status of a carrier payment by invoice or load number.</p>
+      </div>
+
+      <div class="tile p-8 md:p-10">
+        <div class="mb-5">
+          <label class="label-dark">Invoice or Load Number</label>
+          <input type="text" placeholder="e.g. MC-12345" class="input-dark">
+        </div>
+
+        <div class="mb-8">
+          <label class="label-dark">Carrier Email</label>
+          <input type="email" placeholder="you@example.com" class="input-dark">
+        </div>
+
+        <button type="button" class="btn btn-primary w-full justify-center py-4">
+          Check Status
+          <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+        </button>
+
+        <p class="text-sm text-muted text-center mt-6">
+          Need help? <a href="/contact" class="text-[var(--cyan)] hover:text-white transition-colors">Contact dispatch</a>.
+        </p>
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

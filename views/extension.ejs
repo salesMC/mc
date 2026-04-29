@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browser Extension | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <main class="relative overflow-hidden py-24 md:py-32 min-h-[75vh] flex items-center">
+    <div class="glow-purple" style="top: -100px; right: -80px;"></div>
+    <div class="glow-cyan" style="bottom: -100px; left: -80px;"></div>
+
+    <div class="relative max-w-3xl mx-auto px-6 lg:px-8 text-center">
+      <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(167,139,250,0.3)] bg-[rgba(167,139,250,0.08)] text-xs font-medium text-[var(--purple)] mb-8">
+        <span class="w-1.5 h-1.5 rounded-full bg-[var(--purple)] animate-pulse"></span>
+        Coming Soon
+      </div>
+
+      <div class="w-20 h-20 mx-auto mb-8 rounded-2xl flex items-center justify-center text-[var(--purple)]" style="background: rgba(167,139,250,0.12); border: 1px solid rgba(167,139,250,0.3);">
+        <i class="fas fa-puzzle-piece text-3xl"></i>
+      </div>
+
+      <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-white tracking-tight leading-[1.05]">
+        <span class="text-dim">MC Transportation</span><br>
+        <span class="text-white">Extension.</span>
+      </h1>
+      <p class="mt-6 text-lg md:text-xl text-dim max-w-2xl mx-auto leading-relaxed">
+        Get instant shipping quotes directly from auction listings and dealer inventory pages — without ever leaving the tab.
+      </p>
+
+      <div class="tile p-8 md:p-10 mt-12 max-w-lg mx-auto">
+        <h2 class="text-xl font-semibold text-white mb-3">Be the first to know</h2>
+        <p class="text-dim text-sm mb-6">We'll reach out when early access opens up.</p>
+        <a href="/contact" class="btn btn-primary w-full justify-center">Get Notified</a>
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

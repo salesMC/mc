@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Request a Quote | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .step-active { border-color: #FF6A3D; background: rgba(255,106,61,0.1); }
+    .input-dark {
+      width: 100%; padding: 0.95rem 1.25rem; background: #161B22; border: 1px solid #1F2937;
+      border-radius: 0.5rem; color: white; transition: all 0.2s ease;
+    }
+    .input-dark.error { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.3) !important; }
+    .label-dark { display: block; font-size: 0.875rem; font-weight: 500; color: #8B949E; margin-bottom: 0.5rem; }
+    .error-msg { color: #ef4444; font-size: 0.8rem; margin-top: 4px; min-height: 20px; }
+    .btn-transport { transition: all 0.2s; }
+    .btn-transport.active { background: #FF6A3D; color: white; border-color: #FF6A3D; }
+
+    .upload-zone {
+      border: 2px dashed #374151;
+      background: #161B22;
+      border-radius: 12px;
+      transition: all 0.2s ease;
+    }
+    .upload-zone:hover { border-color: #FF6A3D; background: #1F2937; }
+
+    .photo-preview {
+      position: relative;
+    }
+    .photo-preview img {
+      width: 100%;
+      height: 110px;
+      object-fit: cover;
+      border-radius: 8px;
+      border: 1px solid #374151;
+    }
+    .delete-photo {
+      position: absolute;
+      top: -8px;
+      right: -8px;
+      background: #ef4444;
+      color: white;
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <main class="relative overflow-hidden py-12 bg-deep min-h-screen">
+    <div class="glow-orange" style="top: -100px; left: -120px;"></div>
+    <div class="glow-cyan" style="bottom: -80px; right: -100px;"></div>
+
+    <div class="relative max-w-7xl mx-auto px-6 lg:px-8">
+      <div class="grid lg:grid-cols-12 gap-8">
+
+        <div class="lg:col-span-4 xl:col-span-3">
+          <div class="tile p-8 sticky top-24">
+            <h2 class="text-2xl font-bold text-white mb-8">Request a Quote</h2>
+            <div id="steps" class="space-y-3">
+              <div onclick="goToStep(0)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl step-active" data-step="0">1. Contact</div>
+              <div onclick="goToStep(1)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="1">2. Vehicle</div>
+              <div onclick="goToStep(2)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="2">3. Route & Price</div>
+              <div onclick="goToStep(3)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="3">4. Summary</div>
+              <div onclick="goToStep(4)" class="step-item flex items-center gap-3 cursor-pointer p-3 rounded-xl" data-step="4">5. Payment</div>
+            </div>
+
+            <div class="mt-16 pt-8 border-t border-[var(--line)]">
+              <div class="text-sm text-muted">Live Estimated Total</div>
+              <div id="totalPriceSidebar" class="text-5xl font-bold text-[var(--orange)] mt-1">$0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-8 xl:col-span-9">
+          <div class="tile p-8 md:p-12 min-h-[620px]" id="stepContent"></div>
+
+          <div class="flex justify-between mt-8">
+            <button onclick="prevStep()" id="prevBtn" class="btn btn-ghost px-8 py-4 hidden">← Previous</button>
+            <button onclick="nextStep()" id="nextBtn" class="btn btn-primary px-10 py-4 ml-auto">Next →</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+
+  <script>
+    // ==================== CALCULATOR CONFIG ====================
+    let calculatorConfig = {
+      baseFee: 120,
+      tiers: [
+        { max: 30, rate: 3.00 },
+        { max: 70, rate: 2.20 },
+        { max: 110, rate: 1.80 },
+        { max: 160, rate: 1.50 },
+        { max: Infinity, rate: 1.30 }
+      ],
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20 },
+      addons: { inoperable: 75, modified: 100, urgent: 100 }
+    };
+
+    const saved = localStorage.getItem('calculatorConfig');
+    if (saved) calculatorConfig = JSON.parse(saved);
+
+    let currentStep = 0;
+    let fromAutocomplete, toAutocomplete;
+    let distanceService;
+
+    let formData = {
+      contact: {},
+      vehicle: {
+        year: '', make: '', model: '', vin: '',
+        type: 'sedan', condition: 'operable',
+        modified: false, urgent: false,
+        runsAndDrives: true,
+        hasKeys: true,
+        photos: []
+      },
+      location: {},
+      pickupDate: '',
+      mustPickupBy: '',
+      transportType: 'open',
+      total: 0
+    };
+
+    // ==================== GOOGLE MAPS ====================
+    function initGoogleAutocomplete() {
+      const options = {
+        types: ['address'],
+        componentRestrictions: { country: 'us' }
+      };
+
+      fromAutocomplete = new google.maps.places.Autocomplete(document.getElementById('pickupAddr'), options);
+      toAutocomplete = new google.maps.places.Autocomplete(document.getElementById('deliveryAddr'), options);
+
+      fromAutocomplete.addListener('place_changed', calculateDistance);
+      toAutocomplete.addListener('place_changed', calculateDistance);
+    }
+
+    function calculateDistance() {
+      const pickup = document.getElementById('pickupAddr').value.trim();
+      const delivery = document.getElementById('deliveryAddr').value.trim();
+      if (!pickup || !delivery || !distanceService) return;
+
+      distanceService.getDistanceMatrix({
+        origins: [pickup],
+        destinations: [delivery],
+        travelMode: google.maps.TravelMode.DRIVING,
+        unitSystem: google.maps.UnitSystem.IMPERIAL
+      }, (response, status) => {
+        if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
+          const miles = Math.round(response.rows[0].elements[0].distance.value * 0.000621371);
+          document.getElementById('distance').value = miles;
+          calculateAndUpdateTotal();
+        }
+      });
+    }
+
+    // ==================== PRICE ====================
+    function calculateAndUpdateTotal() {
+      const miles = parseFloat(document.getElementById('distance')?.value) || 0;
+      let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
+      for (let tier of calculatorConfig.tiers) {
+        if (miles <= tier.max) { cpm = tier.rate; break; }
+      }
+
+      let subtotal = calculatorConfig.baseFee + (cpm * miles);
+      const vType = formData.vehicle.type || 'sedan';
+      if (calculatorConfig.multipliers[vType]) subtotal *= calculatorConfig.multipliers[vType];
+
+      if (formData.vehicle.condition === 'inoperable') subtotal += calculatorConfig.addons.inoperable;
+      if (formData.vehicle.modified) subtotal += calculatorConfig.addons.modified;
+      if (formData.vehicle.urgent) subtotal += calculatorConfig.addons.urgent;
+
+      formData.total = Math.round(subtotal);
+      document.getElementById('totalPriceSidebar').textContent = '$' + formData.total.toLocaleString();
+      if (document.getElementById('finalTotal2')) document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+    }
+
+    // ==================== PHOTO UPLOAD ====================
+    function initPhotoUpload() {
+      const input = document.getElementById('vehiclePhotos');
+      const preview = document.getElementById('photoPreview');
+
+      input.addEventListener('change', () => {
+        Array.from(input.files).forEach(file => {
+          if (formData.vehicle.photos.length >= 8) return alert("Maximum 8 photos allowed");
+          if (!file.type.startsWith('image/')) return;
+
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            formData.vehicle.photos.push({
+              name: file.name,
+              data: e.target.result,
+              type: file.type
+            });
+
+            const div = document.createElement('div');
+            div.className = 'photo-preview relative';
+            div.innerHTML = `<img src="${e.target.result}"><div class="delete-photo" onclick="removePhoto(this)">×</div>`;
+            preview.appendChild(div);
+          };
+          reader.readAsDataURL(file);
+        });
+      });
+    }
+
+    window.removePhoto = function(el) {
+      const index = Array.from(document.getElementById('photoPreview').children).indexOf(el.parentElement);
+      if (index > -1) formData.vehicle.photos.splice(index, 1);
+      el.parentElement.remove();
+    };
+
+    // ==================== STEPS HTML ====================
+    const stepsHTML = [ /* ... тот же код шагов, что и в предыдущей версии ... */ 
+      // Step 0
+      `<h2 class="text-3xl font-bold text-white mb-8">Contact Information</h2>
+       <div class="space-y-6">
+         <div><label class="label-dark">Full Name *</label><input type="text" id="fullName" class="input-dark" required><div id="fullNameError" class="error-msg"></div></div>
+         <div><label class="label-dark">Email *</label><input type="email" id="email" class="input-dark" required><div id="emailError" class="error-msg"></div></div>
+         <div><label class="label-dark">Phone *</label><input type="tel" id="phone" class="input-dark" required><div id="phoneError" class="error-msg"></div></div>
+       </div>`,
+
+      // Step 1 Vehicle + Photos
+      `<h2 class="text-3xl font-bold text-white mb-8">Vehicle Details</h2>
+       <div class="space-y-8">
+         <div>
+           <label class="label-dark">Transport Type</label>
+           <div class="flex gap-3">
+             <button type="button" onclick="selectTransport(this)" data-type="open" class="btn-transport flex-1 py-4 border-2 rounded-lg active">Open</button>
+             <button type="button" onclick="selectTransport(this)" data-type="enclosed" class="btn-transport flex-1 py-4 border-2 rounded-lg">Enclosed</button>
+           </div>
+         </div>
+
+         <div class="grid grid-cols-3 gap-4">
+           <div><label class="label-dark">Year *</label><input type="number" id="year" min="1900" max="2030" class="input-dark" required></div>
+           <div><label class="label-dark">Make *</label><input type="text" id="make" class="input-dark" required></div>
+           <div><label class="label-dark">Model *</label><input type="text" id="model" class="input-dark" required></div>
+         </div>
+
+         <div><label class="label-dark">VIN (optional)</label><input type="text" id="vin" class="input-dark uppercase" maxlength="17"></div>
+
+         <div>
+           <label class="label-dark">Vehicle Type</label>
+           <select id="vehicleType" onchange="formData.vehicle.type=this.value; calculateAndUpdateTotal()" class="input-dark">
+             <option value="sedan">Sedan / Compact SUV</option>
+             <option value="mid-suv">Mid-size SUV</option>
+             <option value="full-suv">Full-size SUV</option>
+           </select>
+         </div>
+
+         <div>
+           <label class="label-dark">Condition</label>
+           <div class="flex gap-6">
+             <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="condition" value="operable" checked> Operable</label>
+             <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="condition" value="inoperable"> Inoperable</label>
+           </div>
+         </div>
+
+         <div class="grid grid-cols-2 gap-6">
+           <div><label class="label-dark">Runs and drives *</label><select id="runsAndDrives" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
+           <div><label class="label-dark">Has keys *</label><select id="hasKeys" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
+         </div>
+
+         <div class="flex items-center gap-3"><input type="checkbox" id="modifiedCheck" onchange="formData.vehicle.modified=this.checked; calculateAndUpdateTotal()"><label for="modifiedCheck">Modified / Custom vehicle</label></div>
+         <div class="flex items-center gap-3"><input type="checkbox" id="urgentCheck" onchange="formData.vehicle.urgent=this.checked; calculateAndUpdateTotal()"><label for="urgentCheck">Urgent Delivery</label></div>
+
+         <div>
+           <label class="label-dark">Photos of the vehicle <span class="text-muted">(optional)</span></label>
+           <div class="upload-zone p-8 text-center">
+             <input type="file" id="vehiclePhotos" accept="image/*" multiple class="hidden">
+             <label for="vehiclePhotos" class="cursor-pointer block">
+               <i class="fas fa-cloud-upload-alt text-4xl text-[var(--orange)] mb-3"></i>
+               <span class="font-medium text-[var(--orange)] block">Upload photos</span>
+             </label>
+           </div>
+           <div id="photoPreview" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+         </div>
+       </div>`,
+
+      // Step 2 Route
+      `<h2 class="text-3xl font-bold text-white mb-8">Route & Pickup Dates</h2>
+       <div class="space-y-6">
+         <div><label class="label-dark">Pickup Address *</label><input type="text" id="pickupAddr" class="input-dark" required></div>
+         <div><label class="label-dark">Delivery Address *</label><input type="text" id="deliveryAddr" class="input-dark" required></div>
+         <div><label class="label-dark">Distance (miles)</label><input type="number" id="distance" class="input-dark" oninput="calculateAndUpdateTotal()"></div>
+         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+           <div><label class="label-dark">First possible pickup *</label><input type="date" id="pickupDate" class="input-dark" required></div>
+           <div><label class="label-dark">Must pickup by *</label><input type="date" id="mustPickupBy" class="input-dark" required></div>
+         </div>
+       </div>`,
+
+      // Step 3 Summary
+      `<h2 class="text-3xl font-bold text-white mb-8">Order Summary</h2>
+       <div id="summaryContent" class="bg-deep p-8 rounded-2xl"></div>`,
+
+      // Step 4 Payment
+      `<h2 class="text-3xl font-bold text-white mb-8">Secure Payment</h2>
+       <div class="text-center py-12">
+         <i class="fas fa-credit-card text-6xl text-[var(--orange)] mb-6"></i>
+         <p class="text-2xl mb-8">Total: <span id="finalTotal2" class="font-bold text-orange-400"></span></p>
+         <button onclick="completeBooking()" class="btn btn-primary w-full py-6 text-xl font-semibold">Confirm & Pay Now</button>
+       </div>`
+    ];
+
+    // ==================== RENDER & NAVIGATION ====================
+    function renderStep(step) {
+      saveFormData();
+      if (step > currentStep && !validateCurrentStep()) return;
+
+      currentStep = step;
+      clearErrors();
+
+      document.getElementById('stepContent').innerHTML = stepsHTML[step];
+
+      document.querySelectorAll('.step-item').forEach((item, i) => item.classList.toggle('step-active', i === step));
+      document.getElementById('prevBtn').classList.toggle('hidden', step === 0);
+      document.getElementById('nextBtn').textContent = step === 4 ? 'Confirm & Pay Now' : 'Next →';
+
+      if (step === 1) setTimeout(initPhotoUpload, 100);
+      if (step === 2) setTimeout(() => {
+        initGoogleAutocomplete();
+        distanceService = new google.maps.DistanceMatrixService();
+      }, 300);
+
+      if (step === 3) renderSummary();
+      if (step === 1 || step === 2) calculateAndUpdateTotal();
+      if (step === 4) document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+    }
+
+    function saveFormData() {
+      const el = document.getElementById('stepContent');
+      if (!el) return;
+
+      if (currentStep === 0) {
+        formData.contact = {
+          fullName: el.querySelector('#fullName')?.value.trim() || '',
+          email: el.querySelector('#email')?.value.trim() || '',
+          phone: el.querySelector('#phone')?.value.trim() || ''
+        };
+      } else if (currentStep === 1) {
+        formData.vehicle = {
+          year: el.querySelector('#year')?.value || '',
+          make: el.querySelector('#make')?.value.trim() || '',
+          model: el.querySelector('#model')?.value.trim() || '',
+          vin: el.querySelector('#vin')?.value.trim() || '',
+          type: el.querySelector('#vehicleType')?.value || 'sedan',
+          condition: document.querySelector('input[name="condition"]:checked')?.value || 'operable',
+          modified: document.getElementById('modifiedCheck').checked,
+          urgent: document.getElementById('urgentCheck').checked,
+          runsAndDrives: document.getElementById('runsAndDrives').value === 'yes',
+          hasKeys: document.getElementById('hasKeys').value === 'yes',
+          photos: formData.vehicle.photos || []
+        };
+      } else if (currentStep === 2) {
+        formData.location = {
+          pickup: el.querySelector('#pickupAddr')?.value.trim() || '',
+          delivery: el.querySelector('#deliveryAddr')?.value.trim() || ''
+        };
+        formData.pickupDate = el.querySelector('#pickupDate')?.value || '';
+        formData.mustPickupBy = el.querySelector('#mustPickupBy')?.value || '';
+      }
+    }
+
+    function validateCurrentStep() {
+      clearErrors();
+      let isValid = true;
+
+      if (currentStep === 0) {
+        if (!document.getElementById('fullName').value.trim()) { showFieldError('fullName', 'Full name is required'); isValid = false; }
+        if (!document.getElementById('email').value.trim()) { showFieldError('email', 'Email is required'); isValid = false; }
+        if (!document.getElementById('phone').value.trim()) { showFieldError('phone', 'Phone is required'); isValid = false; }
+      } else if (currentStep === 1) {
+        if (!document.getElementById('year').value) { showFieldError('year', 'Year is required'); isValid = false; }
+        if (!document.getElementById('make').value.trim()) { showFieldError('make', 'Make is required'); isValid = false; }
+        if (!document.getElementById('model').value.trim()) { showFieldError('model', 'Model is required'); isValid = false; }
+      } else if (currentStep === 2) {
+        if (!document.getElementById('pickupAddr').value.trim()) { showFieldError('pickupAddr', 'Pickup address is required'); isValid = false; }
+        if (!document.getElementById('deliveryAddr').value.trim()) { showFieldError('deliveryAddr', 'Delivery address is required'); isValid = false; }
+        if (!document.getElementById('pickupDate').value) { showFieldError('pickupDate', 'Pickup date is required'); isValid = false; }
+        if (!document.getElementById('mustPickupBy').value) { showFieldError('mustPickupBy', 'Must pickup by date is required'); isValid = false; }
+      }
+      return isValid;
+    }
+
+    function showFieldError(fieldId, message) {
+      const input = document.getElementById(fieldId);
+      const errorEl = document.getElementById(fieldId + 'Error');
+      if (input) input.classList.add('error');
+      if (errorEl) errorEl.textContent = message;
+    }
+
+    function clearErrors() {
+      document.querySelectorAll('.input-dark').forEach(el => el.classList.remove('error'));
+      document.querySelectorAll('.error-msg').forEach(el => el.textContent = '');
+    }
+
+    function renderSummary() {
+      let photosHtml = '';
+      if (formData.vehicle.photos && formData.vehicle.photos.length > 0) {
+        photosHtml = `<div class="mt-6"><strong class="text-white">Vehicle Photos:</strong> <div class="grid grid-cols-4 gap-2 mt-3">` +
+          formData.vehicle.photos.map(p => `<img src="${p.data}" class="rounded-lg border border-gray-700 h-20 object-cover">`).join('') + `</div></div>`;
+      }
+
+      const html = `
+        <div class="space-y-6 text-dim">
+          <div><strong class="text-white">Contact:</strong> ${formData.contact.fullName || '—'}</div>
+          <div><strong class="text-white">Vehicle:</strong> ${formData.vehicle.year} ${formData.vehicle.make} ${formData.vehicle.model}</div>
+          ${photosHtml}
+          <div><strong class="text-white">From:</strong> ${formData.location.pickup || '—'}</div>
+          <div><strong class="text-white">To:</strong> ${formData.location.delivery || '—'}</div>
+          <div><strong class="text-white">First pickup:</strong> ${formData.pickupDate || '—'}</div>
+          <div><strong class="text-white">Must pickup by:</strong> ${formData.mustPickupBy || '—'}</div>
+          <div class="pt-8 text-3xl font-bold text-[var(--orange)]">Total: $${formData.total.toLocaleString()}</div>
+        </div>`;
+      document.getElementById('summaryContent').innerHTML = html;
+    }
+
+    async function completeBooking() {
+      if (!validateCurrentStep()) return;
+      saveFormData();
+
+      const orderData = {
+        id: 'MC-' + Date.now().toString().slice(-6),
+        status: 'New',
+        contact: formData.contact,
+        vehicle: formData.vehicle,
+        location: formData.location,
+        pickupDate: formData.pickupDate,
+        mustPickupBy: formData.mustPickupBy,
+        transportType: formData.transportType,
+        total: formData.total,
+        createdAt: new Date().toISOString()
+      };
+
+      console.log("Sending order:", orderData); // Для отладки
+
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData)
+        });
+
+        if (res.ok) {
+          const result = await res.json();
+          alert(`✅ Order #${orderData.id} created successfully!`);
+          window.location.href = '/quote-success';
+        } else {
+          alert("Server error. Please try again.");
+        }
+      } catch (e) {
+        console.error(e);
+        alert("Connection error. Please check your internet connection.");
+      }
+    }
+
+    // ==================== NAVIGATION ====================
+    function nextStep() {
+      if (validateCurrentStep()) {
+        saveFormData();
+        if (currentStep < 4) renderStep(currentStep + 1);
+        else completeBooking();
+      }
+    }
+
+    function prevStep() {
+      saveFormData();
+      if (currentStep > 0) renderStep(currentStep - 1);
+    }
+
+    function goToStep(step) {
+      if (step > currentStep && !validateCurrentStep()) return;
+      renderStep(step);
+    }
+
+    // ==================== INIT ====================
+    window.addEventListener('load', () => {
+      renderStep(0);
+    });
+
+    // Google Maps
+    const googleScript = document.createElement('script');
+    googleScript.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyADY34xlNO8-qSU_2Lq7qZ7l1jydiRL74w&libraries=places";
+    googleScript.async = true;
+    googleScript.defer = true;
+    document.head.appendChild(googleScript);
+  </script>
+</body>
+</html>

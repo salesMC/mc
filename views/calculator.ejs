@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shipping Calculator | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+  <style>
+    textarea.input-dark { resize: none; min-height: 100px; }
+    select.input-dark {
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%238B949E' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      padding-right: 2.5rem;
+    }
+
+    /* Transport type buttons — the script toggles bg-sky-600 text-white; we override so it renders as orange selected state */
+    #open-btn, #enclosed-btn {
+      transition: all 0.2s ease;
+      background: var(--bg-panel);
+      border-color: var(--line);
+      color: var(--ink-dim);
+    }
+    #open-btn:hover, #enclosed-btn:hover { border-color: var(--orange); color: white; }
+    #open-btn.bg-sky-600, #enclosed-btn.bg-sky-600 {
+      background: var(--orange) !important;
+      color: white !important;
+      border-color: var(--orange) !important;
+      box-shadow: 0 0 0 1px rgba(255,106,61,0.3), 0 8px 20px -6px rgba(255,106,61,0.4);
+    }
+
+    /* Radio tweaks */
+    input[type=radio] { accent-color: var(--orange); }
+    input[type=checkbox] { accent-color: var(--orange); }
+
+    /* VIN results */
+    #vin-result { color: var(--lime); }
+    #vin-error { color: #F87171; }
+
+    /* Upload zones */
+    .upload-zone {
+      border: 2px dashed var(--line);
+      background: var(--bg-panel);
+      border-radius: 0.75rem;
+      transition: all 0.2s ease;
+    }
+    .upload-zone:hover { border-color: var(--orange); background: #1C2128; }
+  </style>
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <!-- HERO / CALCULATOR -->
+  <section class="relative overflow-hidden py-16 md:py-24">
+    <div class="glow-orange" style="top: -140px; right: -100px;"></div>
+    <div class="glow-cyan" style="bottom: -120px; left: -80px;"></div>
+
+    <div class="relative max-w-4xl mx-auto px-6 lg:px-8">
+
+      <div class="text-center mb-10 md:mb-12">
+        <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[rgba(255,106,61,0.3)] bg-[rgba(255,106,61,0.08)] text-xs font-medium text-[var(--orange)] mb-6">
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)] animate-pulse"></span>
+          Live pricing · Estimates in seconds
+        </div>
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-[1.05] tracking-tight">
+          Calculate your <span class="text-dim">shipping</span><br>
+          <span class="text-[var(--orange)]">cost.</span>
+        </h1>
+      </div>
+
+      <div class="tile p-6 md:p-10">
+        <form id="shippingCalculator" class="space-y-6">
+
+          <!-- From / To -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label class="label-dark">From Address</label>
+              <input id="fromInput" type="text" placeholder="Street, City, State" class="input-dark">
+            </div>
+            <div>
+              <label class="label-dark">To Address</label>
+              <input id="toInput" type="text" placeholder="Street, City, State" class="input-dark">
+            </div>
+          </div>
+
+          <!-- Distance -->
+          <div>
+            <label class="label-dark">Approximate Distance (miles)</label>
+            <input type="number" id="distance" placeholder="e.g. 850" required class="input-dark">
+            <p class="text-xs text-muted mt-2">Auto-calculated via Google Maps when both addresses are selected. Editable.</p>
+          </div>
+
+          <!-- Transport type -->
+          <div>
+            <label class="label-dark">Transport Type</label>
+            <div class="flex gap-3">
+              <button type="button" id="open-btn" class="flex-1 py-4 px-6 border-2 rounded-lg text-base font-medium">Open</button>
+              <button type="button" id="enclosed-btn" class="flex-1 py-4 px-6 border-2 rounded-lg text-base font-medium">Enclosed</button>
+            </div>
+          </div>
+
+          <!-- VIN -->
+          <div>
+            <label class="label-dark">VIN (optional)</label>
+            <input type="text" id="vin" placeholder="17-digit VIN" maxlength="17" class="input-dark uppercase">
+            <div id="vin-result" class="mt-2 hidden text-sm"></div>
+            <div id="vin-error" class="mt-2 hidden text-sm"></div>
+          </div>
+
+          <!-- Vehicle Type -->
+          <div>
+            <label class="label-dark">Vehicle Type</label>
+            <select id="vehicleType" class="input-dark">
+              <option value="sedan">Sedan / Compact SUV</option>
+              <option value="mid-suv">Mid-size SUV</option>
+              <option value="full-suv">Full-size SUV</option>
+            </select>
+          </div>
+
+          <!-- Condition -->
+          <div>
+            <label class="label-dark">Vehicle Condition</label>
+            <div class="flex gap-6">
+              <label class="flex items-center gap-3 cursor-pointer text-white">
+                <input type="radio" name="condition" value="operable" checked class="w-4 h-4">
+                <span>Operable</span>
+              </label>
+              <label class="flex items-center gap-3 cursor-pointer text-white">
+                <input type="radio" name="condition" value="inoperable" class="w-4 h-4">
+                <span>Inoperable</span>
+              </label>
+            </div>
+            <div id="inopDesc" class="hidden mt-3 text-xs text-muted bg-deep border border-[var(--line)] p-4 rounded-lg">
+              Inoperable = vehicle does not start or drive under its own power (requires flatbed/winch loading).
+            </div>
+          </div>
+
+          <!-- Modified -->
+          <div>
+            <label class="flex items-center gap-3 cursor-pointer text-white font-medium">
+              <input type="checkbox" id="modifiedCheck" class="w-4 h-4">
+              Modified / Custom vehicle
+            </label>
+            <div id="modifiedBlock" class="hidden mt-5 p-5 bg-deep border border-[var(--line)] rounded-xl">
+              <p class="label-dark mb-3">Upload photos of modifications and describe them:</p>
+              <div class="upload-zone p-6 text-center">
+                <input type="file" id="modPhotos" accept="image/*" multiple class="hidden">
+                <label for="modPhotos" class="cursor-pointer block">
+                  <i class="fas fa-cloud-upload-alt text-2xl text-[var(--orange)] mb-2"></i>
+                  <span class="text-[var(--orange)] font-medium block">Upload photos</span>
+                </label>
+              </div>
+              <div id="modPreview" class="mt-4 grid grid-cols-3 gap-3 hidden"></div>
+              <textarea id="modDesc" rows="3" placeholder="Lowered, lifted, big tires, snow plow, wide body..." class="input-dark mt-4"></textarea>
+            </div>
+          </div>
+
+          <!-- Urgent -->
+          <div>
+            <label class="flex items-center gap-3 cursor-pointer text-white font-medium">
+              <input type="checkbox" id="urgentCheck" class="w-4 h-4">
+              Urgent Delivery
+            </label>
+          </div>
+
+          <!-- Vehicle photos -->
+          <div>
+            <label class="label-dark">Vehicle photos (optional)</label>
+            <div class="upload-zone p-6 text-center">
+              <input type="file" id="vehiclePhotos" accept="image/*" multiple class="hidden">
+              <label for="vehiclePhotos" class="cursor-pointer block">
+                <i class="fas fa-cloud-upload-alt text-2xl text-[var(--orange)] mb-2"></i>
+                <span class="text-[var(--orange)] font-medium block">Upload photos</span>
+              </label>
+            </div>
+            <div id="previewContainer" class="mt-4 grid grid-cols-3 gap-3 hidden"></div>
+          </div>
+
+          <!-- Submit -->
+          <div class="pt-4">
+            <button type="button" id="getQuoteBtn" class="btn btn-primary w-full justify-center py-5 text-base">
+              Get a Free Quote
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+            </button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+  </section>
+
+<!-- PRICE MODAL -->
+      <div id="priceModal" class="hidden fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+        <div class="bg-panel rounded-2xl max-w-2xl w-full p-8 md:p-10 text-center border border-[var(--line)] max-h-[90vh] overflow-y-auto">
+          <div class="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center text-[var(--lime)]" style="background: rgba(190,242,100,0.12); border: 1px solid rgba(190,242,100,0.4);">
+            <i class="fas fa-check text-2xl"></i>
+          </div>
+          <h2 class="text-3xl font-bold text-white mb-2">Your Estimated Price</h2>
+          <p class="text-dim mb-8">This is a live calculation. We'll confirm the exact quote shortly.</p>
+
+          <div id="priceBreakdown" class="bg-deep rounded-xl p-6 mb-8 text-left space-y-3 text-base text-dim border border-[var(--line)]"></div>
+
+          <div class="text-5xl font-bold text-[var(--orange)] mb-8" id="totalPriceBig">$0</div>
+
+          <div class="max-w-md mx-auto mb-8 text-left">
+            <label class="label-dark">Email (for quote delivery)</label>
+            <input type="email" id="email" placeholder="your@email.com" required class="input-dark">
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-3">
+            <a href="/" class="flex-1 btn btn-ghost justify-center">Back to Home</a>
+            <a href="/payment" onclick="saveTotalToLocalStorage()" class="flex-1 btn btn-primary justify-center">
+              Continue to Payment
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
+            </svg>
+            </a>
+            </div>
+
+          <button id="closePriceModal" class="mt-6 text-muted hover:text-white transition-colors text-sm">Close</button>
+        </div>
+      </div>
+
+  <%- include('partials/footer') %>
+
+  <script>
+    // ==================== CALCULATOR CONFIG ====================
+    let calculatorConfig = {
+      baseFee: 120,
+      tiers: [
+        { max: 30, rate: 3.00 },
+        { max: 70, rate: 2.20 },
+        { max: 110, rate: 1.80 },
+        { max: 160, rate: 1.50 },
+        { max: Infinity, rate: 1.30 }
+      ],
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20 },
+      addons: { inoperable: 75, modified: 100, urgent: 100 }
+    };
+
+    const saved = localStorage.getItem('calculatorConfig');
+    if (saved) calculatorConfig = JSON.parse(saved);
+
+    // ==================== GOOGLE MAPS AUTOCOMPLETE ====================
+    let fromAutocomplete, toAutocomplete;
+    let fromPlace = null;
+    let toPlace = null;
+
+    function initGoogleAutocomplete() {
+      const options = {
+        types: ['address'],
+        componentRestrictions: { country: 'us' }
+      };
+
+      fromAutocomplete = new google.maps.places.Autocomplete(
+        document.getElementById('fromInput'), options
+      );
+      fromAutocomplete.addListener('place_changed', () => {
+        fromPlace = fromAutocomplete.getPlace();
+        calculateDistance();
+      });
+
+      toAutocomplete = new google.maps.places.Autocomplete(
+        document.getElementById('toInput'), options
+      );
+      toAutocomplete.addListener('place_changed', () => {
+        toPlace = toAutocomplete.getPlace();
+        calculateDistance();
+      });
+    }
+
+    async function calculateDistance() {
+      if (!fromPlace?.geometry?.location || !toPlace?.geometry?.location) return;
+
+      const service = new google.maps.DistanceMatrixService();
+
+      service.getDistanceMatrix({
+        origins: [fromPlace.geometry.location],
+        destinations: [toPlace.geometry.location],
+        travelMode: google.maps.TravelMode.DRIVING,
+        unitSystem: google.maps.UnitSystem.IMPERIAL
+      }, (response, status) => {
+        if (status === 'OK' && response.rows[0].elements[0].status === 'OK') {
+          const distanceMeters = response.rows[0].elements[0].distance.value;
+          const distanceMiles = Math.round(distanceMeters * 0.000621371);
+          document.getElementById('distance').value = distanceMiles;
+        } else {
+          console.warn('Distance Matrix error:', status);
+        }
+      });
+    }
+
+    // ==================== PRICE CALCULATION ====================
+    function calculatePrice() {
+      const miles = parseFloat(document.getElementById('distance').value) || 0;
+      let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
+      for (let tier of calculatorConfig.tiers) {
+        if (miles <= tier.max) { cpm = tier.rate; break; }
+      }
+      let subtotal = calculatorConfig.baseFee + (cpm * miles);
+      const vType = document.getElementById('vehicleType').value;
+      if (calculatorConfig.multipliers[vType]) subtotal *= calculatorConfig.multipliers[vType];
+      if (document.querySelector('input[name="condition"]:checked').value === 'inoperable') subtotal += calculatorConfig.addons.inoperable;
+      if (document.getElementById('modifiedCheck').checked) subtotal += calculatorConfig.addons.modified;
+      if (document.getElementById('urgentCheck').checked) subtotal += calculatorConfig.addons.urgent;
+      return Math.round(subtotal);
+    }
+
+    function showPriceModal(total) {
+      const miles = parseFloat(document.getElementById('distance').value) || 0;
+      let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
+      for (let tier of calculatorConfig.tiers) {
+        if (miles <= tier.max) { cpm = tier.rate; break; }
+      }
+      const base = calculatorConfig.baseFee + (cpm * miles);
+
+      let html = `
+        <div class="flex justify-between"><span>Base fee</span><span class="text-white">$${calculatorConfig.baseFee}</span></div>
+        <div class="flex justify-between"><span>Mileage (${miles} miles)</span><span class="text-white">$${(cpm * miles).toFixed(0)}</span></div>
+      `;
+      const vType = document.getElementById('vehicleType').value;
+      if (vType === 'mid-suv') html += `<div class="flex justify-between"><span>Mid-size SUV +10%</span><span class="text-white">+$${(base*0.1).toFixed(0)}</span></div>`;
+      if (vType === 'full-suv') html += `<div class="flex justify-between"><span>Full-size SUV +20%</span><span class="text-white">+$${(base*0.2).toFixed(0)}</span></div>`;
+      if (document.querySelector('input[name="condition"]:checked').value === 'inoperable') html += `<div class="flex justify-between"><span>Inoperable</span><span class="text-white">+$${calculatorConfig.addons.inoperable}</span></div>`;
+      if (document.getElementById('modifiedCheck').checked) html += `<div class="flex justify-between"><span>Modified vehicle</span><span class="text-white">+$${calculatorConfig.addons.modified}</span></div>`;
+      if (document.getElementById('urgentCheck').checked) html += `<div class="flex justify-between"><span>Urgent Delivery</span><span class="text-white">+$${calculatorConfig.addons.urgent}</span></div>`;
+
+      document.getElementById('priceBreakdown').innerHTML = html;
+      document.getElementById('totalPriceBig').textContent = '$' + total;
+      document.getElementById('priceModal').classList.remove('hidden');
+    }
+
+    // ==================== TRANSPORT, VIN, PHOTOS ====================
+    const openBtn = document.getElementById('open-btn');
+    const enclosedBtn = document.getElementById('enclosed-btn');
+    function selectTransport(btn) {
+      openBtn.classList.remove('bg-sky-600', 'text-white');
+      enclosedBtn.classList.remove('bg-sky-600', 'text-white');
+      btn.classList.add('bg-sky-600', 'text-white');
+    }
+    openBtn.addEventListener('click', () => selectTransport(openBtn));
+    enclosedBtn.addEventListener('click', () => selectTransport(enclosedBtn));
+    selectTransport(openBtn);
+
+    // VIN decoder
+    async function decodeVIN(vin) {
+      try {
+        const res = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`);
+        const data = await res.json();
+        return data.Results[0];
+      } catch (e) { return null; }
+    }
+
+    const vinInput = document.getElementById('vin');
+    const vinResult = document.getElementById('vin-result');
+    const vinError = document.getElementById('vin-error');
+    let vinTimer;
+    vinInput.addEventListener('input', () => {
+      clearTimeout(vinTimer);
+      vinResult.classList.add('hidden');
+      vinError.classList.add('hidden');
+      const vin = vinInput.value.trim().toUpperCase();
+      if (vin.length === 17) {
+        vinTimer = setTimeout(async () => {
+          const v = await decodeVIN(vin);
+          if (v && v.Make) {
+            vinResult.innerHTML = `${v.ModelYear || ''} ${v.Make} ${v.Model || ''}`;
+            vinResult.classList.remove('hidden');
+          } else {
+            vinError.textContent = "Invalid VIN";
+            vinError.classList.remove('hidden');
+          }
+        }, 800);
+      }
+    });
+
+    function initPhotoPreview(inputId, containerId) {
+      const input = document.getElementById(inputId);
+      const container = document.getElementById(containerId);
+      input.addEventListener('change', () => {
+        container.innerHTML = '';
+        container.classList.remove('hidden');
+        Array.from(input.files).slice(0, 6).forEach(file => {
+          const reader = new FileReader();
+          reader.onload = e => {
+            const div = document.createElement('div');
+            div.className = 'relative';
+            div.innerHTML = `<img src="${e.target.result}" class="w-full h-24 object-cover rounded-lg border border-[var(--line)]"><button type="button" class="delete-photo absolute top-1 right-1 bg-red-500 text-white w-6 h-6 rounded-full text-xs">×</button>`;
+            container.appendChild(div);
+          };
+          reader.readAsDataURL(file);
+        });
+      });
+      container.addEventListener('click', e => {
+        if (e.target.classList.contains('delete-photo')) e.target.closest('div').remove();
+      });
+    }
+
+    document.getElementById('modifiedCheck').addEventListener('change', () => {
+      document.getElementById('modifiedBlock').classList.toggle('hidden', !document.getElementById('modifiedCheck').checked);
+    });
+
+    document.querySelectorAll('input[name="condition"]').forEach(r => {
+      r.addEventListener('change', () => {
+        document.getElementById('inopDesc').classList.toggle('hidden', r.value !== 'inoperable');
+      });
+    });
+
+    document.getElementById('getQuoteBtn').addEventListener('click', () => {
+      const form = document.getElementById('shippingCalculator');
+      if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+      }
+      const total = calculatePrice();
+      showPriceModal(total);
+    });
+
+    document.getElementById('closePriceModal').addEventListener('click', () => {
+      document.getElementById('priceModal').classList.add('hidden');
+    });
+
+    // ==================== INIT GOOGLE MAPS ====================
+    window.initGoogleMaps = function() {
+      initGoogleAutocomplete();
+    };
+
+    window.addEventListener('load', () => {
+      const script = document.createElement('script');
+      script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyADY34xlNO8-qSU_2Lq7qZ7l1jydiRL74w&libraries=places&callback=initGoogleMaps";
+      script.async = true;
+      script.defer = true;
+      document.head.appendChild(script);
+
+      initPhotoPreview('vehiclePhotos', 'previewContainer');
+      initPhotoPreview('modPhotos', 'modPreview');
+    });
+    
+  function saveTotalToLocalStorage() {
+    const total = calculatePrice();
+    localStorage.setItem('calculatorTotal', total);
+}
+  </script>
+</body>
+</html>
