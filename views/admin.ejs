@@ -274,20 +274,32 @@
   <%- include('partials/footer') %>
 
   <script>
-    const ADMIN_PASSWORD = "mcadmin2026";
-
     // ==================== LOGIN ====================
-    function checkPassword() {
-      const pw = document.getElementById('passwordInput').value;
-      const err = document.getElementById('passwordError');
+    async function checkPassword() {
+      const email = document.getElementById('signInEmail').value.trim();
+      const pw    = document.getElementById('passwordInput').value;
+      const err   = document.getElementById('passwordError');
+      err.classList.add('hidden');
 
-      if (pw === ADMIN_PASSWORD) {
-        sessionStorage.setItem('mcAdminAuth', '1');
-        document.getElementById('passwordScreen').classList.add('hidden');
-        document.getElementById('adminForm').classList.remove('hidden');
-        loadCurrentConfig();
-        loadOrders();
-      } else {
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pw })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          sessionStorage.setItem('mcAdminAuth', '1');
+          sessionStorage.setItem('mcAdminEmail', data.email);
+          document.getElementById('passwordScreen').classList.add('hidden');
+          document.getElementById('adminForm').classList.remove('hidden');
+          loadCurrentConfig();
+          loadOrders();
+        } else {
+          err.classList.remove('hidden');
+        }
+      } catch(e) {
         err.classList.remove('hidden');
       }
     }
@@ -587,7 +599,7 @@
       document.getElementById('orderModal').classList.add('hidden');
     }
 
-    // Auto-login
+    // Auto-login if session exists
     if (sessionStorage.getItem('mcAdminAuth') === '1') {
       document.getElementById('passwordScreen').classList.add('hidden');
       document.getElementById('adminForm').classList.remove('hidden');
@@ -596,6 +608,10 @@
     }
 
     document.getElementById('passwordInput').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') checkPassword();
+    });
+
+    document.getElementById('signInEmail').addEventListener('keypress', (e) => {
       if (e.key === 'Enter') checkPassword();
     });
   </script>

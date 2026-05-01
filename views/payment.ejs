@@ -338,7 +338,11 @@
         activeVehicleTab = formData.vehicles.length - 1;
         renderVehicleTabs();
         renderVehicleForm(activeVehicleTab);
-        // renderVehicleForm handles yearSelect + VIN + photos in its own setTimeout
+        setTimeout(() => initPhotoUpload(activeVehicleTab), 50);
+        setTimeout(() => {
+          document.getElementById('yearContainer-' + activeVehicleTab).appendChild(createYearSelect('year-' + activeVehicleTab));
+          initVehicleVIN(activeVehicleTab);
+        }, 60);
       };
       container.appendChild(addBtn);
     }
@@ -350,7 +354,14 @@
       if (activeVehicleTab >= formData.vehicles.length) activeVehicleTab = formData.vehicles.length - 1;
       renderVehicleTabs();
       renderVehicleForm(activeVehicleTab);
-      // renderVehicleForm already handles yearSelect + VIN + photos in its own setTimeout
+      setTimeout(() => initPhotoUpload(activeVehicleTab), 50);
+      setTimeout(() => {
+        const yc = document.getElementById('yearContainer-' + activeVehicleTab);
+        if (yc && !yc.querySelector('select')) {
+          yc.appendChild(createYearSelect('year-' + activeVehicleTab));
+        }
+        initVehicleVIN(activeVehicleTab);
+      }, 60);
     };
 
     function renderVehicleForm(i) {
@@ -376,6 +387,16 @@
         document.getElementById('urgentCheck-' + i).checked = v.urgent || false;
         document.getElementById('runsAndDrives-' + i).value = v.runsAndDrives === false ? 'no' : 'yes';
         document.getElementById('hasKeys-' + i).value = v.hasKeys === false ? 'no' : 'yes';
+        // restore photos
+        if (v.photos && v.photos.length) {
+          const preview = document.getElementById('photoPreview-' + i);
+          v.photos.forEach((photo, idx) => {
+            const div = document.createElement('div');
+            div.className = 'relative';
+            div.innerHTML = `<img src="${photo.data}" class="rounded-lg border border-[var(--line)] object-cover h-24 w-full"><button class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs" onclick="removePhoto(this, ${i})">×</button>`;
+            preview.appendChild(div);
+          });
+        }
       }, 50);
     }
 
@@ -600,7 +621,7 @@
         `;
         renderVehicleTabs();
         renderVehicleForm(activeVehicleTab);
-        // renderVehicleForm handles photo upload init internally
+        setTimeout(() => initPhotoUpload(activeVehicleTab), 100);
       } else {
         document.getElementById('stepContent').innerHTML = stepsHTML[step];
       }
