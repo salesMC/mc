@@ -191,7 +191,7 @@
               </table>
             </div>
 
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div>
                 <label class="label-dark">Sedan / Compact SUV</label>
                 <input id="multSedan" type="number" step="0.01" value="1.00" class="input-admin">
@@ -203,6 +203,25 @@
               <div>
                 <label class="label-dark">Full-size SUV</label>
                 <input id="multFull" type="number" step="0.01" value="1.20" class="input-admin">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+              <div>
+                <label class="label-dark">Pick-up Truck</label>
+                <input id="multPickup" type="number" step="0.01" value="1.15" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Cargo Van</label>
+                <input id="multCargoVan" type="number" step="0.01" value="1.25" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Passenger Van</label>
+                <input id="multPassengerVan" type="number" step="0.01" value="1.25" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Other</label>
+                <input id="multOther" type="number" step="0.01" value="1.20" class="input-admin">
               </div>
             </div>
 
@@ -291,7 +310,7 @@
         { max: 160, rate: 1.50 },
         { max: Infinity, rate: 1.30 }
       ],
-      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20 },
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.00, 'cargo-van': 1.00, 'passenger-van': 1.00, 'other': 1.00 },
       addons: { inoperable: 75, modified: 100, urgent: 100 }
     };
 
@@ -303,6 +322,10 @@
       document.getElementById('multSedan').value = config.multipliers.sedan;
       document.getElementById('multMid').value = config.multipliers['mid-suv'];
       document.getElementById('multFull').value = config.multipliers['full-suv'];
+      document.getElementById('multPickup').value = config.multipliers['pickup'] || 1.00;
+      document.getElementById('multCargoVan').value = config.multipliers['cargo-van'] || 1.00;
+      document.getElementById('multPassengerVan').value = config.multipliers['passenger-van'] || 1.00;
+      document.getElementById('multOther').value = config.multipliers['other'] || 1.00;
       document.getElementById('addonInop').value = config.addons.inoperable;
       document.getElementById('addonMod').value = config.addons.modified;
       document.getElementById('addonUrgent').value = config.addons.urgent;
@@ -356,6 +379,10 @@
       config.multipliers.sedan = parseFloat(document.getElementById('multSedan').value) || 1;
       config.multipliers['mid-suv'] = parseFloat(document.getElementById('multMid').value) || 1.1;
       config.multipliers['full-suv'] = parseFloat(document.getElementById('multFull').value) || 1.2;
+      config.multipliers['pickup'] = parseFloat(document.getElementById('multPickup').value) || 1.00;
+      config.multipliers['cargo-van'] = parseFloat(document.getElementById('multCargoVan').value) || 1.00;
+      config.multipliers['passenger-van'] = parseFloat(document.getElementById('multPassengerVan').value) || 1.00;
+      config.multipliers['other'] = parseFloat(document.getElementById('multOther').value) || 1.00;
       config.addons.inoperable = parseFloat(document.getElementById('addonInop').value) || 75;
       config.addons.modified = parseFloat(document.getElementById('addonMod').value) || 100;
       config.addons.urgent = parseFloat(document.getElementById('addonUrgent').value) || 100;
@@ -471,9 +498,44 @@
 
         document.getElementById('modalOrderId').textContent = `Order ${order.id}`;
 
-        const vehicle = order.vehicle || {};
+        // Support both old (single vehicle) and new (multi-vehicle) format
+        const vehicleList = order.vehicles && order.vehicles.length
+          ? order.vehicles
+          : [order.vehicle || {}];
+
         const location = order.location || {};
-        const contact = order.contact || {};
+        const contact  = order.contact  || {};
+
+        const vehiclesHTML = vehicleList.map((vehicle, idx) => `
+          <div class="border border-[var(--line)] rounded-xl p-5 ${idx > 0 ? 'mt-4' : ''}">
+            <div class="flex items-center gap-2 mb-3">
+              <i class="fas fa-car text-[var(--orange)] text-xs"></i>
+              <h4 class="font-semibold text-white text-sm">Vehicle ${idx + 1}${vehicleList.length > 1 ? ' of ' + vehicleList.length : ''}</h4>
+            </div>
+            <div class="grid grid-cols-2 gap-x-6 gap-y-1 text-sm">
+              <p><strong>Year:</strong> ${vehicle.year || '—'}</p>
+              <p><strong>Make:</strong> ${vehicle.make || '—'}</p>
+              <p><strong>Model:</strong> ${vehicle.model || '—'}</p>
+              <p><strong>VIN:</strong> ${vehicle.vin || '—'}</p>
+              <p><strong>Type:</strong> ${vehicle.type || '—'}</p>
+              <p><strong>Condition:</strong> ${vehicle.condition || '—'}</p>
+              <p><strong>Runs &amp; drives:</strong> ${vehicle.runsAndDrives ? 'Yes' : 'No'}</p>
+              <p><strong>Has keys:</strong> ${vehicle.hasKeys ? 'Yes' : 'No'}</p>
+              <p><strong>Modified:</strong> ${vehicle.modified ? 'Yes' : 'No'}</p>
+              <p><strong>Urgent:</strong> ${vehicle.urgent ? 'Yes' : 'No'}</p>
+            </div>
+            ${vehicle.photos && vehicle.photos.length ? `
+              <div class="mt-4">
+                <strong class="text-white text-sm block mb-2">Photos (${vehicle.photos.length})</strong>
+                <div class="grid grid-cols-3 gap-2">
+                  ${vehicle.photos.map(photo => `
+                    <img src="${photo.data}" class="rounded-lg border border-[var(--line)] object-cover h-24" alt="vehicle photo">
+                  `).join('')}
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        `).join('');
 
         const html = `
           <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -484,47 +546,21 @@
               <p><strong>Phone:</strong> ${contact.phone || '—'}</p>
             </div>
             <div>
-  <h4 class="font-semibold text-white mb-3">Vehicle Information</h4>
-  <p><strong>Year:</strong> ${vehicle.year || '—'}</p>
-  <p><strong>Make:</strong> ${vehicle.make || '—'}</p>
-  <p><strong>Model:</strong> ${vehicle.model || '—'}</p>
-  <p><strong>VIN:</strong> ${vehicle.vin || '—'}</p>
-  <p><strong>Type:</strong> ${vehicle.type || '—'}</p>
-  <p><strong>Condition:</strong> ${vehicle.condition || '—'}</p>
-  <p><strong>Runs and drives:</strong> ${vehicle.runsAndDrives ? 'Yes' : 'No'}</p>
-  <p><strong>Has keys:</strong> ${vehicle.hasKeys ? 'Yes' : 'No'}</p>
-  <p><strong>Modified:</strong> ${vehicle.modified ? 'Yes' : 'No'}</p>
-  <p><strong>Urgent:</strong> ${vehicle.urgent ? 'Yes' : 'No'}</p>
-
-  ${vehicle.photos && vehicle.photos.length ? `
-    <div class="mt-6">
-      <strong class="text-white block mb-2">Vehicle Photos (${vehicle.photos.length})</strong>
-      <div class="grid grid-cols-3 gap-2">
-        ${vehicle.photos.map(photo => `
-          <img src="${photo.data}" class="rounded-lg border border-[var(--line)] object-cover h-28" alt="vehicle photo">
-        `).join('')}
-      </div>
-    </div>
-  ` : ''}
-</div>
+              <h4 class="font-semibold text-white mb-3">Route &amp; Dates</h4>
+              <p><strong>Pickup:</strong> ${location.pickup || '—'}</p>
+              <p><strong>Delivery:</strong> ${location.delivery || '—'}</p>
+              <p class="mt-2"><strong>First possible:</strong> ${order.pickupDate || '—'}</p>
+              <p><strong>Must pickup by:</strong> ${order.mustPickupBy || '—'}</p>
+              <p class="mt-2"><strong>Transport:</strong> ${order.transportType || '—'}</p>
+            </div>
           </div>
 
           <div class="mt-8">
-            <h4 class="font-semibold text-white mb-3">Route</h4>
-            <p><strong>Pickup:</strong> ${location.pickup || '—'}</p>
-            <p><strong>Delivery:</strong> ${location.delivery || '—'}</p>
-          </div>
-
-          <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-              <h4 class="font-semibold text-white mb-3">Pickup Dates</h4>
-              <p><strong>First possible:</strong> ${order.pickupDate || '—'}</p>
-              <p><strong>Must pickup by:</strong> ${order.mustPickupBy || '—'}</p>
-            </div>
-            <div>
-              <h4 class="font-semibold text-white mb-3">Other</h4>
-              <p><strong>Transport Type:</strong> ${order.transportType || '—'}</p>
-            </div>
+            <h4 class="font-semibold text-white mb-3">
+              Vehicles
+              <span class="text-xs font-normal text-muted ml-2">(${vehicleList.length} vehicle${vehicleList.length > 1 ? 's' : ''})</span>
+            </h4>
+            ${vehiclesHTML}
           </div>
 
           <div class="mt-10 pt-6 border-t border-[var(--line)] flex justify-between items-center">

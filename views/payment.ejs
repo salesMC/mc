@@ -7,50 +7,52 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <style>
-    .step-active { 
-      border-color: #FF6A3D; 
-      background: rgba(255,106,61,0.1); 
+    .step-active {
+      border-color: #FF6A3D;
+      background: rgba(255,106,61,0.1);
       color: white;
     }
     .input-dark {
-      width: 100%; 
-      padding: 0.95rem 1.25rem; 
-      background: #161B22; 
+      width: 100%;
+      padding: 0.95rem 1.25rem;
+      background: #161B22;
       border: 1px solid #1F2937;
-      border-radius: 0.5rem; 
-      color: white; 
+      border-radius: 0.5rem;
+      color: white;
       transition: all 0.2s ease;
       font-size: 1rem;
+      outline: none;
     }
+    .input-dark::placeholder { color: #8B949E; }
     .input-dark:focus {
       border-color: #FF6A3D;
       box-shadow: 0 0 0 3px rgba(255,106,61,0.15);
     }
-    .input-dark.error { 
-      border-color: #ef4444 !important; 
-      box-shadow: 0 0 0 3px rgba(239,68,68,0.2) !important; 
+    .input-dark.error {
+      border-color: #ef4444 !important;
+      box-shadow: 0 0 0 3px rgba(239,68,68,0.2) !important;
     }
-    .label-dark { 
-      display: block; 
-      font-size: 0.875rem; 
-      font-weight: 500; 
-      color: #8B949E; 
-      margin-bottom: 0.5rem; 
+    .label-dark {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      color: #8B949E;
+      margin-bottom: 0.5rem;
     }
-    .error-msg { 
-      color: #ef4444; 
-      font-size: 0.8rem; 
-      margin-top: 4px; 
-      min-height: 20px; 
+    .error-msg {
+      color: #ef4444;
+      font-size: 0.8rem;
+      margin-top: 4px;
+      min-height: 20px;
     }
     .vin-result { color: #BEF264; font-weight: 500; }
-    .vin-error { color: #F87171; }
+    .vin-error  { color: #F87171; }
 
     .btn-transport { transition: all 0.2s; }
-    .btn-transport.active { 
-      background: #FF6A3D; 
-      color: white; 
-      border-color: #FF6A3D; 
+    .btn-transport.active {
+      background: #FF6A3D;
+      color: white;
+      border-color: #FF6A3D;
     }
 
     .upload-zone {
@@ -59,10 +61,47 @@
       border-radius: 12px;
       transition: all 0.2s ease;
     }
-    .upload-zone:hover { 
-      border-color: #FF6A3D; 
-      background: #1F2937; 
+    .upload-zone:hover { border-color: #FF6A3D; background: #1F2937; }
+
+    /* Vehicle tabs */
+    .vehicle-tab {
+      padding: 0.5rem 1rem;
+      border-radius: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1px solid #1F2937;
+      color: #8B949E;
+      background: #161B22;
+      cursor: pointer;
+      transition: all 0.18s ease;
+      white-space: nowrap;
     }
+    .vehicle-tab.active {
+      border-color: #FF6A3D;
+      color: white;
+      background: rgba(255,106,61,0.12);
+    }
+    .vehicle-tab:hover:not(.active) { border-color: #374151; color: #C9D1D9; }
+
+    .add-vehicle-tab {
+      padding: 0.5rem 0.85rem;
+      border-radius: 0.5rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      border: 1px dashed rgba(255,106,61,0.4);
+      color: var(--orange);
+      background: rgba(255,106,61,0.04);
+      cursor: pointer;
+      transition: all 0.18s ease;
+    }
+    .add-vehicle-tab:hover { border-color: #FF6A3D; background: rgba(255,106,61,0.1); }
+
+    .remove-vtab {
+      margin-left: 0.4rem;
+      opacity: 0.5;
+      transition: opacity 0.15s;
+    }
+    .remove-vtab:hover { opacity: 1; color: #ef4444; }
 
     @media (max-width: 640px) {
       .step-item { padding: 0.75rem 1rem !important; font-size: 0.95rem; }
@@ -90,7 +129,7 @@
                 <span class="font-mono text-orange-400">1</span> Contact
               </div>
               <div onclick="goToStep(1)" class="step-item flex items-center gap-3 cursor-pointer p-4 rounded-xl text-sm" data-step="1">
-                <span class="font-mono text-orange-400">2</span> Vehicle
+                <span class="font-mono text-orange-400">2</span> Vehicles
               </div>
               <div onclick="goToStep(2)" class="step-item flex items-center gap-3 cursor-pointer p-4 rounded-xl text-sm" data-step="2">
                 <span class="font-mono text-orange-400">3</span> Route
@@ -106,6 +145,7 @@
             <div class="mt-12 pt-8 border-t border-[var(--line)]">
               <div class="text-sm text-muted">Estimated Total</div>
               <div id="totalPriceSidebar" class="text-4xl lg:text-5xl font-bold text-[var(--orange)] mt-1">$0</div>
+              <div id="vehicleCountSidebar" class="text-xs text-muted mt-1"></div>
             </div>
           </div>
         </div>
@@ -115,11 +155,11 @@
           <div class="tile p-6 md:p-10 lg:p-12 min-h-[620px]" id="stepContent"></div>
 
           <div class="flex flex-col sm:flex-row justify-between gap-4 mt-8">
-            <button onclick="prevStep()" id="prevBtn" 
+            <button onclick="prevStep()" id="prevBtn"
                     class="btn btn-ghost px-8 py-4 hidden w-full sm:w-auto">
               ← Previous
             </button>
-            <button onclick="nextStep()" id="nextBtn" 
+            <button onclick="nextStep()" id="nextBtn"
                     class="btn btn-primary px-10 py-4 w-full sm:w-auto">
               Next →
             </button>
@@ -135,32 +175,30 @@
     // ==================== CONFIG ====================
     let calculatorConfig = {
       baseFee: 120,
-      tiers: [{ max: 30, rate: 3.00 }, { max: 70, rate: 2.20 }, { max: 110, rate: 1.80 }, 
+      tiers: [{ max: 30, rate: 3.00 }, { max: 70, rate: 2.20 }, { max: 110, rate: 1.80 },
               { max: 160, rate: 1.50 }, { max: Infinity, rate: 1.30 }],
-      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20 },
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.15, 'cargo-van': 1.25, 'passenger-van': 1.25, 'other': 1.20 },
       addons: { inoperable: 75, modified: 100, urgent: 100 }
     };
-
-    const saved = localStorage.getItem('calculatorConfig');
-    if (saved) calculatorConfig = JSON.parse(saved);
+    const savedCfg = localStorage.getItem('calculatorConfig');
+    if (savedCfg) calculatorConfig = JSON.parse(savedCfg);
 
     let currentStep = 0;
     let fromAutocomplete, toAutocomplete, distanceService;
+    let activeVehicleTab = 0; // index in vehicles array
 
     let formData = {
       contact: { fullName: '', email: '', phone: '' },
-      vehicle: {
-        year: '', make: '', model: '', vin: '',
-        type: 'sedan', condition: 'operable',
-        modified: false, urgent: false,
-        runsAndDrives: true, hasKeys: true,
-        photos: []
-      },
+      vehicles: [freshVehicle()],   // array of vehicles
       location: { pickup: '', delivery: '' },
       pickupDate: '', mustPickupBy: '',
       transportType: 'open',
       total: 0
     };
+
+    function freshVehicle() {
+      return { year: '', make: '', model: '', vin: '', type: 'sedan', condition: 'operable', modified: false, urgent: false, runsAndDrives: true, hasKeys: true, photos: [] };
+    }
 
     // ==================== VIN DECODER ====================
     async function decodeVIN(vin) {
@@ -168,10 +206,7 @@
         const res = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vin}?format=json`);
         const data = await res.json();
         return data.Results && data.Results[0] ? data.Results[0] : null;
-      } catch (e) {
-        console.error('VIN decode error:', e);
-        return null;
-      }
+      } catch (e) { return null; }
     }
 
     // ==================== GOOGLE MAPS ====================
@@ -179,16 +214,14 @@
       const options = { types: ['address'], componentRestrictions: { country: 'us' } };
       fromAutocomplete = new google.maps.places.Autocomplete(document.getElementById('pickupAddr'), options);
       toAutocomplete = new google.maps.places.Autocomplete(document.getElementById('deliveryAddr'), options);
-
       fromAutocomplete.addListener('place_changed', calculateDistance);
       toAutocomplete.addListener('place_changed', calculateDistance);
     }
 
     function calculateDistance() {
-      const pickup = document.getElementById('pickupAddr').value.trim();
+      const pickup   = document.getElementById('pickupAddr').value.trim();
       const delivery = document.getElementById('deliveryAddr').value.trim();
       if (!pickup || !delivery || !distanceService) return;
-
       distanceService.getDistanceMatrix({
         origins: [pickup], destinations: [delivery],
         travelMode: google.maps.TravelMode.DRIVING,
@@ -203,43 +236,45 @@
     }
 
     // ==================== PRICE CALCULATION ====================
+    function calcVehiclePrice(miles, v) {
+      let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
+      for (let tier of calculatorConfig.tiers) { if (miles <= tier.max) { cpm = tier.rate; break; } }
+      let subtotal = calculatorConfig.baseFee + (cpm * miles);
+      if (calculatorConfig.multipliers[v.type]) subtotal *= calculatorConfig.multipliers[v.type];
+      if (v.condition === 'inoperable') subtotal += calculatorConfig.addons.inoperable;
+      if (v.modified) subtotal += calculatorConfig.addons.modified;
+      if (v.urgent)   subtotal += calculatorConfig.addons.urgent;
+      return Math.round(subtotal);
+    }
+
     function calculateAndUpdateTotal() {
       const miles = parseFloat(document.getElementById('distance')?.value) || 0;
-      let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
-      for (let tier of calculatorConfig.tiers) {
-        if (miles <= tier.max) { cpm = tier.rate; break; }
-      }
-
-      let subtotal = calculatorConfig.baseFee + (cpm * miles);
-      const vType = formData.vehicle.type || 'sedan';
-      if (calculatorConfig.multipliers[vType]) subtotal *= calculatorConfig.multipliers[vType];
-      if (formData.vehicle.condition === 'inoperable') subtotal += calculatorConfig.addons.inoperable;
-      if (formData.vehicle.modified) subtotal += calculatorConfig.addons.modified;
-      if (formData.vehicle.urgent) subtotal += calculatorConfig.addons.urgent;
-
-      formData.total = Math.round(subtotal);
-      document.getElementById('totalPriceSidebar').textContent = '$' + formData.total.toLocaleString();
+      let grand = 0;
+      formData.vehicles.forEach(v => { grand += calcVehiclePrice(miles, v); });
+      formData.total = grand;
+      document.getElementById('totalPriceSidebar').textContent = '$' + grand.toLocaleString();
+      document.getElementById('vehicleCountSidebar').textContent = formData.vehicles.length > 1 ? formData.vehicles.length + ' vehicles' : '';
       if (document.getElementById('finalTotal2')) {
-        document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+        document.getElementById('finalTotal2').textContent = '$' + grand.toLocaleString();
       }
     }
 
     // ==================== PHOTO UPLOAD ====================
-    function initPhotoUpload() {
-      const input = document.getElementById('vehiclePhotos');
-      const preview = document.getElementById('photoPreview');
+    function initPhotoUpload(vehicleIndex) {
+      const input   = document.getElementById('vehiclePhotos-' + vehicleIndex);
+      const preview = document.getElementById('photoPreview-' + vehicleIndex);
+      if (!input) return;
 
       input.addEventListener('change', () => {
         Array.from(input.files).forEach(file => {
-          if (formData.vehicle.photos.length >= 8) return alert("Maximum 8 photos allowed");
+          if (formData.vehicles[vehicleIndex].photos.length >= 8) return alert("Maximum 8 photos allowed");
           if (!file.type.startsWith('image/')) return;
-
           const reader = new FileReader();
           reader.onload = (e) => {
-            formData.vehicle.photos.push({ name: file.name, data: e.target.result });
+            formData.vehicles[vehicleIndex].photos.push({ name: file.name, data: e.target.result });
             const div = document.createElement('div');
-            div.className = 'photo-preview relative';
-            div.innerHTML = `<img src="${e.target.result}"><div class="delete-photo absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs cursor-pointer" onclick="removePhoto(this)">×</div>`;
+            div.className = 'relative';
+            div.innerHTML = `<img src="${e.target.result}" class="rounded-lg border border-[var(--line)] object-cover h-24 w-full"><button class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs" onclick="removePhoto(this, ${vehicleIndex})">×</button>`;
             preview.appendChild(div);
           };
           reader.readAsDataURL(file);
@@ -247,24 +282,22 @@
       });
     }
 
-    window.removePhoto = function(el) {
-      const index = Array.from(document.getElementById('photoPreview').children).indexOf(el.parentElement);
-      if (index > -1) formData.vehicle.photos.splice(index, 1);
+    window.removePhoto = function(el, vehicleIndex) {
+      const index = Array.from(document.getElementById('photoPreview-' + vehicleIndex).children).indexOf(el.parentElement);
+      if (index > -1) formData.vehicles[vehicleIndex].photos.splice(index, 1);
       el.parentElement.remove();
     };
 
     // ==================== YEAR SELECT ====================
-    function createYearSelect() {
+    function createYearSelect(id) {
       const select = document.createElement('select');
-      select.id = 'year';
+      select.id = id;
       select.className = 'input-dark';
       select.required = true;
-
       const defaultOpt = document.createElement('option');
       defaultOpt.value = '';
       defaultOpt.textContent = 'Select year';
       select.appendChild(defaultOpt);
-
       for (let y = 2030; y >= 1900; y--) {
         const opt = document.createElement('option');
         opt.value = y;
@@ -272,6 +305,185 @@
         select.appendChild(opt);
       }
       return select;
+    }
+
+    // ==================== VEHICLE TABS ====================
+    function renderVehicleTabs() {
+      const container = document.getElementById('vehicleTabs');
+      if (!container) return;
+      container.innerHTML = '';
+
+      formData.vehicles.forEach((v, i) => {
+        const tab = document.createElement('button');
+        tab.type = 'button';
+        tab.className = 'vehicle-tab' + (i === activeVehicleTab ? ' active' : '');
+        tab.innerHTML = `Vehicle ${i + 1}${formData.vehicles.length > 1 ? ` <span class="remove-vtab" onclick="removeVehicleTab(event, ${i})">×</span>` : ''}`;
+        tab.addEventListener('click', (e) => {
+          if (e.target.classList.contains('remove-vtab')) return;
+          saveCurrentVehicleData();
+          activeVehicleTab = i;
+          renderVehicleTabs();
+          renderVehicleForm(i);
+        });
+        container.appendChild(tab);
+      });
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'add-vehicle-tab';
+      addBtn.innerHTML = '<i class="fas fa-plus"></i> Add Vehicle';
+      addBtn.onclick = () => {
+        saveCurrentVehicleData();
+        formData.vehicles.push(freshVehicle());
+        activeVehicleTab = formData.vehicles.length - 1;
+        renderVehicleTabs();
+        renderVehicleForm(activeVehicleTab);
+        // renderVehicleForm handles yearSelect + VIN + photos in its own setTimeout
+      };
+      container.appendChild(addBtn);
+    }
+
+    window.removeVehicleTab = function(e, i) {
+      e.stopPropagation();
+      if (formData.vehicles.length <= 1) return;
+      formData.vehicles.splice(i, 1);
+      if (activeVehicleTab >= formData.vehicles.length) activeVehicleTab = formData.vehicles.length - 1;
+      renderVehicleTabs();
+      renderVehicleForm(activeVehicleTab);
+      // renderVehicleForm already handles yearSelect + VIN + photos in its own setTimeout
+    };
+
+    function renderVehicleForm(i) {
+      const v = formData.vehicles[i];
+      const formContainer = document.getElementById('vehicleFormContainer');
+      if (!formContainer) return;
+      formContainer.innerHTML = vehicleFormHTML(i, v);
+      setTimeout(() => {
+        document.getElementById('yearContainer-' + i).appendChild(createYearSelect('year-' + i));
+        const yearSelect = document.getElementById('year-' + i);
+        if (v.year) yearSelect.value = v.year;
+        initPhotoUpload(i);
+        initVehicleVIN(i);
+        // restore values
+        const make = document.getElementById('make-' + i);
+        const model = document.getElementById('model-' + i);
+        if (make) make.value = v.make || '';
+        if (model) model.value = v.model || '';
+        document.getElementById('vehicleType-' + i).value = v.type || 'sedan';
+        const condEl = document.querySelector(`input[name="condition-${i}"][value="${v.condition || 'operable'}"]`);
+        if (condEl) condEl.checked = true;
+        document.getElementById('modifiedCheck-' + i).checked = v.modified || false;
+        document.getElementById('urgentCheck-' + i).checked = v.urgent || false;
+        document.getElementById('runsAndDrives-' + i).value = v.runsAndDrives === false ? 'no' : 'yes';
+        document.getElementById('hasKeys-' + i).value = v.hasKeys === false ? 'no' : 'yes';
+      }, 50);
+    }
+
+    function vehicleFormHTML(i, v) {
+      return `
+        <div id="vform-${i}" class="space-y-6 mt-6">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div><label class="label-dark">Year <span class="text-red-400">*</span></label><div id="yearContainer-${i}"></div><div id="yearError-${i}" class="error-msg"></div></div>
+            <div><label class="label-dark">Make <span class="text-red-400">*</span></label><input type="text" id="make-${i}" class="input-dark" required></div>
+            <div><label class="label-dark">Model <span class="text-red-400">*</span></label><input type="text" id="model-${i}" class="input-dark" required></div>
+          </div>
+          <div>
+            <label class="label-dark">VIN (optional)</label>
+            <input type="text" id="vin-${i}" maxlength="17" class="input-dark uppercase tracking-widest" placeholder="1HGCM82633A123456">
+            <div id="vinResult-${i}" class="vin-result mt-2 text-sm hidden"></div>
+            <div id="vinError-${i}" class="vin-error mt-2 text-sm hidden"></div>
+          </div>
+          <div>
+            <label class="label-dark">Vehicle Type</label>
+            <select id="vehicleType-${i}" onchange="formData.vehicles[${i}].type=this.value; calculateAndUpdateTotal()" class="input-dark">
+              <option value="sedan">Sedan / Compact SUV</option>
+              <option value="mid-suv">Mid-size SUV</option>
+              <option value="full-suv">Full-size SUV</option>
+              <option value="pickup">Pick-up Truck</option>
+              <option value="cargo-van">Cargo Van</option>
+              <option value="passenger-van">Passenger Van</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="flex flex-wrap gap-6">
+            <label class="flex items-center gap-2"><input type="radio" name="condition-${i}" value="operable" ${(!v.condition || v.condition==='operable') ? 'checked' : ''} onchange="formData.vehicles[${i}].condition=this.value; calculateAndUpdateTotal()"> Operable</label>
+            <label class="flex items-center gap-2"><input type="radio" name="condition-${i}" value="inoperable" ${v.condition==='inoperable' ? 'checked' : ''} onchange="formData.vehicles[${i}].condition=this.value; calculateAndUpdateTotal()"> Inoperable</label>
+          </div>
+          <div class="grid grid-cols-2 gap-6">
+            <div><label class="label-dark">Runs and drives</label><select id="runsAndDrives-${i}" class="input-dark"><option value="yes">Yes</option><option value="no">No</option></select></div>
+            <div><label class="label-dark">Has keys</label><select id="hasKeys-${i}" class="input-dark"><option value="yes">Yes</option><option value="no">No</option></select></div>
+          </div>
+          <div class="space-y-3">
+            <label class="flex items-center gap-3"><input type="checkbox" id="modifiedCheck-${i}" onchange="formData.vehicles[${i}].modified=this.checked; calculateAndUpdateTotal()"> Modified / Custom vehicle</label>
+            <label class="flex items-center gap-3"><input type="checkbox" id="urgentCheck-${i}" onchange="formData.vehicles[${i}].urgent=this.checked; calculateAndUpdateTotal()"> Urgent Delivery</label>
+          </div>
+          <div>
+            <label class="label-dark">Vehicle Photos (optional)</label>
+            <div class="upload-zone p-8 text-center">
+              <input type="file" id="vehiclePhotos-${i}" accept="image/*" multiple class="hidden">
+              <label for="vehiclePhotos-${i}" class="cursor-pointer block">
+                <i class="fas fa-cloud-upload-alt text-4xl text-[var(--orange)] mb-3"></i>
+                <span class="font-medium text-[var(--orange)]">Upload photos</span>
+              </label>
+            </div>
+            <div id="photoPreview-${i}" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    function initVehicleVIN(i) {
+      const vinInput = document.getElementById('vin-' + i);
+      if (!vinInput) return;
+      vinInput.addEventListener('input', async () => {
+        const vin = vinInput.value.trim().toUpperCase();
+        const resultDiv = document.getElementById('vinResult-' + i);
+        const errorDiv  = document.getElementById('vinError-' + i);
+        resultDiv.classList.add('hidden');
+        errorDiv.classList.add('hidden');
+        if (vin.length === 17) {
+          const vehicle = await decodeVIN(vin);
+          if (vehicle && vehicle.Make) {
+            resultDiv.textContent = `${vehicle.ModelYear || ''} ${vehicle.Make} ${vehicle.Model || ''}`;
+            resultDiv.classList.remove('hidden');
+            if (vehicle.ModelYear) document.getElementById('year-' + i).value = vehicle.ModelYear;
+            if (vehicle.Make)      document.getElementById('make-' + i).value = vehicle.Make;
+            if (vehicle.Model)     document.getElementById('model-' + i).value = vehicle.Model;
+          } else {
+            errorDiv.textContent = 'Could not decode VIN';
+            errorDiv.classList.remove('hidden');
+          }
+        }
+      });
+    }
+
+    function saveCurrentVehicleData() {
+      const i = activeVehicleTab;
+      const year = document.getElementById('year-' + i);
+      const make = document.getElementById('make-' + i);
+      const model = document.getElementById('model-' + i);
+      const vin = document.getElementById('vin-' + i);
+      const vtype = document.getElementById('vehicleType-' + i);
+      const cond = document.querySelector(`input[name="condition-${i}"]:checked`);
+      const mod = document.getElementById('modifiedCheck-' + i);
+      const urgent = document.getElementById('urgentCheck-' + i);
+      const rad = document.getElementById('runsAndDrives-' + i);
+      const hk = document.getElementById('hasKeys-' + i);
+
+      if (!year) return;
+      formData.vehicles[i] = {
+        ...formData.vehicles[i],
+        year:  year?.value || '',
+        make:  make?.value.trim() || '',
+        model: model?.value.trim() || '',
+        vin:   vin?.value.trim() || '',
+        type:  vtype?.value || 'sedan',
+        condition: cond?.value || 'operable',
+        modified: mod?.checked || false,
+        urgent:   urgent?.checked || false,
+        runsAndDrives: rad?.value !== 'no',
+        hasKeys:       hk?.value !== 'no',
+      };
     }
 
     // ==================== STEPS ====================
@@ -284,66 +496,8 @@
          <div><label class="label-dark">Phone <span class="text-red-400">*</span></label><input type="tel" id="phone" class="input-dark" required><div id="phoneError" class="error-msg"></div></div>
        </div>`,
 
-      // 1 Vehicle
-      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Vehicle Details</h2>
-       <div class="space-y-8">
-         <div>
-           <label class="label-dark">Transport Type</label>
-           <div class="flex gap-3">
-             <button type="button" onclick="selectTransport(this)" data-type="open" class="btn-transport flex-1 py-4 border-2 rounded-lg active">Open</button>
-             <button type="button" onclick="selectTransport(this)" data-type="enclosed" class="btn-transport flex-1 py-4 border-2 rounded-lg">Enclosed</button>
-           </div>
-         </div>
-
-         <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-           <div><label class="label-dark">Year <span class="text-red-400">*</span></label><div id="yearContainer"></div><div id="yearError" class="error-msg"></div></div>
-           <div><label class="label-dark">Make <span class="text-red-400">*</span></label><input type="text" id="make" class="input-dark" required></div>
-           <div><label class="label-dark">Model <span class="text-red-400">*</span></label><input type="text" id="model" class="input-dark" required></div>
-         </div>
-
-         <div>
-           <label class="label-dark">VIN (optional)</label>
-           <input type="text" id="vin" maxlength="17" class="input-dark uppercase tracking-widest" placeholder="1HGCM82633A123456">
-           <div id="vinResult" class="vin-result mt-2 text-sm hidden"></div>
-           <div id="vinError" class="vin-error mt-2 text-sm hidden"></div>
-         </div>
-
-         <div>
-           <label class="label-dark">Vehicle Type</label>
-           <select id="vehicleType" onchange="formData.vehicle.type=this.value; calculateAndUpdateTotal()" class="input-dark">
-             <option value="sedan">Sedan / Compact SUV</option>
-             <option value="mid-suv">Mid-size SUV</option>
-             <option value="full-suv">Full-size SUV</option>
-           </select>
-         </div>
-
-         <div class="flex flex-wrap gap-6">
-           <label class="flex items-center gap-2"><input type="radio" name="condition" value="operable" checked> Operable</label>
-           <label class="flex items-center gap-2"><input type="radio" name="condition" value="inoperable"> Inoperable</label>
-         </div>
-
-         <div class="grid grid-cols-2 gap-6">
-           <div><label class="label-dark">Runs and drives</label><select id="runsAndDrives" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
-           <div><label class="label-dark">Has keys</label><select id="hasKeys" class="input-dark"><option value="yes" selected>Yes</option><option value="no">No</option></select></div>
-         </div>
-
-         <div class="space-y-3">
-           <label class="flex items-center gap-3"><input type="checkbox" id="modifiedCheck" onchange="formData.vehicle.modified=this.checked; calculateAndUpdateTotal()"> Modified / Custom vehicle</label>
-           <label class="flex items-center gap-3"><input type="checkbox" id="urgentCheck" onchange="formData.vehicle.urgent=this.checked; calculateAndUpdateTotal()"> Urgent Delivery</label>
-         </div>
-
-         <div>
-           <label class="label-dark">Vehicle Photos (optional)</label>
-           <div class="upload-zone p-8 text-center">
-             <input type="file" id="vehiclePhotos" accept="image/*" multiple class="hidden">
-             <label for="vehiclePhotos" class="cursor-pointer block">
-               <i class="fas fa-cloud-upload-alt text-4xl text-[var(--orange)] mb-3"></i>
-               <span class="font-medium text-[var(--orange)]">Upload photos</span>
-             </label>
-           </div>
-           <div id="photoPreview" class="mt-4 grid grid-cols-2 md:grid-cols-3 gap-3"></div>
-         </div>
-       </div>`,
+      // 1 Vehicles (built dynamically)
+      `__VEHICLES__`,
 
       // 2 Route
       `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Route & Pickup Dates</h2>
@@ -354,6 +508,13 @@
          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
            <div><label class="label-dark">First possible pickup <span class="text-red-400">*</span></label><input type="date" id="pickupDate" class="input-dark" required></div>
            <div><label class="label-dark">Must pickup by <span class="text-red-400">*</span></label><input type="date" id="mustPickupBy" class="input-dark" required></div>
+         </div>
+         <div>
+           <label class="label-dark">Transport Type</label>
+           <div class="flex gap-3 mt-1">
+             <button type="button" id="tOpen" onclick="selectTransportStep('open')" class="btn-transport flex-1 py-4 border-2 rounded-lg active">Open</button>
+             <button type="button" id="tEnclosed" onclick="selectTransportStep('enclosed')" class="btn-transport flex-1 py-4 border-2 rounded-lg">Enclosed</button>
+           </div>
          </div>
        </div>`,
 
@@ -370,10 +531,12 @@
        </div>`
     ];
 
-    function selectTransport(btn) {
-      document.querySelectorAll('.btn-transport').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      formData.transportType = btn.dataset.type;
+    function selectTransportStep(type) {
+      formData.transportType = type;
+      const tOpen     = document.getElementById('tOpen');
+      const tEnclosed = document.getElementById('tEnclosed');
+      if (tOpen)     tOpen.classList.toggle('active', type === 'open');
+      if (tEnclosed) tEnclosed.classList.toggle('active', type === 'enclosed');
     }
 
     // ==================== VALIDATION ====================
@@ -382,24 +545,36 @@
       let valid = true;
 
       if (currentStep === 0) {
-        if (!document.getElementById('fullName').value.trim()) { showError('fullName', 'Full name is required'); valid = false; }
-        if (!document.getElementById('email').value.trim()) { showError('email', 'Email is required'); valid = false; }
-        if (!document.getElementById('phone').value.trim()) { showError('phone', 'Phone is required'); valid = false; }
+        if (!document.getElementById('fullName')?.value.trim()) { showError('fullName', 'Full name is required'); valid = false; }
+        if (!document.getElementById('email')?.value.trim())    { showError('email', 'Email is required'); valid = false; }
+        if (!document.getElementById('phone')?.value.trim())    { showError('phone', 'Phone is required'); valid = false; }
       } else if (currentStep === 1) {
-        if (!document.getElementById('year').value) { showError('year', 'Year is required'); valid = false; }
-        if (!document.getElementById('make').value.trim()) { showError('make', 'Make is required'); valid = false; }
-        if (!document.getElementById('model').value.trim()) { showError('model', 'Model is required'); valid = false; }
+        saveCurrentVehicleData();
+        for (let i = 0; i < formData.vehicles.length; i++) {
+          const v = formData.vehicles[i];
+          if (!v.year || !v.make.trim() || !v.model.trim()) {
+            valid = false;
+            // Switch to the offending tab to highlight
+            activeVehicleTab = i;
+            renderVehicleTabs();
+            renderVehicleForm(i);
+            setTimeout(() => {
+              if (!v.year) showError('year-' + i, 'Year is required');
+            }, 60);
+            break;
+          }
+        }
       } else if (currentStep === 2) {
-        if (!document.getElementById('pickupAddr').value.trim()) { showError('pickupAddr', 'Pickup address required'); valid = false; }
-        if (!document.getElementById('deliveryAddr').value.trim()) { showError('deliveryAddr', 'Delivery address required'); valid = false; }
-        if (!document.getElementById('pickupDate').value) { showError('pickupDate', 'Pickup date required'); valid = false; }
-        if (!document.getElementById('mustPickupBy').value) { showError('mustPickupBy', 'Must pickup by date required'); valid = false; }
+        if (!document.getElementById('pickupAddr')?.value.trim())   { showError('pickupAddr', 'Pickup address required'); valid = false; }
+        if (!document.getElementById('deliveryAddr')?.value.trim()) { showError('deliveryAddr', 'Delivery address required'); valid = false; }
+        if (!document.getElementById('pickupDate')?.value)          { showError('pickupDate', 'Pickup date required'); valid = false; }
+        if (!document.getElementById('mustPickupBy')?.value)        { showError('mustPickupBy', 'Must pickup by date required'); valid = false; }
       }
       return valid;
     }
 
     function showError(id, msg) {
-      const err = document.getElementById(id + 'Error') || document.getElementById('yearError');
+      const err = document.getElementById(id + 'Error') || document.getElementById('yearError-' + activeVehicleTab);
       if (err) err.textContent = msg;
       const input = document.getElementById(id);
       if (input) input.classList.add('error');
@@ -416,56 +591,49 @@
       saveFormData();
       currentStep = step;
 
-      document.getElementById('stepContent').innerHTML = stepsHTML[step];
+      if (step === 1) {
+        // Build vehicle step HTML
+        document.getElementById('stepContent').innerHTML = `
+          <h2 class="text-2xl md:text-3xl font-bold text-white mb-6">Vehicle Details</h2>
+          <div class="flex flex-wrap gap-2 mb-2" id="vehicleTabs"></div>
+          <div id="vehicleFormContainer"></div>
+        `;
+        renderVehicleTabs();
+        renderVehicleForm(activeVehicleTab);
+        // renderVehicleForm handles photo upload init internally
+      } else {
+        document.getElementById('stepContent').innerHTML = stepsHTML[step];
+      }
 
       document.querySelectorAll('.step-item').forEach((el, i) => {
         el.classList.toggle('step-active', i === step);
       });
-
       document.getElementById('prevBtn').classList.toggle('hidden', step === 0);
       document.getElementById('nextBtn').textContent = step === 4 ? 'Confirm & Pay Now' : 'Next →';
 
-      if (step === 1) {
-        setTimeout(() => {
-          document.getElementById('yearContainer').appendChild(createYearSelect());
-          initPhotoUpload();
-
-          // VIN listener
-          const vinInput = document.getElementById('vin');
-          vinInput.addEventListener('input', async () => {
-            const vin = vinInput.value.trim().toUpperCase();
-            const resultDiv = document.getElementById('vinResult');
-            const errorDiv = document.getElementById('vinError');
-            resultDiv.classList.add('hidden');
-            errorDiv.classList.add('hidden');
-
-            if (vin.length === 17) {
-              const vehicle = await decodeVIN(vin);
-              if (vehicle && vehicle.Make) {
-                resultDiv.textContent = `${vehicle.ModelYear || ''} ${vehicle.Make} ${vehicle.Model || ''}`;
-                resultDiv.classList.remove('hidden');
-                // Автозаполнение, если возможно
-                if (vehicle.ModelYear) document.getElementById('year').value = vehicle.ModelYear;
-                if (vehicle.Make) document.getElementById('make').value = vehicle.Make;
-                if (vehicle.Model) document.getElementById('model').value = vehicle.Model;
-              } else {
-                errorDiv.textContent = "Could not decode VIN";
-                errorDiv.classList.remove('hidden');
-              }
-            }
-          });
-        }, 50);
+      if (step === 0) {
+        const fn = document.getElementById('fullName');
+        const em = document.getElementById('email');
+        const ph = document.getElementById('phone');
+        if (fn) fn.value = formData.contact.fullName;
+        if (em) em.value = formData.contact.email;
+        if (ph) ph.value = formData.contact.phone;
       }
 
       if (step === 2) {
         setTimeout(() => {
           initGoogleAutocomplete();
           distanceService = new google.maps.DistanceMatrixService();
+          document.getElementById('pickupAddr').value   = formData.location.pickup;
+          document.getElementById('deliveryAddr').value = formData.location.delivery;
+          document.getElementById('pickupDate').value   = formData.pickupDate;
+          document.getElementById('mustPickupBy').value = formData.mustPickupBy;
+          selectTransportStep(formData.transportType);
         }, 100);
+        calculateAndUpdateTotal();
       }
 
       if (step === 3) renderSummary();
-      if (step === 1 || step === 2) calculateAndUpdateTotal();
       if (step === 4 && document.getElementById('finalTotal2')) {
         document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
       }
@@ -475,43 +643,54 @@
       if (currentStep === 0) {
         formData.contact = {
           fullName: document.getElementById('fullName')?.value.trim() || '',
-          email: document.getElementById('email')?.value.trim() || '',
-          phone: document.getElementById('phone')?.value.trim() || ''
+          email:    document.getElementById('email')?.value.trim() || '',
+          phone:    document.getElementById('phone')?.value.trim() || ''
         };
       } else if (currentStep === 1) {
-        formData.vehicle = {
-          year: document.getElementById('year')?.value || '',
-          make: document.getElementById('make')?.value.trim() || '',
-          model: document.getElementById('model')?.value.trim() || '',
-          vin: document.getElementById('vin')?.value.trim() || '',
-          type: document.getElementById('vehicleType')?.value || 'sedan',
-          condition: document.querySelector('input[name="condition"]:checked')?.value || 'operable',
-          modified: document.getElementById('modifiedCheck')?.checked || false,
-          urgent: document.getElementById('urgentCheck')?.checked || false,
-          runsAndDrives: document.getElementById('runsAndDrives')?.value === 'yes',
-          hasKeys: document.getElementById('hasKeys')?.value === 'yes',
-          photos: formData.vehicle.photos || []
-        };
+        saveCurrentVehicleData();
       } else if (currentStep === 2) {
         formData.location = {
-          pickup: document.getElementById('pickupAddr')?.value.trim() || '',
+          pickup:   document.getElementById('pickupAddr')?.value.trim() || '',
           delivery: document.getElementById('deliveryAddr')?.value.trim() || ''
         };
-        formData.pickupDate = document.getElementById('pickupDate')?.value || '';
+        formData.pickupDate   = document.getElementById('pickupDate')?.value || '';
         formData.mustPickupBy = document.getElementById('mustPickupBy')?.value || '';
+        formData.transportType = formData.transportType || 'open';
+        calculateAndUpdateTotal();
       }
     }
 
     function renderSummary() {
+      const miles = parseFloat(document.getElementById('distance')?.value) || 0;
+      let vehicleRows = formData.vehicles.map((v, i) => {
+        const price = calcVehiclePrice(miles, v);
+        return `
+          <div class="border-b border-[var(--line)] pb-3">
+            <div class="font-semibold text-white mb-1">Vehicle ${i + 1}: ${v.year} ${v.make} ${v.model}</div>
+            <div class="text-sm space-y-0.5">
+              <div>Type: ${v.type} | Condition: ${v.condition}</div>
+              ${v.vin ? `<div>VIN: ${v.vin}</div>` : ''}
+              ${v.modified ? '<div>✓ Modified</div>' : ''}
+              ${v.urgent   ? '<div>✓ Urgent</div>' : ''}
+              <div class="text-[var(--orange)] font-semibold mt-1">Subtotal: $${price.toLocaleString()}</div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
       const html = `
-        <div class="space-y-4 text-dim">
-          <div><strong class="text-white">Contact:</strong> ${formData.contact.fullName || '—'}</div>
-          <div><strong class="text-white">Vehicle:</strong> ${formData.vehicle.year} ${formData.vehicle.make} ${formData.vehicle.model}</div>
-          <div><strong class="text-white">VIN:</strong> ${formData.vehicle.vin || '—'}</div>
+        <div class="space-y-4">
+          <div><strong class="text-white">Contact:</strong> ${formData.contact.fullName || '—'} · ${formData.contact.email || '—'}</div>
           <div><strong class="text-white">From:</strong> ${formData.location.pickup || '—'}</div>
           <div><strong class="text-white">To:</strong> ${formData.location.delivery || '—'}</div>
-          <div class="pt-6 text-3xl font-bold text-[var(--orange)]">Total: $${formData.total.toLocaleString()}</div>
-        </div>`;
+          <div><strong class="text-white">Transport:</strong> ${formData.transportType}</div>
+          <div class="pt-2">
+            <strong class="text-white block mb-3">Vehicles (${formData.vehicles.length}):</strong>
+            <div class="space-y-3">${vehicleRows}</div>
+          </div>
+          <div class="pt-4 text-3xl font-bold text-[var(--orange)]">Total: $${formData.total.toLocaleString()}</div>
+        </div>
+      `;
       document.getElementById('summaryContent').innerHTML = html;
     }
 
@@ -523,7 +702,9 @@
         id: 'MC-' + Date.now().toString().slice(-6),
         status: 'New',
         contact: formData.contact,
-        vehicle: formData.vehicle,
+        vehicles: formData.vehicles,
+        // Keep backward compat with admin panel (first vehicle as .vehicle)
+        vehicle: formData.vehicles[0],
         location: formData.location,
         pickupDate: formData.pickupDate,
         mustPickupBy: formData.mustPickupBy,
@@ -538,7 +719,6 @@
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(orderData)
         });
-
         if (res.ok) {
           alert(`✅ Order #${orderData.id} successfully created!`);
           window.location.href = '/quote-success';

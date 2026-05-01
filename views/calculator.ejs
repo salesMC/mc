@@ -118,6 +118,10 @@
               <option value="sedan">Sedan / Compact SUV</option>
               <option value="mid-suv">Mid-size SUV</option>
               <option value="full-suv">Full-size SUV</option>
+              <option value="pickup">Pick-up Truck</option>
+              <option value="cargo-van">Cargo Van</option>
+              <option value="passenger-van">Passenger Van</option>
+              <option value="other">Other</option>
             </select>
           </div>
 
@@ -238,7 +242,7 @@
         { max: 160, rate: 1.50 },
         { max: Infinity, rate: 1.30 }
       ],
-      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20 },
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.15, 'cargo-van': 1.25, 'passenger-van': 1.25, 'other': 1.20 },
       addons: { inoperable: 75, modified: 100, urgent: 100 }
     };
 
@@ -325,6 +329,10 @@
       const vType = document.getElementById('vehicleType').value;
       if (vType === 'mid-suv') html += `<div class="flex justify-between"><span>Mid-size SUV +10%</span><span class="text-white">+$${(base*0.1).toFixed(0)}</span></div>`;
       if (vType === 'full-suv') html += `<div class="flex justify-between"><span>Full-size SUV +20%</span><span class="text-white">+$${(base*0.2).toFixed(0)}</span></div>`;
+      if (vType === 'pickup') html += `<div class="flex justify-between"><span>Pick-up Truck +15%</span><span class="text-white">+$${(base*0.15).toFixed(0)}</span></div>`;
+      if (vType === 'cargo-van') html += `<div class="flex justify-between"><span>Cargo Van +25%</span><span class="text-white">+$${(base*0.25).toFixed(0)}</span></div>`;
+      if (vType === 'passenger-van') html += `<div class="flex justify-between"><span>Passenger Van +25%</span><span class="text-white">+$${(base*0.25).toFixed(0)}</span></div>`;
+      if (vType === 'other') html += `<div class="flex justify-between"><span>Other vehicle +20%</span><span class="text-white">+$${(base*0.2).toFixed(0)}</span></div>`;
       if (document.querySelector('input[name="condition"]:checked').value === 'inoperable') html += `<div class="flex justify-between"><span>Inoperable</span><span class="text-white">+$${calculatorConfig.addons.inoperable}</span></div>`;
       if (document.getElementById('modifiedCheck').checked) html += `<div class="flex justify-between"><span>Modified vehicle</span><span class="text-white">+$${calculatorConfig.addons.modified}</span></div>`;
       if (document.getElementById('urgentCheck').checked) html += `<div class="flex justify-between"><span>Urgent Delivery</span><span class="text-white">+$${calculatorConfig.addons.urgent}</span></div>`;
