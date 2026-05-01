@@ -39,7 +39,7 @@ async function initDB() {
         vehicles    JSON,
         location    JSON,
         pickup_date VARCHAR(20),
-        must_pickup_by VARCHAR(20),
+        must_deliver_by VARCHAR(20),
         transport_type VARCHAR(20),
         total       DECIMAL(10,2) DEFAULT 0,
         created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -149,7 +149,7 @@ app.get('/api/orders', async (req, res) => {
         vehicles     : vehicles ? vehicles.map(stripPhotos) : null,
         location     : safeParse(r.location) || {},
         pickupDate   : r.pickup_date,
-        mustPickupBy : r.must_pickup_by,
+        mustDeliverBy : r.must_deliver_by,
         transportType: r.transport_type,
         total        : Number(r.total),
         createdAt    : r.created_at
@@ -189,7 +189,7 @@ app.get('/api/orders/:id', async (req, res) => {
       vehicles,
       location     : safeParse(r.location) || {},
       pickupDate   : r.pickup_date,
-      mustPickupBy : r.must_pickup_by,
+      mustDeliverBy : r.must_deliver_by,
       transportType: r.transport_type,
       total        : Number(r.total),
       createdAt    : r.created_at
@@ -207,7 +207,7 @@ app.post('/api/orders', async (req, res) => {
     await pool.execute(
       `INSERT INTO orders
          (id, status, contact, vehicle, vehicles, location,
-          pickup_date, must_pickup_by, transport_type, total, created_at)
+          pickup_date, must_deliver_by, transport_type, total, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,NOW())`,
       [
         b.id                              || ('MC-' + Date.now().toString().slice(-6)),
@@ -217,7 +217,7 @@ app.post('/api/orders', async (req, res) => {
         JSON.stringify(b.vehicles        || null),
         JSON.stringify(b.location        || {}),
         b.pickupDate                      || null,
-        b.mustPickupBy                    || null,
+        b.mustDeliverBy                    || null,
         b.transportType                   || 'open',
         b.total                           || 0,
       ]
