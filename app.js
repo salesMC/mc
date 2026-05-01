@@ -4,6 +4,11 @@ const express = require('express');
 const path    = require('path');
 const mysql   = require('mysql2/promise');
 const bcrypt  = require('bcryptjs');
+const Stripe  = require('stripe');
+
+// ==================== STRIPE ====================
+// Replace with your LIVE secret key when going live
+const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -316,6 +321,28 @@ app.delete('/api/employees/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ success: false });
+  }
+});
+
+// ==================== API: STRIPE ====================
+
+// POST create PaymentIntent — called from frontend before card charge
+app.post('/api/create-payment-intent', async (req, res) => {
+  try {
+    const { amount } = req.body;
+    if (!amount || isNaN(amount) || amount < 50) {
+      return res.status(400).json({ success: false, message: 'Invalid amount' });
+    }
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount),
+      currency: 'usd',
+      automatic_payment_methods: { enabled: true },
+      description: 'MC Transportation – Vehicle Shipping'
+    });
+    res.json({ success: true, clientSecret: paymentIntent.client_secret });
+  } catch (err) {
+    console.error('Stripe PaymentIntent error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 

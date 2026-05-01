@@ -261,9 +261,14 @@
 
     // ==================== PHOTO UPLOAD ====================
     function initPhotoUpload(vehicleIndex) {
-      const input   = document.getElementById('vehiclePhotos-' + vehicleIndex);
+      const oldInput = document.getElementById('vehiclePhotos-' + vehicleIndex);
+      if (!oldInput) return;
+
+      // Clone to remove any previous event listeners
+      const input = oldInput.cloneNode(true);
+      oldInput.parentNode.replaceChild(input, oldInput);
+
       const preview = document.getElementById('photoPreview-' + vehicleIndex);
-      if (!input) return;
 
       input.addEventListener('change', () => {
         Array.from(input.files).forEach(file => {
@@ -279,6 +284,8 @@
           };
           reader.readAsDataURL(file);
         });
+        // Reset input so same file can be re-selected
+        input.value = '';
       });
     }
 
@@ -338,11 +345,7 @@
         activeVehicleTab = formData.vehicles.length - 1;
         renderVehicleTabs();
         renderVehicleForm(activeVehicleTab);
-        setTimeout(() => initPhotoUpload(activeVehicleTab), 50);
-        setTimeout(() => {
-          document.getElementById('yearContainer-' + activeVehicleTab).appendChild(createYearSelect('year-' + activeVehicleTab));
-          initVehicleVIN(activeVehicleTab);
-        }, 60);
+        // renderVehicleForm handles yearSelect + VIN + photos internally
       };
       container.appendChild(addBtn);
     }
@@ -370,7 +373,9 @@
       if (!formContainer) return;
       formContainer.innerHTML = vehicleFormHTML(i, v);
       setTimeout(() => {
-        document.getElementById('yearContainer-' + i).appendChild(createYearSelect('year-' + i));
+        const yc = document.getElementById('yearContainer-' + i);
+        yc.innerHTML = ''; // clear before appending to prevent duplicates
+        yc.appendChild(createYearSelect('year-' + i));
         const yearSelect = document.getElementById('year-' + i);
         if (v.year) yearSelect.value = v.year;
         initPhotoUpload(i);
@@ -544,11 +549,68 @@
        <div id="summaryContent" class="bg-deep p-8 rounded-2xl space-y-4 text-dim"></div>`,
 
       // 4 Payment
-      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-8">Secure Payment</h2>
-       <div class="text-center py-12">
-         <i class="fas fa-credit-card text-6xl text-[var(--orange)] mb-6"></i>
-         <p class="text-2xl mb-8">Total: <span id="finalTotal2" class="font-bold text-orange-400"></span></p>
-         <button onclick="completeBooking()" class="btn btn-primary w-full py-6 text-xl font-semibold">Confirm & Pay Now</button>
+      `<h2 class="text-2xl md:text-3xl font-bold text-white mb-2">Secure Payment</h2>
+       <p class="text-dim mb-8">Your order will be created after payment is confirmed.</p>
+
+       <div class="bg-deep border border-[var(--line)] rounded-xl p-6 mb-8 flex items-center justify-between">
+         <div>
+           <div class="text-sm text-muted mb-1">Order Total</div>
+           <div class="text-4xl font-bold text-[var(--orange)]" id="finalTotal2"></div>
+         </div>
+         <div class="flex items-center gap-2 text-muted text-xs">
+           <i class="fas fa-lock text-[var(--lime)]"></i>
+           SSL Secured · Powered by Stripe
+         </div>
+       </div>
+
+       <div id="stripe-form">
+         <div class="space-y-5">
+           <div>
+             <label class="label-dark">Card Number</label>
+             <div id="stripe-card-number" class="input-dark" style="padding-top:0.85rem;padding-bottom:0.85rem;"></div>
+           </div>
+           <div class="grid grid-cols-2 gap-4">
+             <div>
+               <label class="label-dark">Expiry Date</label>
+               <div id="stripe-card-expiry" class="input-dark" style="padding-top:0.85rem;padding-bottom:0.85rem;"></div>
+             </div>
+             <div>
+               <label class="label-dark">CVC</label>
+               <div id="stripe-card-cvc" class="input-dark" style="padding-top:0.85rem;padding-bottom:0.85rem;"></div>
+             </div>
+           </div>
+           <div>
+             <label class="label-dark">Cardholder Name</label>
+             <input type="text" id="stripe-name" placeholder="John Smith" class="input-dark">
+           </div>
+         </div>
+
+         <div id="stripe-error" class="hidden mt-4 bg-red-900/30 border border-red-500/40 rounded-xl p-4 text-red-400 text-sm flex items-center gap-2">
+           <i class="fas fa-circle-exclamation flex-shrink-0"></i>
+           <span id="stripe-error-msg"></span>
+         </div>
+
+         <button id="stripe-pay-btn" onclick="submitStripePayment()"
+                 class="btn btn-primary w-full justify-center py-5 text-base font-semibold mt-6">
+           <i class="fas fa-lock mr-2"></i>
+           Pay <span id="stripe-pay-amount"></span> Securely
+         </button>
+
+         <div id="stripe-loading" class="hidden text-center py-4 mt-2">
+           <i class="fas fa-circle-notch fa-spin text-2xl text-[var(--orange)] mb-2 block"></i>
+           <span class="text-dim text-sm">Processing payment…</span>
+         </div>
+
+         <p class="text-xs text-muted text-center mt-5 flex items-center justify-center gap-2">
+           <i class="fab fa-stripe text-lg"></i>
+           Payments processed securely by Stripe. We never store your card details.
+         </p>
+         <div class="flex items-center justify-center gap-4 mt-4 opacity-40">
+           <i class="fab fa-cc-visa text-2xl text-white"></i>
+           <i class="fab fa-cc-mastercard text-2xl text-white"></i>
+           <i class="fab fa-cc-amex text-2xl text-white"></i>
+           <i class="fab fa-cc-discover text-2xl text-white"></i>
+         </div>
        </div>`
     ];
 
@@ -630,7 +692,13 @@
         el.classList.toggle('step-active', i === step);
       });
       document.getElementById('prevBtn').classList.toggle('hidden', step === 0);
-      document.getElementById('nextBtn').textContent = step === 4 ? 'Confirm & Pay Now' : 'Next →';
+      const nextBtnEl = document.getElementById('nextBtn');
+      if (step === 4) {
+        nextBtnEl.classList.add('hidden');
+      } else {
+        nextBtnEl.classList.remove('hidden');
+        nextBtnEl.textContent = 'Next →';
+      }
 
       if (step === 0) {
         const fn = document.getElementById('fullName');
@@ -655,8 +723,12 @@
       }
 
       if (step === 3) renderSummary();
-      if (step === 4 && document.getElementById('finalTotal2')) {
-        document.getElementById('finalTotal2').textContent = '$' + formData.total.toLocaleString();
+      if (step === 4) {
+        const t = document.getElementById('finalTotal2');
+        if (t) t.textContent = '$' + formData.total.toLocaleString();
+        const amtSpan = document.getElementById('stripe-pay-amount');
+        if (amtSpan) amtSpan.textContent = '$' + formData.total.toLocaleString();
+        setTimeout(() => initStripeElements(), 150);
       }
     }
 
@@ -715,25 +787,23 @@
       document.getElementById('summaryContent').innerHTML = html;
     }
 
-    async function completeBooking() {
-      if (!validateCurrentStep()) return;
+    // Called ONLY after Stripe payment succeeds
+    async function completeBooking(stripePaymentIntentId) {
       saveFormData();
-
       const orderData = {
         id: 'MC-' + Date.now().toString().slice(-6),
         status: 'New',
         contact: formData.contact,
         vehicles: formData.vehicles,
-        // Keep backward compat with admin panel (first vehicle as .vehicle)
         vehicle: formData.vehicles[0],
         location: formData.location,
         pickupDate: formData.pickupDate,
         mustPickupBy: formData.mustPickupBy,
         transportType: formData.transportType,
         total: formData.total,
+        stripePaymentIntentId: stripePaymentIntentId || null,
         createdAt: new Date().toISOString()
       };
-
       try {
         const res = await fetch('/api/orders', {
           method: 'POST',
@@ -741,14 +811,134 @@
           body: JSON.stringify(orderData)
         });
         if (res.ok) {
-          alert(`✅ Order #${orderData.id} successfully created!`);
           window.location.href = '/quote-success';
         } else {
-          alert("Failed to create order. Please try again.");
+          showStripeError('Order save failed. Please contact support at (502) 417-8040.');
         }
       } catch (e) {
         console.error(e);
-        alert("Connection error. Please check your internet.");
+        showStripeError('Connection error. Please check your internet and try again.');
+      }
+    }
+
+    function showStripeError(msg) {
+      const err = document.getElementById('stripe-error');
+      const errMsg = document.getElementById('stripe-error-msg');
+      if (err && errMsg) { errMsg.textContent = msg; err.classList.remove('hidden'); }
+      const btn = document.getElementById('stripe-pay-btn');
+      const loading = document.getElementById('stripe-loading');
+      if (btn) btn.classList.remove('hidden');
+      if (loading) loading.classList.add('hidden');
+    }
+
+    // ==================== STRIPE ====================
+    // Replace with your LIVE publishable key when going live
+    const STRIPE_PK = '<%= process.env.STRIPE_PUBLISHABLE_KEY %>';
+    let stripeInstance = null;
+    let cardNumber, cardExpiry, cardCvc;
+
+    function loadStripeSDK() {
+      return new Promise((resolve, reject) => {
+        if (window.Stripe) { resolve(); return; }
+        const s = document.createElement('script');
+        s.src = 'https://js.stripe.com/v3/';
+        s.onload = resolve;
+        s.onerror = () => reject(new Error('Failed to load Stripe'));
+        document.head.appendChild(s);
+      });
+    }
+
+    async function initStripeElements() {
+      try {
+        await loadStripeSDK();
+        stripeInstance = Stripe(STRIPE_PK);
+        const elements = stripeInstance.elements({
+          appearance: { theme: 'night' }
+        });
+
+        const style = {
+          base: {
+            color: '#FFFFFF',
+            fontFamily: 'Inter, system-ui, sans-serif',
+            fontSize: '16px',
+            fontSmoothing: 'antialiased',
+            '::placeholder': { color: '#8B949E' },
+            iconColor: '#FF6A3D'
+          },
+          invalid: { color: '#F87171', iconColor: '#F87171' }
+        };
+
+        cardNumber = elements.create('cardNumber', { style, showIcon: true });
+        cardExpiry = elements.create('cardExpiry', { style });
+        cardCvc    = elements.create('cardCvc',    { style });
+
+        cardNumber.mount('#stripe-card-number');
+        cardExpiry.mount('#stripe-card-expiry');
+        cardCvc.mount('#stripe-card-cvc');
+
+        cardNumber.on('change', (e) => {
+          if (e.error) showStripeError(e.error.message);
+          else { const el = document.getElementById('stripe-error'); if (el) el.classList.add('hidden'); }
+        });
+      } catch(e) {
+        console.error('Stripe init error:', e);
+        showStripeError('Payment system unavailable. Please contact us at (502) 417-8040.');
+      }
+    }
+
+    async function submitStripePayment() {
+      if (!stripeInstance || !cardNumber) {
+        showStripeError('Payment not initialized. Please refresh the page.');
+        return;
+      }
+      const name = document.getElementById('stripe-name')?.value.trim();
+      if (!name) { showStripeError('Please enter the cardholder name.'); return; }
+
+      const btn     = document.getElementById('stripe-pay-btn');
+      const loading = document.getElementById('stripe-loading');
+      const errEl   = document.getElementById('stripe-error');
+
+      if (btn) btn.classList.add('hidden');
+      if (loading) loading.classList.remove('hidden');
+      if (errEl) errEl.classList.add('hidden');
+
+      try {
+        // 1. Create PaymentIntent on server
+        const amountCents = Math.round(formData.total * 100);
+        const intentRes = await fetch('/api/create-payment-intent', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ amount: amountCents })
+        });
+        const intentData = await intentRes.json();
+        if (!intentData.success) throw new Error(intentData.message || 'Failed to create payment');
+
+        // 2. Confirm card payment with Stripe
+        const { error, paymentIntent } = await stripeInstance.confirmCardPayment(intentData.clientSecret, {
+          payment_method: {
+            card: cardNumber,
+            billing_details: {
+              name: name,
+              email: formData.contact.email || undefined,
+              phone: formData.contact.phone || undefined
+            }
+          }
+        });
+
+        if (error) {
+          showStripeError(error.message);
+          return;
+        }
+
+        if (paymentIntent.status === 'succeeded') {
+          // 3. Only NOW create the order
+          await completeBooking(paymentIntent.id);
+        } else {
+          showStripeError('Payment not completed. Status: ' + paymentIntent.status);
+        }
+      } catch(e) {
+        console.error('Payment error:', e);
+        showStripeError(e.message || 'Payment failed. Please try again.');
       }
     }
 
@@ -756,7 +946,7 @@
       if (validateCurrentStep()) {
         saveFormData();
         if (currentStep < 4) renderStep(currentStep + 1);
-        else completeBooking();
+        // Step 4 handled by Stripe submit button
       }
     }
 
