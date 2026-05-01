@@ -119,23 +119,79 @@ app.get('/api/orders', async (req, res) => {
     const [rows] = await pool.execute(
       'SELECT * FROM orders ORDER BY created_at DESC'
     );
-    const orders = rows.map(r => ({
+    // MySQL2 may return JSON columns already parsed as objects
+    const safeParse = (val) => {
+      if (!val) return null;
+      if (typeof val === 'object') return val;
+      try { return JSON.parse(val); } catch(e) { return null; }
+    };
+
+    // Strip photos from list view — only load them in detail view
+    const stripPhotos = (v) => {
+      if (!v) return v;
+      const { photos, ...rest } = v;
+      return rest;
+    };
+
+    const orders = rows.map(r => {
+      const vehicles = safeParse(r.vehicles);
+      const vehicle  = safeParse(r.vehicle) || (vehicles && vehicles.length ? vehicles[0] : null);
+      return {
+        id           : r.id,
+        status       : r.status,
+        contact      : safeParse(r.contact) || {},
+        vehicle      : stripPhotos(vehicle),
+        vehicles     : vehicles ? vehicles.map(stripPhotos) : null,
+        location     : safeParse(r.location) || {},
+        pickupDate   : r.pickup_date,
+        mustPickupBy : r.must_pickup_by,
+        transportType: r.transport_type,
+        total        : Number(r.total),
+        createdAt    : r.created_at
+      };
+    });
+    res.json(orders);
+  } catch (err) {
+    console.error('GET /api/orders:', err);
+    res.json([]);
+  }
+});
+
+// GET single order WITH photos (for detail modal)
+app.get('/api/orders/:id', async (req, res) => {
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM orders WHERE id = ?', [req.params.id]
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ success: false });
+
+    const safeParse = (val) => {
+      if (!val) return null;
+      if (typeof val === 'object') return val;
+      try { return JSON.parse(val); } catch(e) { return null; }
+    };
+
+    const r = rows[0];
+    const vehicles = safeParse(r.vehicles);
+    const vehicle  = safeParse(r.vehicle) || (vehicles && vehicles.length ? vehicles[0] : null);
+
+    res.json({
       id           : r.id,
       status       : r.status,
-      contact      : JSON.parse(r.contact),
-      vehicle      : r.vehicle ? JSON.parse(r.vehicle) : null,
-      vehicles     : r.vehicles ? JSON.parse(r.vehicles) : null,
-      location     : r.location ? JSON.parse(r.location) : {},
+      contact      : safeParse(r.contact) || {},
+      vehicle,
+      vehicles,
+      location     : safeParse(r.location) || {},
       pickupDate   : r.pickup_date,
       mustPickupBy : r.must_pickup_by,
       transportType: r.transport_type,
       total        : Number(r.total),
       createdAt    : r.created_at
-    }));
-    res.json(orders);
+    });
   } catch (err) {
-    console.error('GET /api/orders:', err);
-    res.json([]);
+    console.error('GET /api/orders/:id', err);
+    res.status(500).json({ success: false });
   }
 });
 

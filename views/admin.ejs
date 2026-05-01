@@ -491,10 +491,9 @@
 
     async function showOrderDetail(orderId) {
       try {
-        const res = await fetch('/api/orders');
-        const orders = await res.json();
-        const order = orders.find(o => o.id === orderId);
-        if (!order) return;
+        const res = await fetch('/api/orders/' + orderId);
+        const order = await res.json();
+        if (!order || !order.id) return;
 
         document.getElementById('modalOrderId').textContent = `Order ${order.id}`;
 
