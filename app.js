@@ -57,6 +57,18 @@ async function initDB() {
       )
     `);
 
+    // Таблица промокодов
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS promo_codes (
+        id         INT AUTO_INCREMENT PRIMARY KEY,
+        code       VARCHAR(50) UNIQUE NOT NULL,
+        discount   DECIMAL(5,2) NOT NULL,
+        type       ENUM('percent','fixed') NOT NULL DEFAULT 'percent',
+        active     TINYINT(1) NOT NULL DEFAULT 1,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Таблица email-подписчиков / лидов
     await conn.execute(`
       CREATE TABLE IF NOT EXISTS leads (
@@ -343,6 +355,77 @@ app.post('/api/create-payment-intent', async (req, res) => {
   } catch (err) {
     console.error('Stripe PaymentIntent error:', err.message);
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ==================== API: PROMO CODES ====================
+
+// GET all promo codes
+app.get('/api/promo-codes', async (req, res) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM promo_codes ORDER BY created_at DESC');
+    res.json(rows);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+// POST validate promo code (public — called from payment page)
+app.post('/api/promo-codes/validate', async (req, res) => {
+  const { code } = req.body;
+  if (!code) return res.status(400).json({ success: false, message: 'No code provided' });
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM promo_codes WHERE code = ? AND active = 1',
+      [code.toUpperCase().trim()]
+    );
+    if (rows.length === 0)
+      return res.status(404).json({ success: false, message: 'Invalid or expired promo code' });
+    const p = rows[0];
+    res.json({ success: true, discount: Number(p.discount), type: p.type, code: p.code });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+
+// POST create promo code
+app.post('/api/promo-codes', async (req, res) => {
+  const { code, discount, type } = req.body;
+  if (!code || !discount) return res.status(400).json({ success: false, message: 'Missing fields' });
+  try {
+    await pool.execute(
+      'INSERT INTO promo_codes (code, discount, type) VALUES (?,?,?)',
+      [code.toUpperCase().trim(), discount, type || 'percent']
+    );
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === 'ER_DUP_ENTRY')
+      return res.status(409).json({ success: false, message: 'Code already exists' });
+    res.status(500).json({ success: false });
+  }
+});
+
+// PATCH update promo code
+app.patch('/api/promo-codes/:id', async (req, res) => {
+  const { discount, type, active } = req.body;
+  try {
+    await pool.execute(
+      'UPDATE promo_codes SET discount=?, type=?, active=? WHERE id=?',
+      [discount, type || 'percent', active !== undefined ? active : 1, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
+  }
+});
+
+// DELETE promo code
+app.delete('/api/promo-codes/:id', async (req, res) => {
+  try {
+    await pool.execute('DELETE FROM promo_codes WHERE id = ?', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false });
   }
 });
 

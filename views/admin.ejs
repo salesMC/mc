@@ -180,6 +180,70 @@
           </div>
         </div>
 
+        <!-- ==================== PROMO CODES SECTION ==================== -->
+        <div class="tile">
+          <div onclick="togglePromos()" id="promosHeader"
+               class="accordion-header flex justify-between items-center py-4 border-b border-[var(--line)]">
+            <h2 class="text-2xl font-bold text-white flex items-center gap-3">
+              <i class="fas fa-tag"></i> 
+              Promo Codes
+            </h2>
+            <i id="promosIcon" class="fas fa-chevron-down text-xl transition-transform"></i>
+          </div>
+
+          <div id="promosContent" class="accordion-content pt-6">
+
+            <!-- Add new promo code -->
+            <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-5 mb-6">
+              <h3 class="text-lg font-semibold text-white mb-4">Add New Promo Code</h3>
+              <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                <div class="sm:col-span-1">
+                  <label class="label-dark">Code</label>
+                  <input id="newPromoCode" type="text" placeholder="SAVE20" class="input-admin uppercase"
+                         oninput="this.value=this.value.toUpperCase()">
+                </div>
+                <div>
+                  <label class="label-dark">Discount</label>
+                  <input id="newPromoDiscount" type="number" step="0.01" min="0" placeholder="20" class="input-admin">
+                </div>
+                <div>
+                  <label class="label-dark">Type</label>
+                  <select id="newPromoType" class="input-admin">
+                    <option value="percent">% Percent</option>
+                    <option value="fixed">$ Fixed</option>
+                  </select>
+                </div>
+                <div class="flex items-end">
+                  <button onclick="addPromoCode()" class="btn btn-primary w-full py-3">
+                    <i class="fas fa-plus"></i> Add Code
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Promo codes table -->
+            <div class="overflow-x-auto">
+              <table class="w-full text-sm">
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Discount</th>
+                    <th>Type</th>
+                    <th>Status</th>
+                    <th class="text-center w-32">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="promoCodesBody" class="text-dim"></tbody>
+              </table>
+            </div>
+
+            <div id="noPromosMessage" class="hidden text-center py-10 text-muted">
+              <i class="fas fa-tag text-4xl mb-4 opacity-40"></i>
+              <p>No promo codes yet</p>
+            </div>
+          </div>
+        </div>
+
         <!-- ==================== CALCULATOR SETTINGS (в аккордеоне) ==================== -->
         <div class="tile">
           <div onclick="toggleCalculator()" id="calculatorHeader"
@@ -321,12 +385,159 @@
           document.getElementById('adminForm').classList.remove('hidden');
           loadCurrentConfig();
           loadOrders();
+          loadPromoCodes();
         } else {
           err.classList.remove('hidden');
         }
       } catch(e) {
         err.classList.remove('hidden');
       }
+    }
+
+    // ==================== PROMO CODES ====================
+    function togglePromos() {
+      const content = document.getElementById('promosContent');
+      const icon = document.getElementById('promosIcon');
+      content.classList.toggle('open');
+      icon.classList.toggle('rotate-180');
+    }
+
+    async function loadPromoCodes() {
+      try {
+        const res = await fetch('/api/promo-codes');
+        const codes = await res.json();
+        const tbody = document.getElementById('promoCodesBody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        if (codes.length === 0) {
+          document.getElementById('noPromosMessage').classList.remove('hidden');
+          return;
+        }
+        document.getElementById('noPromosMessage').classList.add('hidden');
+
+        codes.forEach(p => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>
+              <span id="code-label-${p.id}" class="font-mono text-orange-400 font-semibold tracking-widest">${p.code}</span>
+              <input id="code-input-${p.id}" type="text" value="${p.code}"
+                     class="input-admin hidden font-mono uppercase w-36"
+                     oninput="this.value=this.value.toUpperCase()">
+            </td>
+            <td>
+              <span id="discount-label-${p.id}">${p.type === 'percent' ? p.discount + '%' : '$' + Number(p.discount).toFixed(2)}</span>
+              <input id="discount-input-${p.id}" type="number" step="0.01" value="${p.discount}" class="input-admin hidden w-24">
+            </td>
+            <td>
+              <span id="type-label-${p.id}">${p.type === 'percent' ? 'Percent' : 'Fixed'}</span>
+              <select id="type-input-${p.id}" class="input-admin hidden w-28">
+                <option value="percent" ${p.type==='percent'?'selected':''}>% Percent</option>
+                <option value="fixed"   ${p.type==='fixed'  ?'selected':''}>$ Fixed</option>
+              </select>
+            </td>
+            <td>
+              <span onclick="togglePromoActive(${p.id}, ${p.active})"
+                    class="status-badge cursor-pointer ${p.active ? 'bg-lime-500/10 text-lime-400 hover:bg-lime-500/20' : 'bg-red-500/10 text-red-400 hover:bg-red-500/20'}">
+                ${p.active ? 'Active' : 'Inactive'}
+              </span>
+            </td>
+            <td class="text-center flex items-center justify-center gap-2 py-4">
+              <button id="edit-btn-${p.id}" onclick="startEditPromo(${p.id})"
+                      class="text-cyan-400 hover:text-white p-2" title="Edit">
+                <i class="fas fa-pencil"></i>
+              </button>
+              <button id="save-btn-${p.id}" onclick="saveEditPromo(${p.id})"
+                      class="hidden text-lime-400 hover:text-white p-2" title="Save">
+                <i class="fas fa-check"></i>
+              </button>
+              <button id="cancel-btn-${p.id}" onclick="cancelEditPromo(${p.id})"
+                      class="hidden text-muted hover:text-white p-2" title="Cancel">
+                <i class="fas fa-xmark"></i>
+              </button>
+              <button onclick="deletePromoCode(${p.id})"
+                      class="text-red-400 hover:text-red-300 p-2" title="Delete">
+                <i class="fas fa-trash"></i>
+              </button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch(e) {
+        console.error('Error loading promo codes:', e);
+      }
+    }
+
+    function startEditPromo(id) {
+      ['code','discount','type'].forEach(f => {
+        document.getElementById(`${f}-label-${id}`)?.classList.add('hidden');
+        document.getElementById(`${f}-input-${id}`)?.classList.remove('hidden');
+      });
+      document.getElementById(`edit-btn-${id}`)?.classList.add('hidden');
+      document.getElementById(`save-btn-${id}`)?.classList.remove('hidden');
+      document.getElementById(`cancel-btn-${id}`)?.classList.remove('hidden');
+    }
+
+    function cancelEditPromo(id) {
+      loadPromoCodes();
+    }
+
+    async function saveEditPromo(id) {
+      const discount = document.getElementById(`discount-input-${id}`)?.value;
+      const type     = document.getElementById(`type-input-${id}`)?.value;
+      const active   = 1; // keep current active state
+      try {
+        await fetch(`/api/promo-codes/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ discount, type, active })
+        });
+        loadPromoCodes();
+      } catch(e) { alert('Error saving promo code'); }
+    }
+
+    async function togglePromoActive(id, currentActive) {
+      try {
+        const p = await (await fetch('/api/promo-codes')).json();
+        const promo = p.find(x => x.id === id);
+        if (!promo) return;
+        await fetch(`/api/promo-codes/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ discount: promo.discount, type: promo.type, active: currentActive ? 0 : 1 })
+        });
+        loadPromoCodes();
+      } catch(e) { alert('Error updating promo code'); }
+    }
+
+    async function addPromoCode() {
+      const code     = document.getElementById('newPromoCode').value.trim();
+      const discount = document.getElementById('newPromoDiscount').value;
+      const type     = document.getElementById('newPromoType').value;
+      if (!code || !discount) { alert('Please enter a code and discount value'); return; }
+      try {
+        const res = await fetch('/api/promo-codes', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code, discount, type })
+        });
+        const data = await res.json();
+        if (data.success) {
+          document.getElementById('newPromoCode').value = '';
+          document.getElementById('newPromoDiscount').value = '';
+          loadPromoCodes();
+        } else {
+          alert(data.message || 'Error creating promo code');
+        }
+      } catch(e) { alert('Error creating promo code'); }
+    }
+
+    async function deletePromoCode(id) {
+      if (!confirm('Delete this promo code?')) return;
+      try {
+        await fetch(`/api/promo-codes/${id}`, { method: 'DELETE' });
+        loadPromoCodes();
+      } catch(e) { alert('Error deleting promo code'); }
     }
 
     // ==================== ACCORDION FOR CALCULATOR ====================
@@ -630,6 +841,7 @@
       document.getElementById('adminForm').classList.remove('hidden');
       loadCurrentConfig();
       loadOrders();
+      loadPromoCodes();
     }
 
     document.getElementById('passwordInput').addEventListener('keypress', (e) => {

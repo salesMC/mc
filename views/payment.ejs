@@ -332,6 +332,7 @@
     let currentStep = 0;
     let fromAutocomplete, toAutocomplete, distanceService;
     let activeVehicleTab = 0;
+    let appliedPromo = null; // { code, discount, type }
 
     let formData = {
       contact: { fullName: '', email: '', phone: '' },
@@ -407,15 +408,46 @@
       const miles = Math.max(0, parseFloat(document.getElementById('distance')?.value) || 0);
       let grand = 0;
       formData.vehicles.forEach(v => { grand += calcVehiclePrice(miles, v); });
-      formData.total = grand;
+
+      // Apply promo discount
+      let discountAmount = 0;
+      if (appliedPromo) {
+        if (appliedPromo.type === 'percent') {
+          discountAmount = Math.round(grand * appliedPromo.discount / 100);
+        } else {
+          discountAmount = Math.min(Math.round(appliedPromo.discount * 100) / 100 * 100, grand * 100) / 100;
+          discountAmount = Math.min(appliedPromo.discount, grand);
+        }
+      }
+      formData.total = Math.max(0, grand - discountAmount);
 
       const sidebarTotal = document.getElementById('totalPriceSidebar');
       const sidebarCount = document.getElementById('vehicleCountSidebar');
-      if (sidebarTotal) sidebarTotal.textContent = '$' + grand.toLocaleString();
+      if (sidebarTotal) sidebarTotal.textContent = '$' + formData.total.toLocaleString();
       if (sidebarCount) sidebarCount.textContent = formData.vehicles.length > 1 ? formData.vehicles.length + ' vehicles' : '';
 
       const ft2 = document.getElementById('finalTotal2');
-      if (ft2) ft2.textContent = '$' + grand.toLocaleString();
+      if (ft2) ft2.textContent = '$' + formData.total.toLocaleString();
+
+      // Update discount line in summary if visible
+      updateDiscountLine(grand, discountAmount);
+    }
+
+    function updateDiscountLine(subtotal, discountAmount) {
+      const discountLine = document.getElementById('promoDiscountLine');
+      if (!discountLine) return;
+      if (appliedPromo && discountAmount > 0) {
+        discountLine.classList.remove('hidden');
+        discountLine.innerHTML = `
+          <div class="flex justify-between items-center text-lime-400">
+            <span><i class="fas fa-tag mr-1"></i> Promo <span class="font-mono font-bold">${appliedPromo.code}</span>
+              ${appliedPromo.type === 'percent' ? '(−' + appliedPromo.discount + '%)' : ''}
+            </span>
+            <span>−$${discountAmount.toLocaleString()}</span>
+          </div>`;
+      } else {
+        discountLine.classList.add('hidden');
+      }
     }
 
     // ==================== PHOTO UPLOAD ====================
@@ -790,7 +822,36 @@
 
       // 3 – Summary
       `<h2 class="text-2xl md:text-3xl font-bold text-white mb-6">Order Summary</h2>
-       <div id="summaryContent" class="bg-deep p-5 sm:p-8 rounded-2xl space-y-4 text-dim"></div>`,
+       <div id="summaryContent" class="bg-deep p-5 sm:p-8 rounded-2xl space-y-4 text-dim"></div>
+
+       <!-- Promo Code -->
+       <div class="mt-6 bg-deep border border-[var(--line)] rounded-xl p-5">
+         <h3 class="text-sm font-semibold text-white mb-3 flex items-center gap-2">
+           <i class="fas fa-tag text-[var(--orange)]"></i> Promo Code
+         </h3>
+         <div id="promoApplied" class="hidden mb-3 flex items-center justify-between bg-lime-500/10 border border-lime-500/30 rounded-lg px-4 py-3">
+           <span class="text-lime-400 text-sm font-semibold">
+             <i class="fas fa-check-circle mr-1"></i>
+             <span id="promoAppliedLabel"></span>
+           </span>
+           <button onclick="removePromo()" class="text-red-400 hover:text-red-300 text-xs ml-4">
+             <i class="fas fa-xmark"></i> Remove
+           </button>
+         </div>
+         <div id="promoInputRow" class="flex gap-2">
+           <input type="text" id="promoCodeInput" placeholder="Enter promo code" maxlength="30"
+                  class="input-dark flex-1 uppercase tracking-widest"
+                  oninput="this.value=this.value.toUpperCase()"
+                  onkeydown="if(event.key==='Enter') applyPromo()">
+           <button onclick="applyPromo()" id="promoApplyBtn"
+                   class="btn btn-cyan px-5 py-3 shrink-0 font-semibold text-sm">
+             Apply
+           </button>
+         </div>
+         <div id="promoError"  class="hidden mt-2 text-red-400 text-xs flex items-center gap-1">
+           <i class="fas fa-circle-exclamation"></i><span id="promoErrorMsg"></span>
+         </div>
+       </div>`,
 
       // 4 – Payment
       `<h2 class="text-2xl md:text-3xl font-bold text-white mb-2">Secure Payment</h2>
@@ -1023,6 +1084,16 @@
           </div>`;
       }).join('');
 
+      // Compute subtotal before discount
+      let subtotal = 0;
+      formData.vehicles.forEach(v => { subtotal += calcVehiclePrice(miles, v); });
+      let discountAmount = 0;
+      if (appliedPromo) {
+        discountAmount = appliedPromo.type === 'percent'
+          ? Math.round(subtotal * appliedPromo.discount / 100)
+          : Math.min(appliedPromo.discount, subtotal);
+      }
+
       document.getElementById('summaryContent').innerHTML = `
         <div class="space-y-3">
           <div><strong class="text-white">Contact:</strong> ${formData.contact.fullName || '—'} · ${formData.contact.email || '—'}</div>
@@ -1033,10 +1104,77 @@
             <strong class="text-white block mb-3">Vehicles (${formData.vehicles.length}):</strong>
             <div class="space-y-3">${vehicleRows}</div>
           </div>
-          <div class="pt-4 text-2xl sm:text-3xl font-bold text-[var(--orange)]">
+          <div id="promoDiscountLine" class="${appliedPromo && discountAmount > 0 ? '' : 'hidden'} pt-1"></div>
+          <div class="pt-2 text-lg text-dim">
+            Subtotal: <span class="${appliedPromo ? 'line-through opacity-50' : ''}">$${subtotal.toLocaleString()}</span>
+          </div>
+          <div class="text-2xl sm:text-3xl font-bold text-[var(--orange)]">
             Total: $${formData.total.toLocaleString()}
           </div>
         </div>`;
+
+      // Re-render discount line
+      updateDiscountLine(subtotal, discountAmount);
+
+      // Restore promo UI state
+      if (appliedPromo) {
+        document.getElementById('promoApplied')?.classList.remove('hidden');
+        document.getElementById('promoInputRow')?.classList.add('hidden');
+        const label = document.getElementById('promoAppliedLabel');
+        if (label) label.textContent = appliedPromo.code + ' — ' +
+          (appliedPromo.type === 'percent' ? appliedPromo.discount + '% off' : '$' + appliedPromo.discount + ' off');
+      }
+    }
+
+    // ==================== PROMO CODE ====================
+    async function applyPromo() {
+      const code = document.getElementById('promoCodeInput')?.value.trim().toUpperCase();
+      const errorEl  = document.getElementById('promoError');
+      const errorMsg = document.getElementById('promoErrorMsg');
+      if (!code) return;
+
+      errorEl?.classList.add('hidden');
+      const btn = document.getElementById('promoApplyBtn');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i>'; }
+
+      try {
+        const res  = await fetch('/api/promo-codes/validate', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ code })
+        });
+        const data = await res.json();
+
+        if (data.success) {
+          appliedPromo = { code: data.code, discount: data.discount, type: data.type };
+          calculateAndUpdateTotal();
+
+          // Show applied badge, hide input
+          document.getElementById('promoApplied')?.classList.remove('hidden');
+          document.getElementById('promoInputRow')?.classList.add('hidden');
+          const label = document.getElementById('promoAppliedLabel');
+          if (label) label.textContent = data.code + ' — ' +
+            (data.type === 'percent' ? data.discount + '% off' : '$' + data.discount + ' off');
+
+          // Re-render summary totals
+          renderSummary();
+        } else {
+          if (errorEl && errorMsg) { errorMsg.textContent = data.message || 'Invalid promo code'; errorEl.classList.remove('hidden'); }
+        }
+      } catch(e) {
+        if (errorEl && errorMsg) { errorMsg.textContent = 'Error validating code. Try again.'; errorEl.classList.remove('hidden'); }
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = 'Apply'; }
+      }
+    }
+
+    function removePromo() {
+      appliedPromo = null;
+      document.getElementById('promoApplied')?.classList.add('hidden');
+      document.getElementById('promoInputRow')?.classList.remove('hidden');
+      document.getElementById('promoCodeInput').value = '';
+      calculateAndUpdateTotal();
+      renderSummary();
     }
 
     // ==================== COMPLETE BOOKING ====================
@@ -1053,6 +1191,9 @@
         mustDeliverBy: formData.mustDeliverBy,
         transportType: formData.transportType,
         total: formData.total,
+        promoCode: appliedPromo ? appliedPromo.code : null,
+        promoDiscount: appliedPromo ? appliedPromo.discount : null,
+        promoType: appliedPromo ? appliedPromo.type : null,
         stripePaymentIntentId: stripePaymentIntentId || null,
         createdAt: new Date().toISOString()
       };
