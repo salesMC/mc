@@ -69,7 +69,7 @@
       transition: max-height 0.3s ease-out;
     }
     .accordion-content.open {
-      max-height: 1200px;
+      max-height: 2400px;
     }
 
     @media (max-width: 768px) {
@@ -295,7 +295,7 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 calc-grid-4">
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
               <div>
                 <label class="label-dark">Pick-up Truck</label>
                 <input id="multPickup" type="number" step="0.01" value="1.15" class="input-admin">
@@ -307,6 +307,10 @@
               <div>
                 <label class="label-dark">Passenger Van</label>
                 <input id="multPassengerVan" type="number" step="0.01" value="1.25" class="input-admin">
+              </div>
+              <div>
+                <label class="label-dark">Mini Van</label>
+                <input id="multMiniVan" type="number" step="0.01" value="1.00" class="input-admin">
               </div>
               <div>
                 <label class="label-dark">Other</label>
@@ -558,7 +562,7 @@
         { max: 160, rate: 1.50 },
         { max: Infinity, rate: 1.30 }
       ],
-      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.00, 'cargo-van': 1.00, 'passenger-van': 1.00, 'other': 1.00 },
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.00, 'cargo-van': 1.00, 'passenger-van': 1.00, 'mini-van': 1.00, 'other': 1.00 },
       addons: { inoperable: 75, modified: 100, urgent: 100 }
     };
 
@@ -573,6 +577,7 @@
       document.getElementById('multPickup').value = config.multipliers['pickup'] || 1.00;
       document.getElementById('multCargoVan').value = config.multipliers['cargo-van'] || 1.00;
       document.getElementById('multPassengerVan').value = config.multipliers['passenger-van'] || 1.00;
+      document.getElementById('multMiniVan').value = config.multipliers['mini-van'] || 1.00;
       document.getElementById('multOther').value = config.multipliers['other'] || 1.00;
       document.getElementById('addonInop').value = config.addons.inoperable;
       document.getElementById('addonMod').value = config.addons.modified;
@@ -630,6 +635,7 @@
       config.multipliers['pickup'] = parseFloat(document.getElementById('multPickup').value) || 1.00;
       config.multipliers['cargo-van'] = parseFloat(document.getElementById('multCargoVan').value) || 1.00;
       config.multipliers['passenger-van'] = parseFloat(document.getElementById('multPassengerVan').value) || 1.00;
+      config.multipliers['mini-van'] = parseFloat(document.getElementById('multMiniVan').value) || 1.00;
       config.multipliers['other'] = parseFloat(document.getElementById('multOther').value) || 1.00;
       config.addons.inoperable = parseFloat(document.getElementById('addonInop').value) || 75;
       config.addons.modified = parseFloat(document.getElementById('addonMod').value) || 100;

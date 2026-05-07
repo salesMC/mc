@@ -45,6 +45,8 @@ async function initDB() {
         created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    // Ensure transport_type column is wide enough for all vehicle type values
+    // (vehicle type is stored inside JSON columns — no column migration needed)
 
     // Таблица сотрудников
     await conn.execute(`
