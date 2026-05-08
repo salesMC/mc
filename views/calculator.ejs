@@ -117,11 +117,11 @@
             <select id="vehicleType" class="input-dark">
               <option value="sedan">Sedan / Compact SUV</option>
               <option value="mid-suv">Mid-size SUV</option>
+              <option value="mini-van">Mini Van</option>
               <option value="full-suv">Full-size SUV</option>
               <option value="pickup">Pick-up Truck</option>
               <option value="cargo-van">Cargo Van</option>
               <option value="passenger-van">Passenger Van</option>
-              <option value="mini-van">Mini Van</option>
               <option value="other">Other</option>
             </select>
           </div>
@@ -299,50 +299,91 @@
       });
     }
 
-    // ==================== PRICE CALCULATION ====================
-    function calculatePrice() {
-      const miles = Math.max(0, parseFloat(document.getElementById('distance').value) || 0);
-      let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
-      for (let tier of calculatorConfig.tiers) {
-        if (miles <= tier.max) { cpm = tier.rate; break; }
-      }
-      let subtotal = calculatorConfig.baseFee + (cpm * miles);
-      const vType = document.getElementById('vehicleType').value;
-      if (calculatorConfig.multipliers[vType]) subtotal *= calculatorConfig.multipliers[vType];
-      if (document.querySelector('input[name="condition"]:checked').value === 'inoperable') subtotal += calculatorConfig.addons.inoperable;
-      if (document.getElementById('modifiedCheck').checked) subtotal += calculatorConfig.addons.modified;
-      if (document.getElementById('urgentCheck').checked) subtotal += calculatorConfig.addons.urgent;
-      return Math.round(subtotal);
+
+// ==================== PRICE CALCULATION ====================
+function calculatePrice() {
+  const miles = Math.max(0, parseFloat(document.getElementById('distance').value) || 0);
+  let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
+  for (let tier of calculatorConfig.tiers) {
+    if (miles <= tier.max) { 
+      cpm = tier.rate; 
+      break; 
     }
+  }
+  let subtotal = calculatorConfig.baseFee + (cpm * miles);
+  
+  const vType = document.getElementById('vehicleType').value;
+  const multiplier = calculatorConfig.multipliers[vType] || 1.0;
+  
+  subtotal *= multiplier;
+  
+  if (document.querySelector('input[name="condition"]:checked').value === 'inoperable') 
+    subtotal += calculatorConfig.addons.inoperable;
+  if (document.getElementById('modifiedCheck').checked) 
+    subtotal += calculatorConfig.addons.modified;
+  if (document.getElementById('urgentCheck').checked) 
+    subtotal += calculatorConfig.addons.urgent;
 
-    function showPriceModal(total) {
-      const miles = parseFloat(document.getElementById('distance').value) || 0;
-      let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
-      for (let tier of calculatorConfig.tiers) {
-        if (miles <= tier.max) { cpm = tier.rate; break; }
-      }
-      const base = calculatorConfig.baseFee + (cpm * miles);
+  return Math.round(subtotal);
+}
 
-      let html = `
-        <div class="flex justify-between"><span>Base fee</span><span class="text-white">$${calculatorConfig.baseFee}</span></div>
-        <div class="flex justify-between"><span>Mileage (${miles} miles)</span><span class="text-white">$${(cpm * miles).toFixed(0)}</span></div>
-      `;
-      const vType = document.getElementById('vehicleType').value;
-      if (vType === 'mid-suv') html += `<div class="flex justify-between"><span>Mid-size SUV +10%</span><span class="text-white">+$${(base*0.1).toFixed(0)}</span></div>`;
-      if (vType === 'full-suv') html += `<div class="flex justify-between"><span>Full-size SUV +20%</span><span class="text-white">+$${(base*0.2).toFixed(0)}</span></div>`;
-      if (vType === 'pickup') html += `<div class="flex justify-between"><span>Pick-up Truck +15%</span><span class="text-white">+$${(base*0.15).toFixed(0)}</span></div>`;
-      if (vType === 'cargo-van') html += `<div class="flex justify-between"><span>Cargo Van +25%</span><span class="text-white">+$${(base*0.25).toFixed(0)}</span></div>`;
-      if (vType === 'passenger-van') html += `<div class="flex justify-between"><span>Passenger Van +25%</span><span class="text-white">+$${(base*0.25).toFixed(0)}</span></div>`;
-      if (vType === 'mini-van') html += `<div class="flex justify-between"><span>Mini Van</span><span class="text-white">+$0</span></div>`;
-      if (vType === 'other') html += `<div class="flex justify-between"><span>Other vehicle +20%</span><span class="text-white">+$${(base*0.2).toFixed(0)}</span></div>`;
-      if (document.querySelector('input[name="condition"]:checked').value === 'inoperable') html += `<div class="flex justify-between"><span>Inoperable</span><span class="text-white">+$${calculatorConfig.addons.inoperable}</span></div>`;
-      if (document.getElementById('modifiedCheck').checked) html += `<div class="flex justify-between"><span>Modified vehicle</span><span class="text-white">+$${calculatorConfig.addons.modified}</span></div>`;
-      if (document.getElementById('urgentCheck').checked) html += `<div class="flex justify-between"><span>Urgent Delivery</span><span class="text-white">+$${calculatorConfig.addons.urgent}</span></div>`;
-
-      document.getElementById('priceBreakdown').innerHTML = html;
-      document.getElementById('totalPriceBig').textContent = '$' + total;
-      document.getElementById('priceModal').classList.remove('hidden');
+function showPriceModal(total) {
+  const miles = parseFloat(document.getElementById('distance').value) || 0;
+  let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
+  for (let tier of calculatorConfig.tiers) {
+    if (miles <= tier.max) { 
+      cpm = tier.rate; 
+      break; 
     }
+  }
+  const base = calculatorConfig.baseFee + (cpm * miles);
+  const vType = document.getElementById('vehicleType').value;
+  const multiplier = calculatorConfig.multipliers[vType] || 1.0;
+
+  let html = `
+    <div class="flex justify-between"><span>Base fee</span><span class="text-white">$${calculatorConfig.baseFee}</span></div>
+    <div class="flex justify-between"><span>Mileage (${miles} miles × $${cpm})</span><span class="text-white">$${(cpm * miles).toFixed(0)}</span></div>
+  `;
+
+  // Vehicle type multiplier
+  if (multiplier !== 1.0) {
+    const extra = Math.round(base * (multiplier - 1));
+    html += `
+      <div class="flex justify-between">
+        <span>${getVehicleTypeLabel(vType)} (${(multiplier*100-100).toFixed(0)}%)</span>
+        <span class="text-white">+$${extra}</span>
+      </div>
+    `;
+  }
+
+  if (document.querySelector('input[name="condition"]:checked').value === 'inoperable') 
+    html += `<div class="flex justify-between"><span>Inoperable</span><span class="text-white">+$${calculatorConfig.addons.inoperable}</span></div>`;
+  
+  if (document.getElementById('modifiedCheck').checked) 
+    html += `<div class="flex justify-between"><span>Modified vehicle</span><span class="text-white">+$${calculatorConfig.addons.modified}</span></div>`;
+  
+  if (document.getElementById('urgentCheck').checked) 
+    html += `<div class="flex justify-between"><span>Urgent Delivery</span><span class="text-white">+$${calculatorConfig.addons.urgent}</span></div>`;
+
+  document.getElementById('priceBreakdown').innerHTML = html;
+  document.getElementById('totalPriceBig').textContent = '$' + total;
+  document.getElementById('priceModal').classList.remove('hidden');
+}
+
+// Helper to show nice label
+function getVehicleTypeLabel(type) {
+  const labels = {
+    'sedan': 'Sedan / Compact SUV',
+    'mid-suv': 'Mid-size SUV',
+    'full-suv': 'Full-size SUV',
+    'pickup': 'Pick-up Truck',
+    'cargo-van': 'Cargo Van',
+    'passenger-van': 'Passenger Van',
+    'mini-van': 'Mini Van',
+    'other': 'Other Vehicle'
+  };
+  return labels[type] || type;
+}
 
     // ==================== TRANSPORT, VIN, PHOTOS ====================
     const openBtn = document.getElementById('open-btn');
