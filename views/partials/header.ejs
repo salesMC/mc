@@ -144,11 +144,24 @@
         <a href="/contact" class="hidden md:inline-flex text-[15px] font-medium text-[var(--ink-dim)] hover:text-white transition-colors px-2">
           Contact
         </a>
-        <a href="/admin"
+
+        <a id="navSignIn" href="/sign-in"
            class="hidden md:inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-md transition-all text-white border border-[var(--line-soft)] hover:border-[var(--orange)] hover:text-[var(--orange)]">
           <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
           Sign In
         </a>
+
+        <a id="navDashboard" href="/exchange/listings"
+           class="hidden items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-md transition-all text-white border border-[var(--line-soft)] hover:border-[var(--cyan)] hover:text-[var(--cyan)]">
+          <i class="fas fa-gauge-high text-xs"></i>
+          <span id="navDashLabel">Dashboard</span>
+        </a>
+        <button id="navLogout" type="button"
+           class="hidden items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-md transition-all text-white border border-[var(--line-soft)] hover:border-red-400 hover:text-red-400">
+          <i class="fas fa-right-from-bracket text-xs"></i>
+          Log out
+        </button>
+
         <button id="mobile-menu-btn" class="lg:hidden w-10 h-10 flex items-center justify-center text-white active:scale-95">
           <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
         </button>
@@ -167,10 +180,18 @@
       <a href="/team"        class="block hover:text-white">About</a>
       <a href="/careers"     class="block hover:text-white">Careers</a>
       <a href="/contact"     class="block hover:text-white">Contact</a>
-      <a href="/admin" class="mt-4 inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white rounded-md border border-[var(--line-soft)]">
+      <a id="mobileSignIn" href="/sign-in" class="mt-4 inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white rounded-md border border-[var(--line-soft)]">
         <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"/></svg>
         Sign In
       </a>
+      <a id="mobileDashboard" href="/exchange/listings" class="hidden mt-2 inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-white rounded-md border border-[var(--line-soft)]">
+        <i class="fas fa-gauge-high"></i>
+        <span id="mobileDashLabel">Dashboard</span>
+      </a>
+      <button id="mobileLogout" type="button" class="hidden mt-2 inline-flex w-full items-center justify-center gap-2 px-5 py-3 text-sm font-semibold text-red-400 rounded-md border border-red-400/30">
+        <i class="fas fa-right-from-bracket"></i>
+        Log out
+      </button>
     </div>
   </div>
 
@@ -178,8 +199,71 @@
     (function() {
       const btn = document.getElementById('mobile-menu-btn');
       const menu = document.getElementById('mobile-menu');
-      if (!btn || !menu) return;
-      btn.addEventListener('click', () => menu.classList.toggle('hidden'));
+      if (btn && menu) btn.addEventListener('click', () => menu.classList.toggle('hidden'));
+
+      function mcLogout() {
+        sessionStorage.removeItem('mcAuth');
+        sessionStorage.removeItem('mcRole');
+        sessionStorage.removeItem('mcEmail');
+        sessionStorage.removeItem('mcName');
+        sessionStorage.removeItem('mcAdminAuth');
+        sessionStorage.removeItem('mcAdminEmail');
+        window.location.href = '/';
+      }
+      window.mcLogout = mcLogout;
+
+      const isAdmin = sessionStorage.getItem('mcAdminAuth') === '1';
+      const isUser = sessionStorage.getItem('mcAuth') === '1';
+      const role = sessionStorage.getItem('mcRole') || '';
+
+      const signIn = document.getElementById('navSignIn');
+      const dash = document.getElementById('navDashboard');
+      const logout = document.getElementById('navLogout');
+      const mobileSignIn = document.getElementById('mobileSignIn');
+      const mobileDash = document.getElementById('mobileDashboard');
+      const mobileLogout = document.getElementById('mobileLogout');
+
+      if (isAdmin || isUser) {
+        if (signIn) signIn.classList.add('hidden');
+        if (mobileSignIn) mobileSignIn.classList.add('hidden');
+
+        if (dash) {
+          dash.classList.remove('hidden');
+          dash.classList.add('md:inline-flex');
+          if (isAdmin) {
+            dash.href = '/admin';
+            document.getElementById('navDashLabel').textContent = 'Admin';
+          } else if (role === 'shipper') {
+            dash.href = '/exchange/shipments';
+            document.getElementById('navDashLabel').textContent = 'My Shipments';
+          } else {
+            dash.href = '/exchange/listings';
+            document.getElementById('navDashLabel').textContent = 'My Loads';
+          }
+        }
+        if (logout) {
+          logout.classList.remove('hidden');
+          logout.classList.add('md:inline-flex');
+          logout.addEventListener('click', mcLogout);
+        }
+        if (mobileDash) {
+          mobileDash.classList.remove('hidden');
+          if (isAdmin) {
+            mobileDash.href = '/admin';
+            document.getElementById('mobileDashLabel').textContent = 'Admin';
+          } else if (role === 'shipper') {
+            mobileDash.href = '/exchange/shipments';
+            document.getElementById('mobileDashLabel').textContent = 'My Shipments';
+          } else {
+            mobileDash.href = '/exchange/listings';
+            document.getElementById('mobileDashLabel').textContent = 'My Loads';
+          }
+        }
+        if (mobileLogout) {
+          mobileLogout.classList.remove('hidden');
+          mobileLogout.addEventListener('click', mcLogout);
+        }
+      }
     })();
   </script>
 </nav>

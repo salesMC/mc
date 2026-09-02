@@ -1,0 +1,1103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Carrier Dashboard | MC Exchange</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .stat-tile { text-align: center; }
+    .stat-num { font-size: 1.75rem; font-weight: 700; color: white; line-height: 1.2; }
+    .stat-label { font-size: 0.75rem; color: var(--ink-muted); margin-top: 0.35rem; }
+    .stat-link {
+      display: inline-block; margin-top: 0.65rem; font-size: 0.78rem; font-weight: 600;
+      color: var(--cyan); transition: color 0.15s;
+    }
+    .stat-link:hover { color: white; }
+
+    .data-table { width: 100%; border-collapse: separate; border-spacing: 0; min-width: 680px; table-layout: auto; }
+    .data-table th {
+      text-align: left; padding: 0.7rem 0.7rem; font-size: 0.7rem; font-weight: 600;
+      letter-spacing: 0.05em; text-transform: uppercase; color: var(--ink-muted);
+      border-bottom: 1px solid var(--line); background: var(--bg-panel);
+      white-space: nowrap;
+    }
+    .data-table td {
+      padding: 0.7rem; border-bottom: 1px solid var(--line);
+      vertical-align: middle; font-size: 0.82rem;
+    }
+    .data-table tr:hover td { background: rgba(255,106,61,0.05); }
+    .data-table .mono { font-family: ui-monospace, monospace; font-size: 0.78rem; color: var(--orange); }
+    .data-table th.col-actions,
+    .data-table td.col-actions {
+      position: sticky; right: 0; z-index: 3;
+      background: var(--bg-panel);
+      min-width: 72px; width: 72px;
+      text-align: center;
+      box-shadow: -6px 0 10px -6px rgba(0,0,0,0.5);
+    }
+    .data-table tr:hover td.col-actions { background: #1C2128; }
+    .data-table th.col-status,
+    .data-table td.col-status { white-space: nowrap; min-width: 96px; }
+    #loadsTableWrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      border-radius: 0.875rem;
+    }
+    .route-line { color: white; font-weight: 600; }
+    .route-sub { font-size: 0.75rem; color: var(--ink-muted); margin-top: 0.15rem; }
+
+    .status-badge {
+      display: inline-block; padding: 0.25rem 0.65rem; border-radius: 9999px;
+      font-size: 0.72rem; font-weight: 600; white-space: nowrap;
+    }
+    .badge-available { background: rgba(34,211,238,0.12); color: var(--cyan); border: 1px solid rgba(34,211,238,0.3); }
+    .badge-booked { background: rgba(255,106,61,0.12); color: var(--orange); border: 1px solid rgba(255,106,61,0.3); }
+    .badge-in_progress { background: rgba(251,191,36,0.12); color: #FBBF24; border: 1px solid rgba(251,191,36,0.3); }
+    .badge-delivered { background: rgba(167,139,250,0.12); color: var(--purple); border: 1px solid rgba(167,139,250,0.3); }
+    .badge-completed { background: rgba(190,242,100,0.12); color: var(--lime); border: 1px solid rgba(190,242,100,0.3); }
+    .badge-default { background: rgba(255,255,255,0.05); color: var(--ink-muted); border: 1px solid var(--line); }
+
+    .btn-bid-ex {
+      padding: 0.5rem 0.95rem; border-radius: 0.5rem;
+      border: 1px solid var(--line-soft); background: transparent;
+      color: white; font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-bid-ex:hover { border-color: var(--orange); color: var(--orange); }
+    .btn-book-ex {
+      padding: 0.5rem 0.95rem; border-radius: 0.5rem; border: none;
+      background: var(--orange); color: white;
+      font-size: 0.82rem; font-weight: 600; cursor: pointer;
+      box-shadow: 0 0 0 1px rgba(255,106,61,0.4);
+      transition: all 0.15s;
+    }
+    .btn-book-ex:hover { background: var(--orange-hover); }
+    .btn-action {
+      padding: 0.4rem 0.75rem; border-radius: 0.4rem; font-size: 0.78rem; font-weight: 600;
+      border: 1px solid var(--line-soft); background: transparent; color: var(--ink-dim);
+      cursor: pointer; transition: all 0.15s;
+    }
+    .btn-action:hover { border-color: var(--cyan); color: var(--cyan); }
+    .btn-action.primary { border-color: rgba(255,106,61,0.4); color: var(--orange); }
+    .btn-action.primary:hover { background: rgba(255,106,61,0.1); }
+
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 100;
+      background: rgba(0,0,0,0.75); backdrop-filter: blur(4px);
+      display: flex; align-items: center; justify-content: center; padding: 1rem;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal-box {
+      background: var(--bg-panel); border: 1px solid var(--line);
+      border-radius: 0.875rem; width: 100%; max-width: 520px;
+      max-height: 90vh; overflow-y: auto;
+      box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+    }
+    .modal-box.modal-wide { max-width: 920px; }
+    .modal-header {
+      padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--line);
+      display: flex; justify-content: space-between; align-items: flex-start;
+    }
+    .modal-body { padding: 1.5rem; }
+    .load-summary {
+      background: var(--bg); border: 1px solid var(--line);
+      border-radius: 0.5rem; padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+    }
+
+    .detail-card {
+      background: var(--bg); border: 1px solid var(--line);
+      border-radius: 0.75rem; overflow: hidden;
+    }
+    .detail-card-head {
+      background: rgba(255,106,61,0.1); border-bottom: 1px solid var(--line);
+      padding: 0.65rem 1rem; font-size: 0.72rem; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase; color: var(--orange);
+    }
+    .detail-card-head.cyan { background: rgba(34,211,238,0.08); color: var(--cyan); }
+    .detail-card-body { padding: 1rem; font-size: 0.875rem; color: var(--ink-dim); line-height: 1.55; }
+    .detail-card-body strong { color: white; font-weight: 600; }
+    .detail-meta { color: var(--ink-muted); font-size: 0.8rem; }
+    .vehicle-detail-row {
+      display: grid; grid-template-columns: 1.4fr 1fr 1fr auto;
+      gap: 1rem; padding: 1rem 0; border-bottom: 1px solid var(--line);
+    }
+    .vehicle-detail-row:last-child { border-bottom: none; }
+    .listing-clickable { cursor: pointer; transition: border-color 0.15s; }
+    .listing-clickable:hover { border-color: rgba(255,106,61,0.45); }
+    @media (max-width: 700px) {
+      .vehicle-detail-row { grid-template-columns: 1fr; gap: 0.5rem; }
+    }
+    .contact-dropdown {
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 10;
+      background: var(--bg-panel); border: 1px solid var(--line);
+      border-radius: 0.5rem; margin-top: 0.25rem; max-height: 160px; overflow-y: auto;
+    }
+    .contact-item {
+      padding: 0.65rem 1rem; cursor: pointer; font-size: 0.875rem;
+      border-bottom: 1px solid var(--line);
+    }
+    .contact-item:hover { background: rgba(255,106,61,0.08); color: var(--orange); }
+    .contact-item:last-child { border-bottom: none; }
+
+    .toolbar-input {
+      max-width: 180px; padding: 0.6rem 0.9rem; font-size: 0.85rem;
+    }
+
+    @media (max-width: 900px) {
+      .hide-md { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+  <%- include('../partials/header') %>
+  <%- include('../partials/exchange-header') %>
+
+  <main class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- Page title -->
+    <div class="flex flex-wrap justify-between items-center gap-4 mb-6">
+      <div>
+        <h1 class="text-2xl font-bold text-white" id="pageTitle">Carrier Dashboard</h1>
+        <p class="text-sm text-muted mt-1" id="pageSubtitle">Browse available loads and manage your bookings.</p>
+      </div>
+      <button id="refreshBtn" class="btn btn-ghost py-2 px-4 text-sm">
+        <i class="fas fa-rotate"></i> Refresh
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6" id="carrierStats">
+      <div class="tile p-4 stat-tile cursor-pointer hover:border-[var(--cyan)]" data-goto="available">
+        <div class="stat-label">Available Shipments</div>
+        <div class="stat-num text-cyan" id="statAvailable">—</div>
+        <a href="/exchange/listings?view=available" class="stat-link">View Shipments</a>
+      </div>
+      <div class="tile p-4 stat-tile cursor-pointer" data-goto="in_progress">
+        <div class="stat-label">In Progress Loads</div>
+        <div class="stat-num text-orange" id="statInProgress">—</div>
+        <a href="/exchange/listings?view=in_progress" class="stat-link">View Loads</a>
+      </div>
+      <div class="tile p-4 stat-tile cursor-pointer" data-goto="delivered">
+        <div class="stat-label">Delivered Loads</div>
+        <div class="stat-num text-purple" id="statDelivered">—</div>
+        <a href="/exchange/listings?view=delivered" class="stat-link">View Loads</a>
+      </div>
+      <div class="tile p-4 stat-tile cursor-pointer" data-goto="completed">
+        <div class="stat-label">Completed Loads</div>
+        <div class="stat-num text-[var(--lime)]" id="statCompleted">—</div>
+        <a href="/exchange/listings?view=completed" class="stat-link">View Loads</a>
+      </div>
+    </div>
+
+    <!-- Toolbar (available only) -->
+    <div id="availableToolbar" class="tile p-4 mb-6 flex flex-wrap gap-3 items-center hidden">
+      <input type="text" id="filterOrigin" class="input-dark toolbar-input" placeholder="Origin (City / State)">
+      <input type="text" id="filterDest" class="input-dark toolbar-input" placeholder="Destination">
+      <input type="text" id="filterVehicle" class="input-dark toolbar-input" placeholder="Vehicle…">
+      <select id="sortSelect" class="input-dark toolbar-input">
+        <option value="newest">Newest First</option>
+        <option value="price_high">Price: High to Low</option>
+        <option value="price_low">Price: Low to High</option>
+      </select>
+      <button id="applyFilterBtn" class="btn btn-ghost py-2 px-4 text-sm">Filter</button>
+      <button id="resetFilterBtn" class="btn btn-primary py-2 px-4 text-sm">Reset</button>
+    </div>
+
+    <div class="flex items-center justify-between mb-4">
+      <p class="text-sm text-muted"><span id="listingCount" class="text-white font-semibold">0</span> <span id="listingCountLabel">items</span></p>
+    </div>
+
+    <!-- Available listings cards (mobile-friendly) + table for desktop -->
+    <div id="listingsContainer" class="space-y-3"></div>
+
+    <!-- My loads table -->
+    <div id="loadsTableWrap" class="tile hidden p-0">
+      <table class="data-table">
+        <thead id="loadsTableHead"></thead>
+        <tbody id="loadsTableBody"></tbody>
+      </table>
+    </div>
+
+    <div id="listingsEmpty" class="hidden tile text-center py-16 text-muted">
+      <i class="fas fa-truck text-3xl mb-3 opacity-30"></i>
+      <p id="emptyMessage">No items match your view.</p>
+    </div>
+  </main>
+
+  <!-- Place Bid Modal -->
+  <div id="bidModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <h2 class="text-lg font-bold text-white">Place Bid</h2>
+          <p class="text-sm text-muted mt-0.5">Place an instant bid on this load.</p>
+        </div>
+        <button id="closeBidModal" class="text-muted hover:text-white text-xl leading-none">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="load-summary" id="bidLoadSummary"></div>
+        <p class="text-xs text-muted mb-4">* You may only place a bid on each load every 30 minutes.</p>
+        <div class="space-y-4">
+          <div>
+            <label class="label-dark">Bid Amount</label>
+            <input id="bidAmount" type="number" min="1" step="1" class="input-dark" placeholder="Enter your bid">
+          </div>
+          <div style="position:relative;">
+            <label class="label-dark">Contact</label>
+            <input id="bidContact" type="text" class="input-dark" placeholder="Search contacts or add new" autocomplete="off">
+            <p class="text-xs text-muted mt-1">Enter at least 3 characters to see results.</p>
+            <div id="contactDropdown" class="contact-dropdown hidden"></div>
+          </div>
+          <div>
+            <label class="label-dark">Pickup &amp; Delivery Estimates</label>
+            <div id="estimatesLoading" class="text-sm text-muted py-3">
+              <i class="fas fa-spinner fa-spin mr-2"></i>Loading date options...
+            </div>
+            <div id="estimatesForm" class="hidden space-y-3">
+              <div>
+                <label class="text-xs text-muted">Pickup Estimate</label>
+                <select id="pickupEstimate" class="input-dark mt-1" style="padding:0.65rem 1rem;font-size:0.875rem;"></select>
+              </div>
+              <div>
+                <label class="text-xs text-muted">Delivery Estimate</label>
+                <select id="deliveryEstimate" class="input-dark mt-1" style="padding:0.65rem 1rem;font-size:0.875rem;"></select>
+              </div>
+            </div>
+          </div>
+          <div id="bidError" class="hidden text-sm text-red-400"></div>
+          <div id="bidSuccess" class="hidden text-sm text-[var(--lime)]"></div>
+          <button id="submitBid" class="btn btn-primary w-full justify-center py-3">Submit Bid</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Load Detail Modal -->
+  <div id="detailModal" class="modal-overlay hidden">
+    <div class="modal-box modal-wide">
+      <div class="modal-header">
+        <div>
+          <h2 class="text-lg font-bold text-white" id="detailTitle">Load Details</h2>
+          <p class="text-sm text-muted mt-0.5" id="detailSub">Full shipment information</p>
+        </div>
+        <button id="closeDetailModal" class="text-muted hover:text-white text-xl leading-none">&times;</button>
+      </div>
+      <div class="modal-body" id="detailBody">
+        <div class="text-center text-muted py-10"><i class="fas fa-spinner fa-spin mr-2"></i>Loading…</div>
+      </div>
+      <div class="px-6 pb-6 flex flex-wrap gap-3 justify-end border-t border-[var(--line)] pt-4" id="detailActions"></div>
+    </div>
+  </div>
+
+  <!-- Update Load Modal -->
+  <div id="loadModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <h2 class="text-lg font-bold text-white" id="loadModalTitle">Update Load</h2>
+          <p class="text-sm text-muted mt-0.5" id="loadModalSub"></p>
+        </div>
+        <button id="closeLoadModal" class="text-muted hover:text-white text-xl leading-none">&times;</button>
+      </div>
+      <div class="modal-body space-y-4">
+        <div>
+          <label class="label-dark">Driver Name</label>
+          <input id="loadDriver" type="text" class="input-dark" placeholder="Driver full name">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="label-dark">Pickup ETA</label>
+            <input id="loadPickupEta" type="date" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Drop-off ETA</label>
+            <input id="loadDropoffEta" type="date" class="input-dark">
+          </div>
+        </div>
+        <div>
+          <label class="label-dark">Status</label>
+          <select id="loadStatus" class="input-dark">
+            <option value="Booked">Booked</option>
+            <option value="In Progress">In Progress</option>
+            <option value="Delivered">Delivered</option>
+            <option value="Completed">Completed</option>
+          </select>
+        </div>
+        <div id="carrierDocsSection" class="space-y-3 hidden">
+          <p class="text-xs text-muted">When finishing the load, upload Invoice and/or BOL for the shipper.</p>
+          <div>
+            <label class="label-dark">Invoice</label>
+            <input id="loadInvoice" type="file" accept=".pdf,.png,.jpg,.jpeg,image/*,.doc,.docx" class="input-dark text-sm file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-orange file:text-white">
+            <div id="loadInvoiceCurrent" class="text-xs text-muted mt-1"></div>
+          </div>
+          <div>
+            <label class="label-dark">BOL (Bill of Lading)</label>
+            <input id="loadBol" type="file" accept=".pdf,.png,.jpg,.jpeg,image/*,.doc,.docx" class="input-dark text-sm file:mr-3 file:py-1 file:px-3 file:rounded file:border-0 file:bg-orange file:text-white">
+            <div id="loadBolCurrent" class="text-xs text-muted mt-1"></div>
+          </div>
+        </div>
+        <div id="loadError" class="hidden text-sm text-red-400"></div>
+        <button id="saveLoadBtn" class="btn btn-primary w-full justify-center py-3">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <%- include('../partials/footer') %>
+
+  <script>
+  (function () {
+    if (sessionStorage.getItem('mcRole') !== 'carrier') {
+      window.location.href = '/sign-in';
+      return;
+    }
+
+    const carrierEmail = sessionStorage.getItem('mcEmail') || '';
+    const params = new URLSearchParams(location.search);
+    let currentView = params.get('view') || 'available';
+
+    let allListings = [];
+    let myLoads = [];
+    let activeListing = null;
+    let selectedContact = null;
+    let contactTimer = null;
+    let activeLoadId = null;
+
+    const modal = document.getElementById('bidModal');
+    const loadModal = document.getElementById('loadModal');
+    const bidLoadSummary = document.getElementById('bidLoadSummary');
+    const bidAmount = document.getElementById('bidAmount');
+    const bidContact = document.getElementById('bidContact');
+    const contactDropdown = document.getElementById('contactDropdown');
+    const estimatesLoading = document.getElementById('estimatesLoading');
+    const estimatesForm = document.getElementById('estimatesForm');
+    const pickupEstimate = document.getElementById('pickupEstimate');
+    const deliveryEstimate = document.getElementById('deliveryEstimate');
+    const bidError = document.getElementById('bidError');
+    const bidSuccess = document.getElementById('bidSuccess');
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s || '';
+      return d.innerHTML;
+    }
+
+    function statusBadge(status) {
+      const s = (status || 'Available').toLowerCase().replace(/\s+/g, '_');
+      const map = {
+        available: 'badge-available',
+        new: 'badge-available',
+        posted: 'badge-available',
+        booked: 'badge-booked',
+        in_progress: 'badge-in_progress',
+        delivered: 'badge-delivered',
+        completed: 'badge-completed',
+        done: 'badge-completed'
+      };
+      const cls = map[s] || 'badge-default';
+      return `<span class="status-badge ${cls}">${esc(status || 'Available')}</span>`;
+    }
+
+    function perVehicleRate(l) {
+      const rate = l.ratePerMile || (l.miles > 0 ? l.price / l.miles : 0);
+      const suffix = (l.vehicleCount || 1) > 1 ? ' per vehicle' : '';
+      return `$${Number(rate).toFixed(2)}/mi${suffix}`;
+    }
+
+    function setViewUI() {
+      const titles = {
+        available: ['Available Shipments', 'Loads open for bidding and booking.'],
+        all: ['All Loads', 'Every load you have booked or completed.'],
+        in_progress: ['In Progress Loads', 'Loads currently on the road.'],
+        delivered: ['Delivered Loads', 'Loads delivered, awaiting completion.'],
+        completed: ['Completed Loads', 'Fully finished and closed loads.']
+      };
+      const t = titles[currentView] || titles.available;
+      document.getElementById('pageTitle').textContent = t[0];
+      document.getElementById('pageSubtitle').textContent = t[1];
+
+      const isAvailable = currentView === 'available';
+      document.getElementById('availableToolbar').classList.toggle('hidden', !isAvailable);
+      document.getElementById('listingsContainer').classList.toggle('hidden', !isAvailable);
+      document.getElementById('loadsTableWrap').classList.toggle('hidden', isAvailable);
+    }
+
+    function renderAvailable(list) {
+      const container = document.getElementById('listingsContainer');
+      const empty = document.getElementById('listingsEmpty');
+      document.getElementById('listingCount').textContent = list.length;
+      document.getElementById('listingCountLabel').textContent = 'Available Listings';
+
+      if (!list.length) {
+        container.innerHTML = '';
+        empty.classList.remove('hidden');
+        document.getElementById('emptyMessage').textContent = 'No listings match your search.';
+        return;
+      }
+      empty.classList.add('hidden');
+
+      container.innerHTML = list.map(l => `
+        <div class="tile p-5 md:p-6 listing-clickable" data-detail-id="${esc(l.id)}">
+          <div class="flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
+            <div class="flex-1 min-w-0">
+              <div class="text-xs mono mb-1">${esc(l.id)}</div>
+              <div class="flex items-center gap-3 flex-wrap">
+                <div>
+                  <div class="route-line">${esc(l.origin.city)}, ${esc(l.origin.state)}</div>
+                  <div class="route-sub">Pickup ${esc(l.origin.pickupLabel || 'TBD')}</div>
+                </div>
+                <span class="text-muted text-sm"><i class="fas fa-arrow-right"></i></span>
+                <div>
+                  <div class="route-line">${esc(l.destination.city)}, ${esc(l.destination.state)}</div>
+                  <div class="route-sub">Deliver ${esc(l.destination.deliverDate || 'TBD')}</div>
+                </div>
+              </div>
+              <div class="text-xs text-muted mt-2">${esc(l.postedAgo || '')} · <span class="text-cyan">View details</span></div>
+            </div>
+            <div class="text-center md:text-left shrink-0">
+              <div class="text-sm text-dim mb-0.5">${esc(l.vehicle)}</div>
+              <div class="text-xl font-bold text-orange">$${Number(l.price).toLocaleString()}</div>
+              <div class="text-xs text-muted mt-0.5">${Number(l.miles || 0).toLocaleString()} mi · ${perVehicleRate(l)}</div>
+            </div>
+            <div class="flex flex-wrap gap-2 shrink-0 md:justify-end">
+              <button class="btn-bid-ex" data-id="${esc(l.id)}" data-action="bid">$ Bid</button>
+              <button class="btn-book-ex" data-id="${esc(l.id)}" data-price="${l.price}" data-action="book">Book $${Number(l.price).toLocaleString()}</button>
+            </div>
+          </div>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('[data-detail-id]').forEach(card => {
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('[data-action]')) return;
+          openDetailModal(card.dataset.detailId);
+        });
+      });
+      container.querySelectorAll('[data-action="bid"]').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); openBidModal(btn.dataset.id); });
+      });
+      container.querySelectorAll('[data-action="book"]').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); bookLoad(btn.dataset.id, btn.dataset.price); });
+      });
+    }
+
+    function renderLoadsTable(list) {
+      const head = document.getElementById('loadsTableHead');
+      const body = document.getElementById('loadsTableBody');
+      const empty = document.getElementById('listingsEmpty');
+      document.getElementById('listingCount').textContent = list.length;
+      document.getElementById('listingCountLabel').textContent = 'Loads';
+
+      head.innerHTML = `
+        <tr>
+          <th>Id</th>
+          <th class="hide-md">Shipment</th>
+          <th>Driver</th>
+          <th>Pickup / DropOff</th>
+          <th class="hide-md">Vehicles</th>
+          <th class="hide-md">Pickup ETA</th>
+          <th class="hide-md">Drop-off ETA</th>
+          <th class="col-status">Status</th>
+          <th class="col-actions">Actions</th>
+        </tr>`;
+
+      if (!list.length) {
+        body.innerHTML = '';
+        empty.classList.remove('hidden');
+        document.getElementById('emptyMessage').textContent = 'No loads in this view yet.';
+        document.getElementById('loadsTableWrap').classList.add('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+      document.getElementById('loadsTableWrap').classList.remove('hidden');
+
+      body.innerHTML = list.map(l => {
+        const shipId = l.listingId || l.listing_id || '';
+        return `
+        <tr class="listing-clickable" data-ship-id="${esc(shipId)}" style="cursor:pointer;">
+          <td class="mono">${esc(String(l.id))}</td>
+          <td class="mono hide-md">${esc(shipId || '—')}</td>
+          <td>${esc(l.driverName || l.driver_name || '—')}</td>
+          <td>
+            <div class="route-line text-sm">${esc(l.originCity || l.origin_city || '')}${l.originState || l.origin_state ? ', ' + esc(l.originState || l.origin_state) : ''}</div>
+            <div class="route-sub">${esc(l.destCity || l.dest_city || '')}${l.destState || l.dest_state ? ', ' + esc(l.destState || l.dest_state) : ''}</div>
+          </td>
+          <td class="hide-md">${esc(String(l.vehicleCount || l.vehicle_count || 1))}</td>
+          <td class="hide-md text-xs">${esc(l.pickupEta || l.pickup_eta || '—')}</td>
+          <td class="hide-md text-xs">${esc(l.dropoffEta || l.dropoff_eta || '—')}</td>
+          <td class="col-status">${statusBadge(l.status)}</td>
+          <td class="col-actions">
+            <button class="btn-action primary" data-load-id="${esc(String(l.id))}" data-action="edit" title="Update">
+              <i class="fas fa-pen"></i>
+            </button>
+          </td>
+        </tr>`;
+      }).join('');
+
+      body.querySelectorAll('tr[data-ship-id]').forEach(tr => {
+        tr.addEventListener('click', (e) => {
+          if (e.target.closest('[data-action]')) return;
+          const sid = tr.dataset.shipId;
+          if (sid) openDetailModal(sid);
+        });
+      });
+      body.querySelectorAll('[data-action="edit"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openLoadModal(btn.dataset.loadId);
+        });
+      });
+    }
+
+    function formatDate(v) {
+      if (!v) return '';
+      try {
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return String(v);
+        return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+      } catch { return String(v); }
+    }
+
+    function timeAgo(dateStr) {
+      if (!dateStr) return '';
+      const t = new Date(dateStr).getTime();
+      if (isNaN(t)) return '';
+      const mins = Math.floor((Date.now() - t) / 60000);
+      if (mins < 1) return 'just now';
+      if (mins < 60) return mins + ' min ago';
+      const hrs = Math.floor(mins / 60);
+      if (hrs < 24) return hrs + ' hour' + (hrs > 1 ? 's' : '') + ' ago';
+      const days = Math.floor(hrs / 24);
+      return days + ' day' + (days > 1 ? 's' : '') + ' ago';
+    }
+
+    function dash(v) { return v ? esc(String(v)) : '—'; }
+
+    function openDetailModal(id) {
+      const detailModal = document.getElementById('detailModal');
+      const body = document.getElementById('detailBody');
+      const actions = document.getElementById('detailActions');
+      body.innerHTML = '<div class="text-center text-muted py-10"><i class="fas fa-spinner fa-spin mr-2"></i>Loading…</div>';
+      actions.innerHTML = '';
+      detailModal.classList.remove('hidden');
+
+      fetch(`/api/exchange/listings/${encodeURIComponent(id)}`)
+        .then(r => r.json())
+        .then(d => {
+          if (!d || !d.id) {
+            body.innerHTML = '<p class="text-red-400">Could not load details.</p>';
+            return;
+          }
+          document.getElementById('detailTitle').textContent = 'Load ' + d.id;
+          document.getElementById('detailSub').textContent =
+            (d.origin?.city || '') + (d.origin?.state ? ', ' + d.origin.state : '') +
+            ' → ' + (d.destination?.city || '') + (d.destination?.state ? ', ' + d.destination.state : '');
+
+          const shipper = d.shipper || {};
+          const sc = d.shipperContact || {};
+          const pickup = d.pickup || {};
+          const dropoff = d.dropoff || {};
+          const vehicles = d.vehicles || [];
+
+          const vehicleHtml = vehicles.map((v, i) => `
+            <div class="vehicle-detail-row">
+              <div>
+                <div class="font-semibold text-white text-base">${dash(v.label)}</div>
+                ${v.vin ? `<div class="detail-meta mt-1">VIN: <span class="mono text-orange">${esc(v.vin)}</span></div>` : ''}
+                ${v.stockNumber ? `<div class="detail-meta">Stock #: ${esc(v.stockNumber)}</div>` : ''}
+                ${v.curbWeight ? `<div class="detail-meta">Curb Weight: ${esc(v.curbWeight)}</div>` : ''}
+              </div>
+              <div class="text-sm text-dim space-y-0.5">
+                ${v.type ? `<div><span class="text-muted">Type:</span> ${esc(v.type)}</div>` : ''}
+                ${v.condition ? `<div><span class="text-muted">Condition:</span> ${esc(v.condition)}</div>` : ''}
+                ${v.dimensions ? `<div><span class="text-muted">Dimensions:</span> ${esc(v.dimensions)}</div>` : ''}
+                ${v.color ? `<div><span class="text-muted">Color:</span> ${esc(v.color)}</div>` : ''}
+                ${v.runsAndDrives !== undefined ? `<div><span class="text-muted">Runs & drives:</span> ${v.runsAndDrives ? 'Yes' : 'No'}</div>` : ''}
+                ${v.hasKeys !== undefined ? `<div><span class="text-muted">Has keys:</span> ${v.hasKeys ? 'Yes' : 'No'}</div>` : ''}
+              </div>
+              <div class="text-sm text-dim space-y-0.5">
+                ${v.trim ? `<div><span class="text-muted">Trim:</span> ${esc(v.trim)}</div>` : ''}
+                ${v.bodySubType ? `<div><span class="text-muted">Body:</span> ${esc(v.bodySubType)}</div>` : ''}
+                ${v.gatePass ? `<div><span class="text-muted">Gate pass:</span> ${esc(v.gatePass)}</div>` : ''}
+                ${v.modified ? `<div class="text-orange">Modified / custom</div>` : ''}
+                ${v.urgent ? `<div class="text-orange">Urgent</div>` : ''}
+              </div>
+              <div class="text-right">
+                <div class="text-lg font-bold text-orange">$${Number(v.price || d.price || 0).toLocaleString()}</div>
+              </div>
+            </div>
+          `).join('');
+
+          body.innerHTML = `
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+              <div class="detail-card">
+                <div class="detail-card-head">Shipper</div>
+                <div class="detail-card-body">
+                  <div class="font-semibold text-white mb-1">${dash(shipper.company || shipper.name)}</div>
+                  ${shipper.address ? `<div>${esc(shipper.address)}</div>` : ''}
+                  ${shipper.phone ? `<div class="mt-1">Phone: <a href="tel:${esc(shipper.phone)}" class="text-cyan hover:text-white">${esc(shipper.phone)}</a></div>` : ''}
+                  ${shipper.email ? `<div>Email: <a href="mailto:${esc(shipper.email)}" class="text-cyan hover:text-white">${esc(shipper.email)}</a></div>` : ''}
+                  ${!shipper.company && !shipper.name && !shipper.email ? '<div class="text-muted">Shipper details not provided</div>' : ''}
+                </div>
+              </div>
+              <div class="detail-card">
+                <div class="detail-card-head cyan">Shipper Contact</div>
+                <div class="detail-card-body">
+                  <div class="font-semibold text-white mb-1">${dash(sc.name)}</div>
+                  ${sc.phone ? `<div>Phone: <a href="tel:${esc(sc.phone)}" class="text-cyan hover:text-white">${esc(sc.phone)}</a></div>` : ''}
+                  ${sc.email ? `<div>Email: <a href="mailto:${esc(sc.email)}" class="text-cyan hover:text-white">${esc(sc.email)}</a></div>` : ''}
+                  ${!sc.name && !sc.phone && !sc.email ? '<div class="text-muted">No contact on file</div>' : ''}
+                </div>
+              </div>
+              <div class="detail-card">
+                <div class="detail-card-head">Pickup Location</div>
+                <div class="detail-card-body">
+                  <div class="font-semibold text-white mb-1">${dash(pickup.name)}</div>
+                  <div>${dash(pickup.address)}</div>
+                  ${pickup.contact ? `<div class="mt-2"><span class="text-muted">Contact:</span> ${esc(pickup.contact)}</div>` : ''}
+                  ${pickup.phone ? `<div><span class="text-muted">Phone:</span> <a href="tel:${esc(pickup.phone)}" class="text-cyan hover:text-white">${esc(pickup.phone)}</a></div>` : ''}
+                  <div class="mt-2"><span class="text-muted">Pickup ETA:</span> <strong>${dash(pickup.eta)}</strong></div>
+                  ${pickup.unavailable ? `<div><span class="text-muted">Unavailable:</span> ${esc(pickup.unavailable)}</div>` : ''}
+                </div>
+              </div>
+              <div class="detail-card">
+                <div class="detail-card-head cyan">Drop-off Location</div>
+                <div class="detail-card-body">
+                  <div class="font-semibold text-white mb-1">${dash(dropoff.name)}</div>
+                  <div>${dash(dropoff.address)}</div>
+                  ${dropoff.contact ? `<div class="mt-2"><span class="text-muted">Contact:</span> ${esc(dropoff.contact)}</div>` : ''}
+                  ${dropoff.phone ? `<div><span class="text-muted">Phone:</span> <a href="tel:${esc(dropoff.phone)}" class="text-cyan hover:text-white">${esc(dropoff.phone)}</a></div>` : ''}
+                  <div class="mt-2"><span class="text-muted">Drop-off ETA:</span> <strong>${dash(dropoff.eta)}</strong></div>
+                  ${dropoff.unavailable ? `<div><span class="text-muted">Unavailable:</span> ${esc(dropoff.unavailable)}</div>` : ''}
+                </div>
+              </div>
+              ${pickup.notes || dropoff.notes ? `
+              <div class="detail-card">
+                <div class="detail-card-head">Pickup Notes</div>
+                <div class="detail-card-body">${pickup.notes ? esc(pickup.notes) : '<span class="text-muted">None</span>'}</div>
+              </div>
+              <div class="detail-card">
+                <div class="detail-card-head cyan">Drop-off Notes</div>
+                <div class="detail-card-body">${dropoff.notes ? esc(dropoff.notes) : '<span class="text-muted">None</span>'}</div>
+              </div>` : ''}
+            </div>
+
+            <div class="detail-card mb-4">
+              <div class="detail-card-head" style="background:rgba(190,242,100,0.08);color:var(--lime);">Vehicles</div>
+              <div class="detail-card-body py-2">
+                ${vehicleHtml || '<div class="text-muted py-3">No vehicle details</div>'}
+              </div>
+            </div>
+
+            ${Array.isArray(d.attachments) && d.attachments.length ? `
+            <div class="detail-card mb-4">
+              <div class="detail-card-head" style="background:rgba(167,139,250,0.1);color:var(--purple);">Attachments</div>
+              <div class="detail-card-body space-y-2">
+                ${d.attachments.map(a => `
+                  <a href="${esc(a.url)}" target="_blank" rel="noopener" class="flex items-center gap-2 text-cyan hover:text-white text-sm">
+                    <i class="fas fa-paperclip"></i>
+                    <span>${esc(a.name || 'Document')}</span>
+                    ${a.size ? `<span class="text-muted text-xs">(${Math.round(a.size/1024)} KB)</span>` : ''}
+                  </a>
+                `).join('')}
+              </div>
+            </div>` : ''}
+
+            <div class="flex flex-wrap items-end justify-between gap-4 pt-2">
+              <div class="text-sm text-muted space-y-1">
+                <div>Status: ${statusBadge(d.status)}</div>
+                ${d.transportType ? `<div>Transport: <span class="text-white">${esc(d.transportType)}</span></div>` : ''}
+                <div>${Number(d.miles || 0).toLocaleString()} miles · $${Number(d.ratePerMile || 0).toFixed(2)}/mi</div>
+              </div>
+              <div class="text-right">
+                <div class="text-xs text-muted uppercase tracking-wider">Total</div>
+                <div class="text-3xl font-bold text-orange">$${Number(d.total || d.price || 0).toLocaleString()}</div>
+              </div>
+            </div>
+          `;
+
+          const isAvailable = !d.status || /available|new|posted/i.test(d.status);
+          if (isAvailable) {
+            actions.innerHTML = `
+              <button class="btn btn-ghost" id="detailCloseBtn">Close</button>
+              <button class="btn-bid-ex" id="detailBidBtn">$ Bid</button>
+              <button class="btn-book-ex" id="detailBookBtn">Book $${Number(d.price || 0).toLocaleString()}</button>
+            `;
+            document.getElementById('detailCloseBtn')?.addEventListener('click', closeDetailModal);
+            document.getElementById('detailBidBtn')?.addEventListener('click', () => {
+              closeDetailModal();
+              openBidModal(d.id);
+            });
+            document.getElementById('detailBookBtn')?.addEventListener('click', () => {
+              closeDetailModal();
+              bookLoad(d.id, d.price);
+            });
+          } else {
+            actions.innerHTML = `<button class="btn btn-ghost" id="detailCloseBtn">Close</button>`;
+            document.getElementById('detailCloseBtn')?.addEventListener('click', closeDetailModal);
+          }
+        })
+        .catch(() => {
+          body.innerHTML = '<p class="text-red-400">Connection error loading details.</p>';
+        });
+    }
+
+    function closeDetailModal() {
+      document.getElementById('detailModal').classList.add('hidden');
+    }
+
+    document.getElementById('closeDetailModal')?.addEventListener('click', closeDetailModal);
+    document.getElementById('detailModal')?.addEventListener('click', e => {
+      if (e.target.id === 'detailModal') closeDetailModal();
+    });
+
+    function openBidModal(id) {
+      activeListing = allListings.find(l => l.id === id);
+      if (!activeListing) return;
+
+      bidLoadSummary.innerHTML = `
+        <div class="font-semibold text-white mb-1">${esc(activeListing.vehicle)}</div>
+        <div class="text-sm text-dim">${esc(activeListing.origin.city)}, ${esc(activeListing.origin.state)} → ${esc(activeListing.destination.city)}, ${esc(activeListing.destination.state)}</div>
+        <div class="text-sm text-muted mt-1">${Number(activeListing.miles || 0).toLocaleString()} miles · $${Number(activeListing.price).toLocaleString()}</div>
+      `;
+      bidAmount.value = activeListing.price;
+      bidContact.value = '';
+      selectedContact = null;
+      bidError.classList.add('hidden');
+      bidSuccess.classList.add('hidden');
+      estimatesLoading.classList.remove('hidden');
+      estimatesForm.classList.add('hidden');
+      modal.classList.remove('hidden');
+
+      fetch(`/api/exchange/listings/${id}/estimates`)
+        .then(r => r.json())
+        .then(data => {
+          estimatesLoading.classList.add('hidden');
+          estimatesForm.classList.remove('hidden');
+          pickupEstimate.innerHTML = (data.pickupOptions || []).map(o =>
+            `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+          deliveryEstimate.innerHTML = (data.deliveryOptions || []).map(o =>
+            `<option value="${esc(o.value)}">${esc(o.label)}</option>`).join('');
+        })
+        .catch(() => {
+          estimatesLoading.innerHTML = '<span class="text-red-400">Could not load estimates.</span>';
+        });
+    }
+
+    function closeModal() {
+      modal.classList.add('hidden');
+      activeListing = null;
+      contactDropdown.classList.add('hidden');
+    }
+
+    function toggleDocsSection() {
+      const status = document.getElementById('loadStatus')?.value || '';
+      const show = status === 'Delivered' || status === 'Completed';
+      document.getElementById('carrierDocsSection')?.classList.toggle('hidden', !show);
+    }
+
+    function openLoadModal(id) {
+      const load = myLoads.find(l => String(l.id) === String(id));
+      if (!load) return;
+      activeLoadId = id;
+      document.getElementById('loadModalTitle').textContent = 'Update Load ' + (load.listingId || load.listing_id || id);
+      document.getElementById('loadModalSub').textContent =
+        (load.originCity || load.origin_city || '') + ' → ' + (load.destCity || load.dest_city || '');
+      document.getElementById('loadDriver').value = load.driverName || load.driver_name || '';
+      document.getElementById('loadPickupEta').value = toInputDate(load.pickupEta || load.pickup_eta);
+      document.getElementById('loadDropoffEta').value = toInputDate(load.dropoffEta || load.dropoff_eta);
+      document.getElementById('loadStatus').value = normalizeStatus(load.status);
+      document.getElementById('loadError').classList.add('hidden');
+      document.getElementById('loadInvoice').value = '';
+      document.getElementById('loadBol').value = '';
+      const inv = load.invoiceUrl || load.invoice_url;
+      const bol = load.bolUrl || load.bol_url;
+      document.getElementById('loadInvoiceCurrent').innerHTML = inv
+        ? `<a href="${esc(inv)}" target="_blank" class="text-cyan hover:text-white"><i class="fas fa-file-invoice mr-1"></i>Current invoice</a>`
+        : '';
+      document.getElementById('loadBolCurrent').innerHTML = bol
+        ? `<a href="${esc(bol)}" target="_blank" class="text-cyan hover:text-white"><i class="fas fa-file-alt mr-1"></i>Current BOL</a>`
+        : '';
+      toggleDocsSection();
+      loadModal.classList.remove('hidden');
+    }
+
+    document.getElementById('loadStatus')?.addEventListener('change', toggleDocsSection);
+
+    function readFileAsDataURL(file) {
+      return new Promise((resolve, reject) => {
+        if (!file) return resolve(null);
+        const reader = new FileReader();
+        reader.onload = () => resolve({ name: file.name, size: file.size, data: reader.result });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function toInputDate(v) {
+      if (!v) return '';
+      try {
+        const d = new Date(v);
+        if (isNaN(d.getTime())) return '';
+        return d.toISOString().slice(0, 10);
+      } catch { return ''; }
+    }
+
+    function normalizeStatus(s) {
+      const x = (s || 'Booked').toLowerCase();
+      if (x.includes('progress')) return 'In Progress';
+      if (x.includes('deliver')) return 'Delivered';
+      if (x.includes('complete') || x === 'done') return 'Completed';
+      if (x.includes('book')) return 'Booked';
+      return 'Booked';
+    }
+
+    function closeLoadModal() {
+      loadModal.classList.add('hidden');
+      activeLoadId = null;
+    }
+
+    async function bookLoad(id, price) {
+      if (!confirm(`Book this load for $${Number(price).toLocaleString()}?`)) return;
+      const res = await fetch('/api/exchange/book', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ listingId: id, carrierEmail, amount: Number(price) })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Load booked successfully!');
+        loadAll();
+      } else {
+        alert(data.message || 'Booking failed.');
+      }
+    }
+
+    bidContact.addEventListener('input', () => {
+      clearTimeout(contactTimer);
+      const q = bidContact.value.trim();
+      selectedContact = null;
+      if (q.length < 3) { contactDropdown.classList.add('hidden'); return; }
+      contactTimer = setTimeout(async () => {
+        const res = await fetch(`/api/exchange/contacts?q=${encodeURIComponent(q)}&carrierEmail=${encodeURIComponent(carrierEmail)}`);
+        const contacts = await res.json();
+        if (!contacts.length) {
+          contactDropdown.innerHTML = `<div class="contact-item" data-new="1">Add "${esc(q)}" as new contact</div>`;
+        } else {
+          contactDropdown.innerHTML = contacts.map(c =>
+            `<div class="contact-item" data-name="${esc(c.name)}" data-email="${esc(c.email||'')}" data-phone="${esc(c.phone||'')}">${esc(c.name)}${c.email ? ' — ' + esc(c.email) : ''}</div>`
+          ).join('') + `<div class="contact-item" data-new="1">Add "${esc(q)}" as new contact</div>`;
+        }
+        contactDropdown.classList.remove('hidden');
+        contactDropdown.querySelectorAll('.contact-item').forEach(item => {
+          item.addEventListener('click', () => {
+            if (item.dataset.new) {
+              selectedContact = { name: q, email: '', phone: '' };
+            } else {
+              selectedContact = { name: item.dataset.name, email: item.dataset.email, phone: item.dataset.phone };
+              bidContact.value = item.dataset.name;
+            }
+            contactDropdown.classList.add('hidden');
+          });
+        });
+      }, 300);
+    });
+
+    document.getElementById('submitBid').addEventListener('click', async () => {
+      bidError.classList.add('hidden');
+      bidSuccess.classList.add('hidden');
+      const amount = Number(bidAmount.value);
+      if (!amount || amount <= 0) {
+        bidError.textContent = 'Enter a valid bid amount.';
+        bidError.classList.remove('hidden');
+        return;
+      }
+      const contactName = selectedContact?.name || bidContact.value.trim();
+      if (!contactName) {
+        bidError.textContent = 'Please select or enter a contact.';
+        bidError.classList.remove('hidden');
+        return;
+      }
+
+      const res = await fetch('/api/exchange/bids', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listingId: activeListing.id,
+          carrierEmail,
+          amount,
+          contactName,
+          contactEmail: selectedContact?.email || '',
+          contactPhone: selectedContact?.phone || '',
+          pickupEstimate: pickupEstimate.value,
+          deliveryEstimate: deliveryEstimate.value
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        bidSuccess.textContent = 'Bid placed successfully!';
+        bidSuccess.classList.remove('hidden');
+        setTimeout(closeModal, 1500);
+        loadStats();
+      } else {
+        bidError.textContent = data.message || 'Failed to place bid.';
+        bidError.classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('saveLoadBtn').addEventListener('click', async () => {
+      const err = document.getElementById('loadError');
+      err.classList.add('hidden');
+      try {
+        const status = document.getElementById('loadStatus').value;
+        const invFile = document.getElementById('loadInvoice').files?.[0];
+        const bolFile = document.getElementById('loadBol').files?.[0];
+        const [invoice, bol] = await Promise.all([
+          readFileAsDataURL(invFile),
+          readFileAsDataURL(bolFile)
+        ]);
+
+        const res = await fetch(`/api/exchange/loads/${encodeURIComponent(activeLoadId)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            carrierEmail,
+            driverName: document.getElementById('loadDriver').value.trim(),
+            pickupEta: document.getElementById('loadPickupEta').value,
+            dropoffEta: document.getElementById('loadDropoffEta').value,
+            status,
+            invoice: invoice || undefined,
+            bol: bol || undefined
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          closeLoadModal();
+          loadAll();
+        } else {
+          err.textContent = data.message || 'Update failed.';
+          err.classList.remove('hidden');
+        }
+      } catch (e) {
+        err.textContent = 'Connection error.';
+        err.classList.remove('hidden');
+      }
+    });
+
+    document.getElementById('closeBidModal').addEventListener('click', closeModal);
+    modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+    document.getElementById('closeLoadModal').addEventListener('click', closeLoadModal);
+    loadModal.addEventListener('click', e => { if (e.target === loadModal) closeLoadModal(); });
+
+    function applyFilters() {
+      const origin = document.getElementById('filterOrigin').value.toLowerCase();
+      const dest = document.getElementById('filterDest').value.toLowerCase();
+      const vehicle = document.getElementById('filterVehicle').value.toLowerCase();
+      const filtered = allListings.filter(l => {
+        const oStr = `${l.origin.city} ${l.origin.state}`.toLowerCase();
+        const dStr = `${l.destination.city} ${l.destination.state}`.toLowerCase();
+        if (origin && !oStr.includes(origin)) return false;
+        if (dest && !dStr.includes(dest)) return false;
+        if (vehicle && !(l.vehicle || '').toLowerCase().includes(vehicle)) return false;
+        return true;
+      });
+      renderAvailable(filtered);
+    }
+
+    function loadAvailable() {
+      const sort = document.getElementById('sortSelect').value;
+      return fetch(`/api/exchange/listings?sort=${sort}`)
+        .then(r => r.json())
+        .then(data => {
+          allListings = (data || []).map(l => ({
+            ...l,
+            postedAgo: timeAgo(l.createdAt)
+          }));
+          applyFilters();
+        })
+        .catch(() => renderAvailable([]));
+    }
+
+    function loadMyLoads() {
+      return fetch(`/api/exchange/loads?email=${encodeURIComponent(carrierEmail)}`)
+        .then(r => r.json())
+        .then(data => {
+          myLoads = data || [];
+          let filtered = myLoads;
+          if (currentView === 'in_progress') {
+            filtered = myLoads.filter(l => /progress/i.test(l.status || ''));
+          } else if (currentView === 'delivered') {
+            filtered = myLoads.filter(l => /deliver/i.test(l.status || ''));
+          } else if (currentView === 'completed') {
+            filtered = myLoads.filter(l => /complete|done/i.test(l.status || ''));
+          } else if (currentView === 'all') {
+            filtered = myLoads;
+          }
+          renderLoadsTable(filtered);
+        })
+        .catch(() => renderLoadsTable([]));
+    }
+
+    function loadStats() {
+      return fetch(`/api/exchange/carrier-stats?email=${encodeURIComponent(carrierEmail)}`)
+        .then(r => r.json())
+        .then(s => {
+          document.getElementById('statAvailable').textContent = s.availableCount ?? allListings.length ?? 0;
+          document.getElementById('statInProgress').textContent = s.inProgressCount ?? 0;
+          document.getElementById('statDelivered').textContent = s.deliveredCount ?? 0;
+          document.getElementById('statCompleted').textContent = s.completedCount ?? 0;
+          if (window.updateExchangeNavCounts) {
+            window.updateExchangeNavCounts({
+              available: s.availableCount ?? allListings.length ?? 0,
+              all: s.totalBookings ?? myLoads.length ?? 0,
+              in_progress: s.inProgressCount ?? 0,
+              delivered: s.deliveredCount ?? 0,
+              completed: s.completedCount ?? 0
+            });
+          }
+        })
+        .catch(() => {});
+    }
+
+    async function loadAll() {
+      setViewUI();
+      if (currentView === 'available') {
+        await loadAvailable();
+      } else {
+        await loadMyLoads();
+      }
+      await loadStats();
+      // refresh available count even when on other views
+      if (currentView !== 'available') {
+        fetch('/api/exchange/listings?sort=newest').then(r => r.json()).then(d => {
+          allListings = d || [];
+          loadStats();
+        }).catch(() => {});
+      }
+    }
+
+    document.getElementById('applyFilterBtn')?.addEventListener('click', applyFilters);
+    document.getElementById('resetFilterBtn')?.addEventListener('click', () => {
+      document.getElementById('filterOrigin').value = '';
+      document.getElementById('filterDest').value = '';
+      document.getElementById('filterVehicle').value = '';
+      document.getElementById('sortSelect').value = 'newest';
+      loadAvailable();
+    });
+    document.getElementById('sortSelect')?.addEventListener('change', loadAvailable);
+    document.getElementById('refreshBtn').addEventListener('click', loadAll);
+
+    document.querySelectorAll('[data-goto]').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.tagName === 'A') return;
+        location.href = '/exchange/listings?view=' + el.dataset.goto;
+      });
+    });
+
+    loadAll();
+  })();
+  </script>
+</body>
+</html>

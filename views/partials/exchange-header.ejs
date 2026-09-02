@@ -1,0 +1,187 @@
+<style>
+  .ex-nav {
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--line);
+    position: sticky;
+    top: 64px;
+    z-index: 40;
+  }
+  @media (min-width: 768px) {
+    .ex-nav { top: 72px; }
+  }
+  .ex-nav-inner {
+    max-width: 80rem;
+    margin: 0 auto;
+    padding: 0 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .ex-nav-inner::-webkit-scrollbar { display: none; }
+  .ex-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.85rem 1rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--ink-muted);
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .ex-tab:hover { color: white; }
+  .ex-tab.active {
+    color: var(--orange);
+    border-bottom-color: var(--orange);
+  }
+  .ex-tab .ex-count {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    color: var(--ink-muted);
+  }
+  .ex-tab.active .ex-count {
+    background: rgba(255,106,61,0.15);
+    color: var(--orange);
+  }
+  .ex-role-pill {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+    flex-shrink: 0;
+  }
+  .ex-role-pill.carrier { border-color: rgba(34,211,238,0.35); color: var(--cyan); background: rgba(34,211,238,0.08); }
+  .ex-role-pill.shipper { border-color: rgba(255,106,61,0.35); color: var(--orange); background: rgba(255,106,61,0.08); }
+  .ex-logout-btn {
+    flex-shrink: 0;
+    margin-left: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    border: 1px solid rgba(248,113,113,0.35);
+    color: #f87171;
+    background: rgba(248,113,113,0.08);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .ex-logout-btn:hover { background: rgba(248,113,113,0.18); border-color: #f87171; color: white; }
+</style>
+
+<div class="ex-nav">
+  <div class="ex-nav-inner" id="exchangeNav">
+    <!-- filled by page script based on role -->
+  </div>
+</div>
+
+<script>
+(function () {
+  const role = sessionStorage.getItem('mcRole') || '';
+  const email = sessionStorage.getItem('mcEmail') || '';
+  const nav = document.getElementById('exchangeNav');
+  if (!nav) return;
+
+  const path = location.pathname;
+  const params = new URLSearchParams(location.search);
+  const view = params.get('view') || (path.includes('shipments') ? 'mine' : 'available');
+
+  if (role === 'carrier') {
+    nav.innerHTML = `
+      <a href="/exchange/listings?view=available" class="ex-tab ${view === 'available' ? 'active' : ''}" data-view="available">
+        <i class="fas fa-box-open"></i> Available Shipments <span class="ex-count" id="navCountAvailable">—</span>
+      </a>
+      <a href="/exchange/listings?view=all" class="ex-tab ${view === 'all' ? 'active' : ''}" data-view="all">
+        <i class="fas fa-list"></i> All Loads <span class="ex-count" id="navCountAll">—</span>
+      </a>
+      <a href="/exchange/listings?view=in_progress" class="ex-tab ${view === 'in_progress' ? 'active' : ''}" data-view="in_progress">
+        <i class="fas fa-truck"></i> In Progress <span class="ex-count" id="navCountInProgress">—</span>
+      </a>
+      <a href="/exchange/listings?view=delivered" class="ex-tab ${view === 'delivered' ? 'active' : ''}" data-view="delivered">
+        <i class="fas fa-flag-checkered"></i> Delivered <span class="ex-count" id="navCountDelivered">—</span>
+      </a>
+      <a href="/exchange/listings?view=completed" class="ex-tab ${view === 'completed' ? 'active' : ''}" data-view="completed">
+        <i class="fas fa-check-double"></i> Completed <span class="ex-count" id="navCountCompleted">—</span>
+      </a>
+      <span class="ex-role-pill carrier" title="${email}"><i class="fas fa-truck mr-1"></i> Carrier</span>
+      <button type="button" class="ex-logout-btn" id="exLogoutBtn"><i class="fas fa-right-from-bracket mr-1"></i>Log out</button>
+    `;
+  } else if (role === 'shipper') {
+    nav.innerHTML = `
+      <a href="/exchange/shipments?view=mine" class="ex-tab ${view === 'mine' || view === 'all' ? 'active' : ''}" data-view="mine">
+        <i class="fas fa-boxes-stacked"></i> My Shipments <span class="ex-count" id="navCountMine">—</span>
+      </a>
+      <a href="/exchange/shipments?view=available" class="ex-tab ${view === 'available' ? 'active' : ''}" data-view="available">
+        <i class="fas fa-circle"></i> Available <span class="ex-count" id="navCountAvailable">—</span>
+      </a>
+      <a href="/exchange/shipments?view=booked" class="ex-tab ${view === 'booked' ? 'active' : ''}" data-view="booked">
+        <i class="fas fa-handshake"></i> Booked <span class="ex-count" id="navCountBooked">—</span>
+      </a>
+      <a href="/exchange/shipments?view=in_progress" class="ex-tab ${view === 'in_progress' ? 'active' : ''}" data-view="in_progress">
+        <i class="fas fa-truck"></i> In Progress <span class="ex-count" id="navCountInProgress">—</span>
+      </a>
+      <a href="/exchange/shipments?view=completed" class="ex-tab ${view === 'completed' ? 'active' : ''}" data-view="completed">
+        <i class="fas fa-check-double"></i> Completed <span class="ex-count" id="navCountCompleted">—</span>
+      </a>
+      <span class="ex-role-pill shipper" title="${email}"><i class="fas fa-box mr-1"></i> Shipper</span>
+      <button type="button" class="ex-logout-btn" id="exLogoutBtn"><i class="fas fa-right-from-bracket mr-1"></i>Log out</button>
+    `;
+  } else {
+    nav.innerHTML = `
+      <a href="/sign-in" class="ex-tab active">Sign in to access Exchange</a>
+    `;
+  }
+
+  const logoutBtn = document.getElementById('exLogoutBtn');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', () => {
+      if (typeof window.mcLogout === 'function') {
+        window.mcLogout();
+      } else {
+        sessionStorage.removeItem('mcAuth');
+        sessionStorage.removeItem('mcRole');
+        sessionStorage.removeItem('mcEmail');
+        sessionStorage.removeItem('mcName');
+        sessionStorage.removeItem('mcAdminAuth');
+        sessionStorage.removeItem('mcAdminEmail');
+        window.location.href = '/';
+      }
+    });
+  }
+
+  // Expose helper for pages to update counts
+  window.updateExchangeNavCounts = function (counts) {
+    if (!counts) return;
+    Object.keys(counts).forEach(k => {
+      const el = document.getElementById('navCount' + k.charAt(0).toUpperCase() + k.slice(1).replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
+      // simpler map
+    });
+    const map = {
+      available: 'navCountAvailable',
+      all: 'navCountAll',
+      in_progress: 'navCountInProgress',
+      delivered: 'navCountDelivered',
+      completed: 'navCountCompleted',
+      mine: 'navCountMine',
+      booked: 'navCountBooked'
+    };
+    Object.keys(map).forEach(key => {
+      if (counts[key] !== undefined) {
+        const el = document.getElementById(map[key]);
+        if (el) el.textContent = counts[key];
+      }
+    });
+  };
+})();
+</script>

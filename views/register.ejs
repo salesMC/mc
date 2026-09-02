@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Account | MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .role-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 0; margin-bottom: 1.5rem; }
+    .role-tab {
+      padding: 0.7rem 0.5rem; text-align: center;
+      font-size: 0.8rem; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--line); background: transparent;
+      color: var(--ink-muted); transition: all 0.18s;
+    }
+    .role-tab:first-child { border-radius: 0.5rem 0 0 0.5rem; }
+    .role-tab:last-child { border-radius: 0 0.5rem 0.5rem 0; border-left: none; }
+    .role-tab.active {
+      background: rgba(255,106,61,0.12);
+      border-color: rgba(255,106,61,0.4);
+      color: var(--orange);
+    }
+    .role-tab:not(.active):hover { color: white; border-color: var(--line-soft); }
+  </style>
+</head>
+<body>
+
+  <%- include('partials/header') %>
+
+  <main class="relative overflow-hidden min-h-[80vh] flex items-center py-20">
+    <div class="glow-orange" style="top: -100px; left: -80px;"></div>
+    <div class="glow-cyan" style="bottom: -100px; right: -80px;"></div>
+
+    <div class="relative max-w-md mx-auto px-6 lg:px-8 w-full">
+
+      <div class="text-center mb-10">
+        <div class="w-14 h-14 mx-auto mb-6 rounded-xl flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);">
+          <i class="fas fa-user-plus"></i>
+        </div>
+        <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Create account</h1>
+        <p class="text-dim mt-3">Register as a carrier or shipper to use the MC Exchange.</p>
+      </div>
+
+      <div class="tile p-8 md:p-10">
+        <div class="role-tabs" id="roleTabs">
+          <button type="button" class="role-tab active" data-role="carrier">
+            <i class="fas fa-truck block mb-1"></i> Carrier
+          </button>
+          <button type="button" class="role-tab" data-role="shipper">
+            <i class="fas fa-box block mb-1"></i> Shipper
+          </button>
+        </div>
+
+        <form id="registerForm" class="space-y-5">
+          <div>
+            <label class="label-dark">Full Name</label>
+            <input id="regName" type="text" placeholder="John Smith" required class="input-dark" autocomplete="name">
+          </div>
+
+          <div>
+            <label class="label-dark">Company <span class="text-muted font-normal">(optional)</span></label>
+            <input id="regCompany" type="text" placeholder="Your company LLC" class="input-dark" autocomplete="organization">
+          </div>
+
+          <div>
+            <label class="label-dark">Email</label>
+            <input id="regEmail" type="email" placeholder="you@company.com" required class="input-dark" autocomplete="email">
+          </div>
+
+          <div>
+            <label class="label-dark">Password</label>
+            <input id="regPassword" type="password" placeholder="Min. 6 characters" required minlength="6" class="input-dark" autocomplete="new-password">
+          </div>
+
+          <div>
+            <label class="label-dark">Confirm Password</label>
+            <input id="regPassword2" type="password" placeholder="Repeat password" required minlength="6" class="input-dark" autocomplete="new-password">
+          </div>
+
+          <label class="flex items-start gap-3 cursor-pointer text-sm text-dim">
+            <input type="checkbox" id="regTerms" class="w-4 h-4 mt-0.5" required>
+            <span>I agree to the Terms of Service and Privacy Policy.</span>
+          </label>
+
+          <div id="regError" class="hidden text-sm text-red-400 flex items-center gap-2">
+            <i class="fas fa-circle-exclamation"></i>
+            <span id="regErrorText">Something went wrong.</span>
+          </div>
+
+          <div id="regSuccess" class="hidden text-sm text-[var(--lime)] flex items-center gap-2">
+            <i class="fas fa-check-circle"></i>
+            <span>Account created! Redirecting…</span>
+          </div>
+
+          <button type="submit" id="regBtn" class="btn btn-primary w-full justify-center py-4">
+            Create <span id="regRoleLabel">Carrier</span> Account
+            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+          </button>
+        </form>
+
+        <div class="flex items-center gap-3 my-7">
+          <div class="flex-1 h-px bg-[var(--line)]"></div>
+          <span class="text-xs text-muted uppercase tracking-wider">or</span>
+          <div class="flex-1 h-px bg-[var(--line)]"></div>
+        </div>
+
+        <p class="text-center text-sm text-dim">
+          Already have an account?
+          <a href="/sign-in" class="text-[var(--orange)] hover:text-white transition-colors font-medium">Sign in</a>
+        </p>
+      </div>
+
+      <p class="text-center text-xs text-muted mt-8">
+        Admin accounts are created by existing administrators only.
+      </p>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+
+  <script>
+    (function () {
+      let selectedRole = 'carrier';
+      const form = document.getElementById('registerForm');
+      const btn = document.getElementById('regBtn');
+      const errEl = document.getElementById('regError');
+      const errText = document.getElementById('regErrorText');
+      const successEl = document.getElementById('regSuccess');
+      const roleLabel = document.getElementById('regRoleLabel');
+
+      const redirects = {
+        carrier: '/exchange/listings',
+        shipper: '/exchange/shipments'
+      };
+
+      // Already logged in → dashboard
+      if (sessionStorage.getItem('mcAdminAuth') === '1') {
+        window.location.href = '/admin';
+        return;
+      }
+      const existingRole = sessionStorage.getItem('mcRole');
+      if (sessionStorage.getItem('mcAuth') === '1' && existingRole) {
+        window.location.href = redirects[existingRole] || '/exchange/listings';
+        return;
+      }
+
+      document.querySelectorAll('.role-tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+          selectedRole = tab.dataset.role;
+          document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          roleLabel.textContent = selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
+        });
+      });
+
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errEl.classList.add('hidden');
+        successEl.classList.add('hidden');
+
+        const name = document.getElementById('regName').value.trim();
+        const company = document.getElementById('regCompany').value.trim();
+        const email = document.getElementById('regEmail').value.trim();
+        const password = document.getElementById('regPassword').value;
+        const password2 = document.getElementById('regPassword2').value;
+
+        if (!name) {
+          errText.textContent = 'Full name is required.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        if (password.length < 6) {
+          errText.textContent = 'Password must be at least 6 characters.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        if (password !== password2) {
+          errText.textContent = 'Passwords do not match.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        if (!document.getElementById('regTerms').checked) {
+          errText.textContent = 'Please accept the Terms of Service.';
+          errEl.classList.remove('hidden');
+          return;
+        }
+
+        btn.disabled = true;
+        try {
+          const res = await fetch('/api/auth/register', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name,
+              company,
+              email,
+              password,
+              role: selectedRole
+            })
+          });
+          const data = await res.json();
+
+          if (data.success) {
+            sessionStorage.setItem('mcAuth', '1');
+            sessionStorage.setItem('mcRole', data.role);
+            sessionStorage.setItem('mcEmail', data.email);
+            if (data.name) sessionStorage.setItem('mcName', data.name);
+            sessionStorage.removeItem('mcAdminAuth');
+            successEl.classList.remove('hidden');
+            setTimeout(() => {
+              window.location.href = redirects[data.role] || '/exchange/listings';
+            }, 900);
+          } else {
+            errText.textContent = data.message || 'Registration failed.';
+            errEl.classList.remove('hidden');
+          }
+        } catch (err) {
+          errText.textContent = 'Connection error. Please try again.';
+          errEl.classList.remove('hidden');
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

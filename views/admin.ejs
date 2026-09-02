@@ -72,6 +72,56 @@
       max-height: 2400px;
     }
 
+    /* ===== Customers ===== */
+    .type-badge { padding: 4px 10px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+    .type-dealer     { background: rgba(34,211,238,0.12);  color: #22D3EE; }
+    .type-auction    { background: rgba(167,139,250,0.12); color: #A78BFA; }
+    .type-oem        { background: rgba(244,114,182,0.12); color: #F472B6; }
+    .type-fleet      { background: rgba(190,242,100,0.12); color: #BEF264; }
+    .type-individual { background: rgba(255,255,255,0.06); color: #C9D1D9; }
+    .type-other      { background: rgba(255,255,255,0.06); color: #8B949E; }
+
+    .pay-pill {
+      display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 9999px;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; vertical-align: middle;
+    }
+    .pay-unpaid { background: rgba(248,113,113,0.12); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
+    .pay-phone  { background: rgba(255,106,61,0.12);  color: #FF6A3D; border: 1px solid rgba(255,106,61,0.3); }
+
+    /* ===== Intake wizard (mirrors the /payment form) ===== */
+    .wiz-step {
+      display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.9rem; border-radius: 999px;
+      border: 1px solid var(--line); font-size: 0.78rem; font-weight: 600; color: var(--ink-muted); white-space: nowrap;
+    }
+    .wiz-step.active { border-color: #FF6A3D; background: rgba(255,106,61,0.12); color: white; }
+    .wiz-step.done   { color: #BEF264; border-color: rgba(190,242,100,0.35); }
+
+    .input-dark.error { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.2) !important; }
+    .error-msg { color: #ef4444; font-size: 0.78rem; margin-top: 4px; min-height: 18px; }
+    .vin-result { color: #BEF264; font-weight: 500; }
+    textarea.input-dark { min-height: 80px; resize: vertical; }
+    select.input-dark { appearance: auto; }
+
+    .btn-transport { transition: all 0.2s; border-color: var(--line); color: var(--ink-dim); }
+    .btn-transport.active { background: #FF6A3D; color: white; border-color: #FF6A3D; }
+
+    .upload-zone { border: 2px dashed #374151; background: #161B22; border-radius: 12px; transition: border-color 0.2s, background 0.2s; }
+    .upload-zone:hover { border-color: #FF6A3D; background: #1F2937; }
+
+    .vehicle-tab {
+      padding: 0.45rem 0.9rem; border-radius: 0.5rem; font-size: 0.82rem; font-weight: 600;
+      border: 1px solid #1F2937; color: #8B949E; white-space: nowrap; transition: all 0.15s;
+    }
+    .vehicle-tab.active { border-color: #FF6A3D; color: white; background: rgba(255,106,61,0.12); }
+    .vehicle-tab:hover:not(.active) { border-color: #374151; color: #C9D1D9; }
+    .add-vehicle-tab {
+      padding: 0.45rem 0.85rem; border-radius: 0.5rem; font-size: 0.82rem; font-weight: 600;
+      border: 1px dashed rgba(255,106,61,0.4); color: #FF6A3D; white-space: nowrap;
+    }
+    .add-vehicle-tab:hover { border-color: #FF6A3D; background: rgba(255,106,61,0.1); }
+    .remove-vtab { margin-left: 0.35rem; opacity: 0.5; }
+    .remove-vtab:hover { opacity: 1; color: #ef4444; }
+
     @media (max-width: 768px) {
       /* Table: hide less important columns, shrink padding */
       th, td { padding: 10px 8px; font-size: 0.78rem; }
@@ -177,6 +227,52 @@
           <div id="noOrdersMessage" class="hidden text-center py-16 text-muted">
             <i class="fas fa-inbox text-6xl mb-6 opacity-40"></i>
             <p>No orders yet</p>
+          </div>
+        </div>
+
+        <!-- ==================== CUSTOMERS SECTION ==================== -->
+        <div class="tile">
+          <div class="flex flex-wrap justify-between items-center mb-6 gap-4 orders-header">
+            <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+              <i class="fas fa-users"></i>
+              Customers
+              <span id="customerCount" class="text-sm font-semibold text-muted bg-[var(--bg-deep)] border border-[var(--line)] rounded-full px-3 py-1">0</span>
+            </h2>
+            <div class="flex flex-wrap items-center gap-3">
+              <div class="relative">
+                <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
+                <input id="customerSearch" type="text" placeholder="Search name, email, phone…"
+                       class="input-admin pl-9" style="width: 260px;" oninput="onCustomerSearch()">
+              </div>
+              <button onclick="loadCustomers()" class="btn btn-cyan flex items-center gap-2">
+                <i class="fas fa-sync-alt"></i> Refresh
+              </button>
+              <button onclick="openCustomerWizard()" class="btn btn-primary flex items-center gap-2">
+                <i class="fas fa-plus"></i> New Customer / Quote
+              </button>
+            </div>
+          </div>
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
+              <thead>
+                <tr>
+                  <th>Customer</th>
+                  <th class="col-hide-mobile">Contact</th>
+                  <th>Type</th>
+                  <th class="text-center">Orders</th>
+                  <th>Total</th>
+                  <th class="col-hide-mobile">Last Order</th>
+                  <th class="w-40 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="customersBody" class="text-dim"></tbody>
+            </table>
+          </div>
+
+          <div id="noCustomersMessage" class="hidden text-center py-16 text-muted">
+            <i class="fas fa-user-plus text-6xl mb-6 opacity-40"></i>
+            <p>No customers yet — add one when a customer calls in.</p>
           </div>
         </div>
 
@@ -364,6 +460,94 @@
     </div>
   </div>
 
+  <!-- Customer Intake Wizard (phone-in quote) -->
+  <div id="customerWizardModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center gap-4">
+        <div>
+          <h3 class="text-2xl font-bold text-white" id="wizTitle">New Customer / Quote</h3>
+          <p class="text-xs text-muted mt-1">Phone-in intake — collects the same details as the online order form.</p>
+        </div>
+        <button onclick="closeCustomerWizard()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+      <div class="px-6 pt-4 flex gap-2 overflow-x-auto" id="wizSteps" style="scrollbar-width:none;"></div>
+      <div class="p-6 overflow-y-auto flex-1" id="wizContent"></div>
+      <div class="p-5 border-t border-[var(--line)] flex justify-between items-center gap-3">
+        <button id="wizPrevBtn" onclick="wizPrev()" class="btn btn-ghost px-6 py-3">← Back</button>
+        <div class="flex items-center gap-4 ml-auto">
+          <div class="text-right hidden sm:block">
+            <div class="text-xs text-muted">Estimated</div>
+            <div class="text-xl font-bold text-[var(--orange)]" id="wizRunningTotal">$0</div>
+          </div>
+          <button id="wizNextBtn" onclick="wizNext()" class="btn btn-primary px-8 py-3">Next →</button>
+          <button id="wizSaveBtn" onclick="wizSave()" class="btn btn-primary px-8 py-3 hidden">
+            <i class="fas fa-save"></i> Save Customer &amp; Quote
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Detail Modal -->
+  <div id="customerDetailModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center sticky top-0 bg-panel z-10">
+        <h3 class="text-2xl font-bold text-white" id="customerDetailName">Customer</h3>
+        <button onclick="closeCustomerDetail()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+      <div class="p-8 space-y-8" id="customerDetailContent"></div>
+      <div class="p-6 border-t border-[var(--line)] flex flex-wrap justify-end gap-3">
+        <button id="customerDetailEditBtn" class="btn btn-ghost px-6 py-3"><i class="fas fa-pencil"></i> Edit</button>
+        <button id="customerDetailQuoteBtn" class="btn btn-primary px-6 py-3"><i class="fas fa-file-invoice-dollar"></i> New Quote</button>
+        <button onclick="closeCustomerDetail()" class="btn btn-ghost px-6 py-3">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Edit Modal -->
+  <div id="customerEditModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center">
+        <h3 class="text-2xl font-bold text-white">Edit Customer</h3>
+        <button onclick="closeCustomerEdit()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+      <div class="p-8">
+        <input type="hidden" id="ceId">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="label-dark">Full Name <span class="text-red-400">*</span></label>
+            <input id="ceName" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Phone</label>
+            <input id="cePhone" type="tel" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Email</label>
+            <input id="ceEmail" type="email" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Company</label>
+            <input id="ceCompany" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Customer Type</label>
+            <select id="ceType" class="input-dark"></select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label-dark">Notes</label>
+            <textarea id="ceNotes" class="input-dark"></textarea>
+          </div>
+        </div>
+        <p id="ceError" class="hidden mt-4 text-sm text-red-400"></p>
+      </div>
+      <div class="p-6 border-t border-[var(--line)] flex justify-end gap-3">
+        <button onclick="closeCustomerEdit()" class="btn btn-ghost px-6 py-3">Cancel</button>
+        <button onclick="saveCustomerEdit()" class="btn btn-primary px-6 py-3"><i class="fas fa-save"></i> Save</button>
+      </div>
+    </div>
+  </div>
+
   <%- include('partials/footer') %>
 
   <script>
@@ -390,6 +574,7 @@
           loadCurrentConfig();
           loadOrders();
           loadPromoCodes();
+          loadCustomers();
         } else {
           err.classList.remove('hidden');
         }
@@ -562,7 +747,8 @@
         { max: 160, rate: 1.50 },
         { max: Infinity, rate: 1.30 }
       ],
-      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.00, 'cargo-van': 1.00, 'passenger-van': 1.00, 'mini-van': 1.00, 'other': 1.00 },
+      // Keep in sync with the defaults in calculator.ejs / payment.ejs so phone quotes match web quotes
+      multipliers: { sedan: 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.15, 'cargo-van': 1.25, 'passenger-van': 1.25, 'mini-van': 1.00, 'other': 1.20 },
       addons: { inoperable: 75, modified: 100, urgent: 100 }
     };
 
@@ -686,7 +872,7 @@
               <span onclick="event.stopImmediatePropagation(); changeOrderStatus('${order.id}', this)" 
                     class="status-badge ${statusClasses[order.status] || statusClasses['New']}">
                 ${order.status || 'New'}
-              </span>
+              </span>${paymentPill(order)}
             </td>
             <td class="text-center">
               <button onclick="event.stopImmediatePropagation(); showOrderDetail('${order.id}')" 
@@ -776,6 +962,8 @@
               <p><strong>Has keys:</strong> ${vehicle.hasKeys ? 'Yes' : 'No'}</p>
               <p><strong>Modified:</strong> ${vehicle.modified ? 'Yes' : 'No'}</p>
               <p><strong>Urgent:</strong> ${vehicle.urgent ? 'Yes' : 'No'}</p>
+              ${vehicle.modDescription ? `<p class="col-span-2"><strong>Modifications:</strong> ${esc(vehicle.modDescription)}</p>` : ''}
+              ${vehicle.damages ? `<p class="col-span-2 text-amber-400"><strong class="text-amber-400">Damages:</strong> ${esc(vehicle.damages)}</p>` : ''}
             </div>
             ${vehicle.photos && vehicle.photos.length ? `
               <div class="mt-4">
@@ -797,6 +985,12 @@
               <p><strong>Name:</strong> ${contact.fullName || '—'}</p>
               <p><strong>Email:</strong> ${contact.email || '—'}</p>
               <p><strong>Phone:</strong> ${contact.phone || '—'}</p>
+              ${contact.company ? `<p><strong>Company:</strong> ${esc(contact.company)}</p>` : ''}
+              ${order.customerId ? `
+                <button onclick="closeModal(); showCustomerDetail(${order.customerId})"
+                        class="text-cyan-400 hover:text-white text-sm mt-3 inline-flex items-center gap-1">
+                  <i class="fas fa-user"></i> View customer &amp; history
+                </button>` : ''}
             </div>
             <div>
               <h4 class="font-semibold text-white mb-3">Route &amp; Dates</h4>
@@ -805,6 +999,7 @@
               <p class="mt-2"><strong>First possible:</strong> ${order.pickupDate || '—'}</p>
               <p><strong>Must deliver by:</strong> ${order.mustDeliverBy || '—'}</p>
               <p class="mt-2"><strong>Transport:</strong> ${order.transportType || '—'}</p>
+              ${order.distance ? `<p><strong>Distance:</strong> ${Number(order.distance).toLocaleString()} mi</p>` : ''}
             </div>
           </div>
 
@@ -816,10 +1011,26 @@
             ${vehiclesHTML}
           </div>
 
+          ${order.notes ? `
+            <div class="mt-6 bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-4 text-sm">
+              <strong class="text-white block mb-1"><i class="fas fa-note-sticky mr-1 text-[var(--orange)]"></i> Internal notes</strong>
+              <span class="whitespace-pre-line">${esc(order.notes)}</span>
+            </div>` : ''}
+
           <div class="mt-10 pt-6 border-t border-[var(--line)] flex justify-between items-center">
             <div>
               <p class="text-muted text-sm">Total Amount</p>
               <p class="text-4xl font-bold text-[var(--orange)]">$${Number(order.total || 0).toLocaleString()}</p>
+              <p class="text-xs text-muted mt-2">
+                ${order.source === 'admin' ? '<i class="fas fa-phone mr-1"></i>Phone-in order' : '<i class="fas fa-globe mr-1"></i>Website order'} ·
+                <span class="${order.paymentStatus === 'unpaid' ? 'text-red-400' : 'text-lime-400'} font-semibold">
+                  ${order.paymentStatus === 'unpaid' ? 'Unpaid' : 'Paid'}
+                </span>
+                <button onclick="toggleOrderPayment('${order.id}', '${order.paymentStatus === 'unpaid' ? 'paid' : 'unpaid'}')"
+                        class="ml-2 text-cyan-400 hover:text-white underline">
+                  ${order.paymentStatus === 'unpaid' ? 'Mark paid' : 'Mark unpaid'}
+                </button>
+              </p>
             </div>
             <div class="text-right">
               <p class="text-muted text-sm">Status</p>
@@ -841,6 +1052,870 @@
       document.getElementById('orderModal').classList.add('hidden');
     }
 
+    async function toggleOrderPayment(orderId, paymentStatus) {
+      try {
+        const res = await fetch(`/api/orders/${orderId}/payment`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentStatus })
+        });
+        if (!res.ok) throw new Error();
+        loadOrders();
+        showOrderDetail(orderId);
+      } catch (e) { alert('Error updating payment status'); }
+    }
+
+    // ==================== CUSTOMERS ====================
+    const CUSTOMER_TYPE_LABELS = { dealer: 'Dealer', auction: 'Auction', oem: 'OEM', fleet: 'Fleet', individual: 'Individual', other: 'Other' };
+    const VEHICLE_TYPE_LABELS  = {
+      'sedan': 'Sedan / Compact SUV', 'mid-suv': 'Mid-size SUV', 'mini-van': 'Mini Van', 'full-suv': 'Full-size SUV',
+      'pickup': 'Pick-up Truck', 'cargo-van': 'Cargo Van', 'passenger-van': 'Passenger Van', 'other': 'Other'
+    };
+    const GOOGLE_MAPS_KEY = 'AIzaSyADY34xlNO8-qSU_2Lq7qZ7l1jydiRL74w';
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+    function fmtDate(d) { return d ? new Date(d).toLocaleDateString() : '—'; }
+    function typeBadge(t) {
+      const key = CUSTOMER_TYPE_LABELS[t] ? t : 'individual';
+      return `<span class="type-badge type-${key}">${CUSTOMER_TYPE_LABELS[key]}</span>`;
+    }
+    function typeOptions(selected) {
+      return Object.entries(CUSTOMER_TYPE_LABELS)
+        .map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+    }
+    function vehicleTypeOptions(selected) {
+      return Object.entries(VEHICLE_TYPE_LABELS)
+        .map(([v, l]) => `<option value="${v}" ${v === selected ? 'selected' : ''}>${l}</option>`).join('');
+    }
+    function yearOptions(selected) {
+      let h = '<option value="">Select year</option>';
+      for (let y = 2030; y >= 1900; y--) h += `<option value="${y}" ${String(y) === String(selected) ? 'selected' : ''}>${y}</option>`;
+      return h;
+    }
+    function paymentPill(o) {
+      let h = '';
+      if (o.source === 'admin')        h += '<span class="pay-pill pay-phone" title="Created by admin (phone-in)">Phone</span>';
+      if (o.paymentStatus === 'unpaid') h += '<span class="pay-pill pay-unpaid">Unpaid</span>';
+      return h;
+    }
+
+    let customersCache = [];
+    let customerSearchTimer = null;
+
+    async function loadCustomers() {
+      const q = document.getElementById('customerSearch')?.value.trim() || '';
+      try {
+        const res = await fetch('/api/customers' + (q ? '?q=' + encodeURIComponent(q) : ''));
+        customersCache = await res.json();
+        const tbody = document.getElementById('customersBody');
+        tbody.innerHTML = '';
+        document.getElementById('customerCount').textContent = customersCache.length;
+
+        const empty = document.getElementById('noCustomersMessage');
+        if (!customersCache.length) { empty.classList.remove('hidden'); return; }
+        empty.classList.add('hidden');
+
+        customersCache.forEach(c => {
+          const tr = document.createElement('tr');
+          tr.className = 'cursor-pointer';
+          tr.innerHTML = `
+            <td class="font-medium text-white">
+              ${esc(c.name)}
+              ${c.company ? `<div class="text-xs text-muted font-normal">${esc(c.company)}</div>` : ''}
+            </td>
+            <td class="text-sm col-hide-mobile">
+              ${c.email ? esc(c.email) : '<span class="text-muted">—</span>'}
+              ${c.phone ? `<div class="text-xs text-muted">${esc(c.phone)}</div>` : ''}
+            </td>
+            <td>${typeBadge(c.type)}</td>
+            <td class="text-center">${c.orderCount}</td>
+            <td class="font-semibold text-[var(--orange)]">$${Number(c.totalSpent).toLocaleString()}</td>
+            <td class="text-xs col-hide-mobile">${fmtDate(c.lastOrderAt)}</td>
+            <td class="text-center whitespace-nowrap">
+              <button onclick="event.stopImmediatePropagation(); showCustomerDetail(${c.id})" class="text-cyan-400 hover:text-white p-2" title="View"><i class="fas fa-eye"></i></button>
+              <button onclick="event.stopImmediatePropagation(); openCustomerWizard(${c.id})" class="text-[var(--orange)] hover:text-white p-2" title="New quote"><i class="fas fa-file-invoice-dollar"></i></button>
+              <button onclick="event.stopImmediatePropagation(); openCustomerEdit(${c.id})" class="text-lime-400 hover:text-white p-2" title="Edit"><i class="fas fa-pencil"></i></button>
+              <button onclick="event.stopImmediatePropagation(); deleteCustomer(${c.id})" class="text-red-400 hover:text-red-300 p-2" title="Delete"><i class="fas fa-trash"></i></button>
+            </td>`;
+          tr.onclick = (e) => { if (!e.target.closest('button')) showCustomerDetail(c.id); };
+          tbody.appendChild(tr);
+        });
+      } catch (e) {
+        console.error('Error loading customers:', e);
+      }
+    }
+
+    function onCustomerSearch() {
+      clearTimeout(customerSearchTimer);
+      customerSearchTimer = setTimeout(loadCustomers, 250);
+    }
+
+    async function showCustomerDetail(id) {
+      try {
+        const res = await fetch('/api/customers/' + id);
+        const c = await res.json();
+        if (!c || !c.id) return;
+
+        document.getElementById('customerDetailName').textContent = c.name;
+        document.getElementById('customerDetailQuoteBtn').onclick = () => { closeCustomerDetail(); openCustomerWizard(c.id); };
+        document.getElementById('customerDetailEditBtn').onclick  = () => { closeCustomerDetail(); openCustomerEdit(c.id); };
+
+        const orders = c.orders || [];
+        const orderRows = orders.map(o => {
+          const v = o.vehicle || {};
+          const count = o.vehicles?.length || 1;
+          const label = count > 1 ? `${count} vehicles` : [v.year, v.make, v.model].filter(Boolean).join(' ') || '—';
+          const from = (o.location?.pickup || '').split(',')[0];
+          const to   = (o.location?.delivery || '').split(',')[0];
+          return `
+            <tr class="cursor-pointer" onclick="showOrderDetail('${esc(o.id)}')">
+              <td class="font-mono text-orange-400">${esc(o.id)}</td>
+              <td class="text-xs">${fmtDate(o.createdAt)}</td>
+              <td class="text-sm">${esc(label)}</td>
+              <td class="text-sm col-hide-mobile">${esc(from)} → ${esc(to)}</td>
+              <td class="font-semibold text-[var(--orange)]">$${Number(o.total || 0).toLocaleString()}</td>
+              <td><span class="status-badge ${o.status === 'Done' ? 'bg-lime-500/10 text-lime-400' : o.status === 'In Work' ? 'bg-amber-500/10 text-amber-400' : 'bg-blue-500/10 text-blue-400'}">${esc(o.status || 'New')}</span>${paymentPill(o)}</td>
+            </tr>`;
+        }).join('');
+
+        document.getElementById('customerDetailContent').innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-8 modal-grid">
+            <div class="space-y-2 text-sm">
+              <div class="mb-3">${typeBadge(c.type)}</div>
+              <p><strong>Email:</strong> ${c.email ? `<a href="mailto:${esc(c.email)}" class="text-cyan-400 hover:text-white">${esc(c.email)}</a>` : '—'}</p>
+              <p><strong>Phone:</strong> ${c.phone ? `<a href="tel:${esc(c.phone)}" class="text-cyan-400 hover:text-white">${esc(c.phone)}</a>` : '—'}</p>
+              <p><strong>Company:</strong> ${c.company ? esc(c.company) : '—'}</p>
+              <p><strong>Customer since:</strong> ${fmtDate(c.createdAt)}</p>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-4 text-center">
+                <div class="text-2xl font-bold text-white">${c.orderCount}</div>
+                <div class="text-xs text-muted mt-1">Orders</div>
+              </div>
+              <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-4 text-center">
+                <div class="text-2xl font-bold text-[var(--orange)]">$${Number(c.totalSpent).toLocaleString()}</div>
+                <div class="text-xs text-muted mt-1">Total</div>
+              </div>
+              <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-4 text-center">
+                <div class="text-sm font-bold text-white pt-1">${fmtDate(c.lastOrderAt)}</div>
+                <div class="text-xs text-muted mt-1">Last order</div>
+              </div>
+            </div>
+          </div>
+          ${c.notes ? `
+            <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-4 text-sm">
+              <strong class="text-white block mb-1"><i class="fas fa-note-sticky mr-1 text-[var(--orange)]"></i> Notes</strong>
+              <span class="whitespace-pre-line">${esc(c.notes)}</span>
+            </div>` : ''}
+          <div>
+            <h4 class="font-semibold text-white mb-3">Order History <span class="text-xs font-normal text-muted ml-2">(${orders.length})</span></h4>
+            ${orders.length ? `
+              <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                  <thead><tr><th>Order</th><th>Date</th><th>Vehicle</th><th class="col-hide-mobile">Route</th><th>Total</th><th>Status</th></tr></thead>
+                  <tbody class="text-dim">${orderRows}</tbody>
+                </table>
+              </div>` : '<p class="text-muted text-sm">No orders yet.</p>'}
+          </div>`;
+
+        document.getElementById('customerDetailModal').classList.remove('hidden');
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    function closeCustomerDetail() {
+      document.getElementById('customerDetailModal').classList.add('hidden');
+    }
+
+    function openCustomerEdit(id) {
+      const c = customersCache.find(x => x.id === id);
+      if (!c) return;
+      document.getElementById('ceId').value      = c.id;
+      document.getElementById('ceName').value    = c.name || '';
+      document.getElementById('cePhone').value   = c.phone || '';
+      document.getElementById('ceEmail').value   = c.email || '';
+      document.getElementById('ceCompany').value = c.company || '';
+      document.getElementById('ceType').innerHTML = typeOptions(c.type || 'individual');
+      document.getElementById('ceNotes').value   = c.notes || '';
+      document.getElementById('ceError').classList.add('hidden');
+      document.getElementById('customerEditModal').classList.remove('hidden');
+    }
+
+    function closeCustomerEdit() {
+      document.getElementById('customerEditModal').classList.add('hidden');
+    }
+
+    async function saveCustomerEdit() {
+      const id  = document.getElementById('ceId').value;
+      const err = document.getElementById('ceError');
+      err.classList.add('hidden');
+      try {
+        const res = await fetch('/api/customers/' + id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name:    document.getElementById('ceName').value,
+            phone:   document.getElementById('cePhone').value,
+            email:   document.getElementById('ceEmail').value,
+            company: document.getElementById('ceCompany').value,
+            type:    document.getElementById('ceType').value,
+            notes:   document.getElementById('ceNotes').value
+          })
+        });
+        const data = await res.json();
+        if (!data.success) { err.textContent = data.message || 'Error saving customer'; err.classList.remove('hidden'); return; }
+        closeCustomerEdit();
+        loadCustomers();
+      } catch (e) {
+        err.textContent = 'Connection error'; err.classList.remove('hidden');
+      }
+    }
+
+    async function deleteCustomer(id) {
+      const c = customersCache.find(x => x.id === id);
+      if (!confirm(`Delete customer "${c?.name || id}"? Their orders will be kept but unlinked.`)) return;
+      try {
+        await fetch('/api/customers/' + id, { method: 'DELETE' });
+        loadCustomers();
+      } catch (e) { alert('Error deleting customer'); }
+    }
+
+    // ==================== CUSTOMER INTAKE WIZARD (phone-in quote) ====================
+    // Mirrors the /payment wizard: Customer → Vehicles → Route → Quote. Saves an
+    // order with source 'admin' + paymentStatus 'unpaid' and upserts the customer.
+    const WIZ_STEPS = ['Customer', 'Vehicles', 'Route', 'Quote'];
+    let wiz = null;
+    let wizVehicleTab = 0;
+    let wizDistanceService = null;
+
+    function wizFreshVehicle() {
+      return {
+        year: '', make: '', model: '', vin: '',
+        type: 'sedan', condition: 'operable',
+        runsAndDrives: true, hasKeys: true,
+        modified: false, modDescription: '',
+        urgent: false, damages: '', photos: []
+      };
+    }
+
+    function openCustomerWizard(customerId) {
+      const c = customerId ? customersCache.find(x => x.id === customerId) : null;
+      wiz = {
+        step: 0,
+        customerId: c ? c.id : null,
+        customer: {
+          name: c?.name || '', email: c?.email || '', phone: c?.phone || '',
+          company: c?.company || '', type: c?.type || 'individual', notes: c?.notes || ''
+        },
+        vehicles: [wizFreshVehicle()],
+        location: { pickup: '', delivery: '' },
+        distance: '', pickupDate: '', mustDeliverBy: '', transportType: 'open',
+        finalPrice: null, notes: ''
+      };
+      wizVehicleTab = 0;
+      document.getElementById('wizTitle').textContent = c ? `New Quote — ${c.name}` : 'New Customer / Quote';
+      wizRender(0);
+      document.getElementById('customerWizardModal').classList.remove('hidden');
+    }
+
+    function closeCustomerWizard() {
+      if (wiz) {
+        wizCollect();
+        const dirty = wiz.step > 0 || wiz.customer.name || wiz.customer.phone;
+        if (dirty && !confirm('Discard this intake? Unsaved details will be lost.')) return;
+      }
+      wiz = null;
+      document.getElementById('customerWizardModal').classList.add('hidden');
+    }
+
+    function wizRenderSteps() {
+      document.getElementById('wizSteps').innerHTML = WIZ_STEPS.map((s, i) => `
+        <span class="wiz-step ${i === wiz.step ? 'active' : i < wiz.step ? 'done' : ''}">
+          <span>${i < wiz.step ? '<i class="fas fa-check"></i>' : i + 1}</span> ${s}
+        </span>`).join('');
+      document.getElementById('wizPrevBtn').classList.toggle('invisible', wiz.step === 0);
+      document.getElementById('wizNextBtn').classList.toggle('hidden', wiz.step === 3);
+      document.getElementById('wizSaveBtn').classList.toggle('hidden', wiz.step !== 3);
+      wizUpdateRunningTotal();
+    }
+
+    function wizRender(step) {
+      wiz.step = step;
+      const el = document.getElementById('wizContent');
+      if (step === 0) {
+        el.innerHTML = wizCustomerHTML();
+      } else if (step === 1) {
+        el.innerHTML = `
+          <h4 class="text-lg font-semibold text-white mb-4">Vehicle Details</h4>
+          <div id="wizVehicleTabs" class="flex flex-nowrap gap-2 mb-4 overflow-x-auto pb-1" style="scrollbar-width:none;"></div>
+          <div id="wizVehicleForm"></div>`;
+        wizRenderVehicleTabs();
+        wizRenderVehicle(wizVehicleTab);
+      } else if (step === 2) {
+        el.innerHTML = wizRouteHTML();
+        wizInitMaps();
+      } else {
+        el.innerHTML = wizQuoteHTML();
+      }
+      wizRenderSteps();
+      el.scrollTop = 0;
+    }
+
+    // Pull the current step's DOM values into `wiz`
+    function wizCollect() {
+      const g = id => document.getElementById(id);
+      if (wiz.step === 0 && g('wc-name')) {
+        wiz.customer = {
+          name: g('wc-name').value.trim(), email: g('wc-email').value.trim(), phone: g('wc-phone').value.trim(),
+          company: g('wc-company').value.trim(), type: g('wc-type').value, notes: g('wc-notes').value.trim()
+        };
+      } else if (wiz.step === 1) {
+        wizSaveVehicle(wizVehicleTab);
+      } else if (wiz.step === 2 && g('wr-pickup')) {
+        wiz.location = { pickup: g('wr-pickup').value.trim(), delivery: g('wr-delivery').value.trim() };
+        wiz.distance = g('wr-distance').value;
+        wiz.pickupDate = g('wr-pickupDate').value;
+        wiz.mustDeliverBy = g('wr-deliverBy').value;
+      } else if (wiz.step === 3 && g('wizFinalPrice')) {
+        wiz.finalPrice = g('wizFinalPrice').value;
+        wiz.notes = g('wizNotes').value.trim();
+      }
+    }
+
+    function wizValidate() {
+      let ok = true;
+      document.querySelectorAll('#wizContent .error-msg').forEach(e => e.textContent = '');
+      document.querySelectorAll('#wizContent .input-dark').forEach(e => e.classList.remove('error'));
+      const fail = (id, msg) => {
+        document.getElementById(id)?.classList.add('error');
+        const e = document.getElementById(id + '-err');
+        if (e) e.textContent = msg;
+        ok = false;
+      };
+
+      if (wiz.step === 0) {
+        if (!wiz.customer.name)  fail('wc-name',  'Name is required');
+        if (!wiz.customer.phone) fail('wc-phone', 'Phone is required');
+        if (wiz.customer.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(wiz.customer.email)) fail('wc-email', 'Invalid email address');
+      } else if (wiz.step === 1) {
+        for (let i = 0; i < wiz.vehicles.length; i++) {
+          const v = wiz.vehicles[i];
+          if (!v.year || !v.make || !v.model) {
+            if (i !== wizVehicleTab) { wizVehicleTab = i; wizRenderVehicleTabs(); wizRenderVehicle(i); }
+            if (!v.year)  fail('wv-year-' + i,  'Year is required');
+            if (!v.make)  fail('wv-make-' + i,  'Make is required');
+            if (!v.model) fail('wv-model-' + i, 'Model is required');
+            break;
+          }
+        }
+      } else if (wiz.step === 2) {
+        if (!wiz.location.pickup)      fail('wr-pickup',     'Pickup address is required');
+        if (!wiz.location.delivery)    fail('wr-delivery',   'Delivery address is required');
+        if (!(Number(wiz.distance) > 0)) fail('wr-distance', 'Enter the distance in miles');
+        if (!wiz.pickupDate)           fail('wr-pickupDate', 'Pickup date is required');
+        if (!wiz.mustDeliverBy)        fail('wr-deliverBy',  'Deliver-by date is required');
+      }
+      return ok;
+    }
+
+    function wizNext() { wizCollect(); if (!wizValidate()) return; wizRender(wiz.step + 1); }
+    function wizPrev() { wizCollect(); if (wiz.step > 0) wizRender(wiz.step - 1); }
+
+    // ---- Step 0: Customer ----
+    function wizCustomerHTML() {
+      const c = wiz.customer;
+      return `
+        <h4 class="text-lg font-semibold text-white mb-4">Customer Information</h4>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="label-dark">Full Name <span class="text-red-400">*</span></label>
+            <input id="wc-name" class="input-dark" value="${esc(c.name)}" autocomplete="off">
+            <div id="wc-name-err" class="error-msg"></div>
+          </div>
+          <div>
+            <label class="label-dark">Phone <span class="text-red-400">*</span></label>
+            <input id="wc-phone" type="tel" class="input-dark" value="${esc(c.phone)}" autocomplete="off">
+            <div id="wc-phone-err" class="error-msg"></div>
+          </div>
+          <div>
+            <label class="label-dark">Email</label>
+            <input id="wc-email" type="email" class="input-dark" value="${esc(c.email)}" autocomplete="off" placeholder="Optional — used to link future web orders">
+            <div id="wc-email-err" class="error-msg"></div>
+          </div>
+          <div>
+            <label class="label-dark">Company</label>
+            <input id="wc-company" class="input-dark" value="${esc(c.company)}" autocomplete="off">
+          </div>
+          <div>
+            <label class="label-dark">Customer Type</label>
+            <select id="wc-type" class="input-dark">${typeOptions(c.type)}</select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label-dark">Customer Notes</label>
+            <textarea id="wc-notes" class="input-dark" placeholder="How they found us, preferences, best time to call…">${esc(c.notes)}</textarea>
+          </div>
+        </div>`;
+    }
+
+    // ---- Step 1: Vehicles ----
+    function wizRenderVehicleTabs() {
+      const c = document.getElementById('wizVehicleTabs');
+      if (!c) return;
+      c.innerHTML = wiz.vehicles.map((v, i) => `
+        <button type="button" class="vehicle-tab ${i === wizVehicleTab ? 'active' : ''}" onclick="wizSwitchVehicle(${i})">
+          Vehicle ${i + 1}${wiz.vehicles.length > 1 ? `<span class="remove-vtab" onclick="wizRemoveVehicle(event, ${i})">×</span>` : ''}
+        </button>`).join('') +
+        `<button type="button" class="add-vehicle-tab" onclick="wizAddVehicle()"><i class="fas fa-plus"></i> Add Vehicle</button>`;
+    }
+
+    function wizSwitchVehicle(i) {
+      wizSaveVehicle(wizVehicleTab);
+      wizVehicleTab = i;
+      wizRenderVehicleTabs();
+      wizRenderVehicle(i);
+    }
+
+    function wizAddVehicle() {
+      wizSaveVehicle(wizVehicleTab);
+      wiz.vehicles.push(wizFreshVehicle());
+      wizSwitchVehicle(wiz.vehicles.length - 1);
+      wizUpdateRunningTotal();
+    }
+
+    function wizRemoveVehicle(e, i) {
+      e.stopPropagation();
+      if (wiz.vehicles.length <= 1) return;
+      if (i !== wizVehicleTab) wizSaveVehicle(wizVehicleTab);
+      wiz.vehicles.splice(i, 1);
+      if (i < wizVehicleTab) wizVehicleTab--;
+      if (wizVehicleTab >= wiz.vehicles.length) wizVehicleTab = wiz.vehicles.length - 1;
+      wizRenderVehicleTabs();
+      wizRenderVehicle(wizVehicleTab);
+      wizUpdateRunningTotal();
+    }
+
+    function wizVehicleHTML(i, v) {
+      return `
+        <div class="space-y-5">
+          <div>
+            <label class="label-dark">VIN <span class="text-muted font-normal">(auto-fills year / make / model)</span></label>
+            <div class="flex gap-2">
+              <input id="wv-vin-${i}" class="input-dark uppercase tracking-widest" maxlength="17"
+                     placeholder="1HGCM82633A123456" value="${esc(v.vin)}" autocomplete="off">
+              <button type="button" onclick="wizDecodeVin(${i})" class="btn btn-cyan px-4 shrink-0">
+                <i class="fas fa-magnifying-glass"></i> Decode
+              </button>
+            </div>
+            <div id="wv-vinResult-${i}" class="vin-result mt-2 text-sm hidden"></div>
+            <div id="wv-vinError-${i}" class="mt-2 text-sm text-red-400 hidden"></div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label class="label-dark">Year <span class="text-red-400">*</span></label>
+              <select id="wv-year-${i}" class="input-dark">${yearOptions(v.year)}</select>
+              <div id="wv-year-${i}-err" class="error-msg"></div>
+            </div>
+            <div>
+              <label class="label-dark">Make <span class="text-red-400">*</span></label>
+              <input id="wv-make-${i}" class="input-dark" value="${esc(v.make)}" autocomplete="off">
+              <div id="wv-make-${i}-err" class="error-msg"></div>
+            </div>
+            <div>
+              <label class="label-dark">Model <span class="text-red-400">*</span></label>
+              <input id="wv-model-${i}" class="input-dark" value="${esc(v.model)}" autocomplete="off">
+              <div id="wv-model-${i}-err" class="error-msg"></div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="label-dark">Vehicle Type</label>
+              <select id="wv-type-${i}" class="input-dark" onchange="wizSaveVehicle(${i}); wizUpdateRunningTotal()">${vehicleTypeOptions(v.type)}</select>
+            </div>
+            <div>
+              <label class="label-dark">Condition</label>
+              <div class="flex gap-5 pt-3">
+                <label class="flex items-center gap-2 cursor-pointer text-white">
+                  <input type="radio" name="wv-cond-${i}" value="operable" ${v.condition !== 'inoperable' ? 'checked' : ''}
+                         onchange="wizSaveVehicle(${i}); wizUpdateRunningTotal()"> Operable
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer text-white">
+                  <input type="radio" name="wv-cond-${i}" value="inoperable" ${v.condition === 'inoperable' ? 'checked' : ''}
+                         onchange="wizSaveVehicle(${i}); wizUpdateRunningTotal()"> Inoperable
+                  <span class="text-xs text-muted">(+$${config.addons.inoperable})</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-4">
+            <div>
+              <label class="label-dark">Runs and drives</label>
+              <select id="wv-runs-${i}" class="input-dark">
+                <option value="yes" ${v.runsAndDrives !== false ? 'selected' : ''}>Yes</option>
+                <option value="no"  ${v.runsAndDrives === false ? 'selected' : ''}>No</option>
+              </select>
+            </div>
+            <div>
+              <label class="label-dark">Has keys</label>
+              <select id="wv-keys-${i}" class="input-dark">
+                <option value="yes" ${v.hasKeys !== false ? 'selected' : ''}>Yes</option>
+                <option value="no"  ${v.hasKeys === false ? 'selected' : ''}>No</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="space-y-3">
+            <label class="flex items-center gap-3 cursor-pointer text-white">
+              <input type="checkbox" id="wv-modified-${i}" ${v.modified ? 'checked' : ''}
+                     onchange="document.getElementById('wv-modBlock-${i}').classList.toggle('hidden', !this.checked); wizSaveVehicle(${i}); wizUpdateRunningTotal()">
+              Modified / Custom vehicle <span class="text-xs text-muted">(+$${config.addons.modified})</span>
+            </label>
+            <div id="wv-modBlock-${i}" class="${v.modified ? '' : 'hidden'}">
+              <textarea id="wv-modDesc-${i}" class="input-dark" placeholder="Lifted, lowered, oversized tires, wide body, snow plow…">${esc(v.modDescription)}</textarea>
+            </div>
+            <label class="flex items-center gap-3 cursor-pointer text-white">
+              <input type="checkbox" id="wv-urgent-${i}" ${v.urgent ? 'checked' : ''}
+                     onchange="wizSaveVehicle(${i}); wizUpdateRunningTotal()">
+              Urgent Delivery <span class="text-xs text-muted">(+$${config.addons.urgent})</span>
+            </label>
+          </div>
+
+          <div>
+            <label class="label-dark">Damages / Condition Notes</label>
+            <textarea id="wv-damages-${i}" class="input-dark" placeholder="Dents, scratches, missing parts, leaks, flat tires, broken glass…">${esc(v.damages)}</textarea>
+          </div>
+
+          <div>
+            <label class="label-dark">Vehicle Photos <span class="text-muted font-normal">(optional, up to 8)</span></label>
+            <div class="upload-zone p-5 text-center">
+              <input type="file" id="wv-photos-${i}" accept="image/*" multiple class="hidden">
+              <label for="wv-photos-${i}" class="cursor-pointer block">
+                <i class="fas fa-cloud-upload-alt text-2xl text-[var(--orange)] mb-1"></i>
+                <span class="text-[var(--orange)] font-medium block text-sm">Upload photos</span>
+              </label>
+            </div>
+            <div id="wv-photoPreview-${i}" class="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-3"></div>
+          </div>
+        </div>`;
+    }
+
+    function wizRenderVehicle(i) {
+      const fc = document.getElementById('wizVehicleForm');
+      if (!fc) return;
+      fc.innerHTML = wizVehicleHTML(i, wiz.vehicles[i]);
+      wizRenderPhotos(i);
+      document.getElementById('wv-photos-' + i).addEventListener('change', (e) => wizAddPhotos(i, e.target));
+      let vinTimer;
+      document.getElementById('wv-vin-' + i).addEventListener('input', (e) => {
+        clearTimeout(vinTimer);
+        if (e.target.value.trim().length === 17) vinTimer = setTimeout(() => wizDecodeVin(i), 500);
+      });
+    }
+
+    function wizSaveVehicle(i) {
+      const g = id => document.getElementById(id + '-' + i);
+      if (!g('wv-year') || !wiz.vehicles[i]) return;
+      Object.assign(wiz.vehicles[i], {
+        vin:           g('wv-vin').value.trim().toUpperCase(),
+        year:          g('wv-year').value,
+        make:          g('wv-make').value.trim(),
+        model:         g('wv-model').value.trim(),
+        type:          g('wv-type').value,
+        condition:     document.querySelector(`input[name="wv-cond-${i}"]:checked`)?.value || 'operable',
+        runsAndDrives: g('wv-runs').value !== 'no',
+        hasKeys:       g('wv-keys').value !== 'no',
+        modified:      g('wv-modified').checked,
+        modDescription: g('wv-modDesc').value.trim(),
+        urgent:        g('wv-urgent').checked,
+        damages:       g('wv-damages').value.trim()
+      });
+    }
+
+    async function wizDecodeVin(i) {
+      const input = document.getElementById('wv-vin-' + i);
+      const vin = input.value.trim().toUpperCase();
+      const ok  = document.getElementById('wv-vinResult-' + i);
+      const err = document.getElementById('wv-vinError-' + i);
+      ok.classList.add('hidden'); err.classList.add('hidden');
+      if (vin.length < 11) {
+        err.textContent = 'Enter the full 17-character VIN';
+        err.classList.remove('hidden');
+        return;
+      }
+      ok.innerHTML = '<i class="fas fa-circle-notch fa-spin mr-1"></i>Decoding…';
+      ok.classList.remove('hidden');
+      try {
+        const d = await (await fetch('/api/vin/' + encodeURIComponent(vin))).json();
+        if (!d.success) throw new Error(d.message || 'VIN not found');
+        if (d.year)  document.getElementById('wv-year-'  + i).value = d.year;
+        if (d.make)  document.getElementById('wv-make-'  + i).value = d.make;
+        if (d.model) document.getElementById('wv-model-' + i).value = d.model;
+        ok.innerHTML = `<i class="fas fa-check mr-1"></i>${esc(d.label)}${d.trim ? ' · ' + esc(d.trim) : ''}${d.bodyClass ? ' · ' + esc(d.bodyClass) : ''}`;
+        wizSaveVehicle(i);
+      } catch (e) {
+        ok.classList.add('hidden');
+        err.textContent = e.message || 'Could not decode VIN';
+        err.classList.remove('hidden');
+      }
+    }
+
+    function wizRenderPhotos(i) {
+      const p = document.getElementById('wv-photoPreview-' + i);
+      if (!p) return;
+      p.innerHTML = wiz.vehicles[i].photos.map((ph, k) => `
+        <div class="relative">
+          <img src="${ph.data}" class="rounded-lg border border-[var(--line)] object-cover h-24 w-full">
+          <button type="button" onclick="wizRemovePhoto(${i}, ${k})"
+                  class="absolute -top-2 -right-2 bg-red-500 text-white w-6 h-6 rounded-full flex items-center justify-center text-xs">×</button>
+        </div>`).join('');
+    }
+
+    function wizAddPhotos(i, input) {
+      Array.from(input.files).forEach(file => {
+        if (!file.type.startsWith('image/')) return;
+        if (wiz.vehicles[i].photos.length >= 8) return alert('Maximum 8 photos per vehicle');
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          wiz.vehicles[i].photos.push({ name: file.name, data: e.target.result });
+          wizRenderPhotos(i);
+        };
+        reader.readAsDataURL(file);
+      });
+      input.value = '';
+    }
+
+    function wizRemovePhoto(i, k) {
+      wiz.vehicles[i].photos.splice(k, 1);
+      wizRenderPhotos(i);
+    }
+
+    // ---- Step 2: Route ----
+    function wizRouteHTML() {
+      return `
+        <h4 class="text-lg font-semibold text-white mb-4">Route &amp; Dates</h4>
+        <div class="space-y-4">
+          <div>
+            <label class="label-dark">Pickup Address <span class="text-red-400">*</span></label>
+            <input id="wr-pickup" class="input-dark" value="${esc(wiz.location.pickup)}" autocomplete="off" placeholder="Street, City, State">
+            <div id="wr-pickup-err" class="error-msg"></div>
+          </div>
+          <div>
+            <label class="label-dark">Delivery Address <span class="text-red-400">*</span></label>
+            <input id="wr-delivery" class="input-dark" value="${esc(wiz.location.delivery)}" autocomplete="off" placeholder="Street, City, State">
+            <div id="wr-delivery-err" class="error-msg"></div>
+          </div>
+          <div>
+            <label class="label-dark">Distance (miles) <span class="text-red-400">*</span></label>
+            <input id="wr-distance" type="number" min="0" class="input-dark" value="${esc(wiz.distance)}"
+                   oninput="wiz.distance = this.value; wizUpdateRunningTotal()">
+            <p class="text-xs text-muted mt-1">Auto-calculated when both addresses are picked from the suggestions. Editable.</p>
+            <div id="wr-distance-err" class="error-msg"></div>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="label-dark">First possible pickup <span class="text-red-400">*</span></label>
+              <input id="wr-pickupDate" type="date" class="input-dark" value="${esc(wiz.pickupDate)}">
+              <div id="wr-pickupDate-err" class="error-msg"></div>
+            </div>
+            <div>
+              <label class="label-dark">Must deliver by <span class="text-red-400">*</span></label>
+              <input id="wr-deliverBy" type="date" class="input-dark" value="${esc(wiz.mustDeliverBy)}">
+              <div id="wr-deliverBy-err" class="error-msg"></div>
+            </div>
+          </div>
+          <div>
+            <label class="label-dark">Transport Type</label>
+            <div class="flex gap-3">
+              <button type="button" id="wr-tOpen" onclick="wizTransport('open')"
+                      class="btn-transport flex-1 py-3 border-2 rounded-lg font-medium ${wiz.transportType === 'open' ? 'active' : ''}">Open</button>
+              <button type="button" id="wr-tEnclosed" onclick="wizTransport('enclosed')"
+                      class="btn-transport flex-1 py-3 border-2 rounded-lg font-medium ${wiz.transportType === 'enclosed' ? 'active' : ''}">Enclosed</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function wizTransport(t) {
+      wiz.transportType = t;
+      document.getElementById('wr-tOpen').classList.toggle('active', t === 'open');
+      document.getElementById('wr-tEnclosed').classList.toggle('active', t === 'enclosed');
+    }
+
+    // Google Maps is loaded lazily the first time the Route step opens.
+    // If it fails, the distance field still works manually.
+    function wizInitMaps() {
+      const bind = () => {
+        if (!window.google?.maps?.places) return;
+        const p = document.getElementById('wr-pickup');
+        const d = document.getElementById('wr-delivery');
+        if (!p || !d) return;
+        const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
+        new google.maps.places.Autocomplete(p, opts).addListener('place_changed', wizCalcDistance);
+        new google.maps.places.Autocomplete(d, opts).addListener('place_changed', wizCalcDistance);
+        wizDistanceService = new google.maps.DistanceMatrixService();
+      };
+      if (window.google?.maps?.places) return bind();
+      if (window._wizMapsLoading) { window._wizMapsCbs.push(bind); return; }
+      window._wizMapsLoading = true;
+      window._wizMapsCbs = [bind];
+      window.wizMapsReady = () => { (window._wizMapsCbs || []).forEach(f => f()); window._wizMapsCbs = []; };
+      const s = document.createElement('script');
+      s.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_KEY}&libraries=places&callback=wizMapsReady`;
+      s.async = true; s.defer = true;
+      s.onerror = () => console.warn('Google Maps failed to load — enter the distance manually');
+      document.head.appendChild(s);
+    }
+
+    function wizCalcDistance() {
+      const p = document.getElementById('wr-pickup')?.value.trim();
+      const d = document.getElementById('wr-delivery')?.value.trim();
+      if (!p || !d || !wizDistanceService) return;
+      wizDistanceService.getDistanceMatrix(
+        { origins: [p], destinations: [d],
+          travelMode: google.maps.TravelMode.DRIVING,
+          unitSystem: google.maps.UnitSystem.IMPERIAL },
+        (resp, status) => {
+          if (status === 'OK' && resp.rows[0].elements[0].status === 'OK') {
+            const miles = Math.round(resp.rows[0].elements[0].distance.value * 0.000621371);
+            const el = document.getElementById('wr-distance');
+            if (el) el.value = miles;
+            wiz.distance = miles;
+            wizUpdateRunningTotal();
+          }
+        }
+      );
+    }
+
+    // ---- Pricing (same formula as /payment, using the admin's saved calculator config) ----
+    function wizVehiclePrice(v) {
+      const miles = Math.max(0, parseFloat(wiz.distance) || 0);
+      let cpm = config.tiers[config.tiers.length - 1].rate;
+      for (const t of config.tiers) { if (miles <= t.max) { cpm = t.rate; break; } }
+      let s = config.baseFee + cpm * miles;
+      if (config.multipliers[v.type]) s *= config.multipliers[v.type];
+      if (v.condition === 'inoperable') s += config.addons.inoperable;
+      if (v.modified) s += config.addons.modified;
+      if (v.urgent)   s += config.addons.urgent;
+      return Math.round(s);
+    }
+    function wizComputedTotal() { return wiz.vehicles.reduce((sum, v) => sum + wizVehiclePrice(v), 0); }
+    function wizUpdateRunningTotal() {
+      if (!wiz) return;
+      const t = document.getElementById('wizRunningTotal');
+      if (t) t.textContent = '$' + wizComputedTotal().toLocaleString();
+    }
+
+    // ---- Step 3: Quote ----
+    function wizQuoteHTML() {
+      const c = wiz.customer;
+      const miles = Number(wiz.distance) || 0;
+      const computed = wizComputedTotal();
+      const final = (wiz.finalPrice != null && wiz.finalPrice !== '') ? wiz.finalPrice : computed;
+
+      const rows = wiz.vehicles.map((v, i) => `
+        <div class="flex justify-between items-start gap-4 py-3 border-b border-[var(--line)]">
+          <div>
+            <div class="font-semibold text-white">Vehicle ${i + 1}: ${esc([v.year, v.make, v.model].filter(Boolean).join(' '))}</div>
+            <div class="text-xs text-muted mt-1">
+              ${esc(VEHICLE_TYPE_LABELS[v.type] || v.type)} · ${v.condition === 'inoperable' ? 'Inoperable' : 'Operable'}
+              ${v.runsAndDrives === false ? ' · Does not run' : ''}${v.hasKeys === false ? ' · No keys' : ''}
+              ${v.modified ? ' · Modified' : ''}${v.urgent ? ' · Urgent' : ''}${v.vin ? ' · VIN ' + esc(v.vin) : ''}
+              ${v.photos.length ? ` · ${v.photos.length} photo${v.photos.length > 1 ? 's' : ''}` : ''}
+            </div>
+            ${v.damages ? `<div class="text-xs text-amber-400 mt-1"><i class="fas fa-triangle-exclamation mr-1"></i>${esc(v.damages)}</div>` : ''}
+          </div>
+          <div class="text-[var(--orange)] font-semibold shrink-0">$${wizVehiclePrice(v).toLocaleString()}</div>
+        </div>`).join('');
+
+      return `
+        <h4 class="text-lg font-semibold text-white mb-4">Quote Summary</h4>
+        <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-5 space-y-2 text-sm text-dim mb-5">
+          <div><strong class="text-white">Customer:</strong> ${esc(c.name)}${c.company ? ' · ' + esc(c.company) : ''} · ${esc(c.phone)}${c.email ? ' · ' + esc(c.email) : ''} ${typeBadge(c.type)}</div>
+          <div><strong class="text-white">From:</strong> ${esc(wiz.location.pickup)}</div>
+          <div><strong class="text-white">To:</strong> ${esc(wiz.location.delivery)}</div>
+          <div>
+            <strong class="text-white">Distance:</strong> ${miles.toLocaleString()} mi ·
+            <strong class="text-white">Transport:</strong> ${esc(wiz.transportType)} ·
+            <strong class="text-white">Pickup:</strong> ${esc(wiz.pickupDate)} ·
+            <strong class="text-white">Deliver by:</strong> ${esc(wiz.mustDeliverBy)}
+          </div>
+        </div>
+
+        <div class="mb-6">${rows}</div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
+          <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-5">
+            <div class="text-xs text-muted">Calculated price</div>
+            <div class="text-2xl font-bold text-white mb-4">$${computed.toLocaleString()}</div>
+            <label class="label-dark">Final quoted price ($)</label>
+            <input id="wizFinalPrice" type="number" min="0" step="1" class="input-dark text-2xl font-bold"
+                   style="color: var(--orange);" value="${esc(final)}" oninput="wiz.finalPrice = this.value">
+            <button type="button" onclick="wiz.finalPrice = null; document.getElementById('wizFinalPrice').value = ${computed}"
+                    class="text-xs text-cyan-400 hover:text-white mt-2"><i class="fas fa-rotate-left mr-1"></i>Use calculated price</button>
+          </div>
+          <div>
+            <label class="label-dark">Internal order notes</label>
+            <textarea id="wizNotes" class="input-dark" style="min-height:140px" placeholder="Call notes, special instructions, gate codes…">${esc(wiz.notes)}</textarea>
+            <p class="text-xs text-muted mt-2">
+              Saved as an <span class="text-red-400 font-semibold">unpaid</span> phone-in order.
+              Mark it paid from the order details once payment is collected.
+            </p>
+          </div>
+        </div>`;
+    }
+
+    async function wizSave() {
+      wizCollect();
+      const total = Math.max(0, Math.round(Number(wiz.finalPrice)) || wizComputedTotal());
+      const c = wiz.customer;
+      const btn = document.getElementById('wizSaveBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Saving…';
+      try {
+        const res = await fetch('/api/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: 'MC-' + Date.now().toString().slice(-6),
+            status: 'New',
+            source: 'admin',
+            paymentStatus: 'unpaid',
+            customerId: wiz.customerId,
+            contact: { fullName: c.name, email: c.email, phone: c.phone, company: c.company, type: c.type },
+            customerNotes: c.notes,
+            vehicles: wiz.vehicles,
+            vehicle: wiz.vehicles[0],
+            location: wiz.location,
+            distance: Number(wiz.distance) || null,
+            pickupDate: wiz.pickupDate,
+            mustDeliverBy: wiz.mustDeliverBy,
+            transportType: wiz.transportType,
+            total,
+            notes: wiz.notes
+          })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Save failed');
+        wiz = null;
+        document.getElementById('customerWizardModal').classList.add('hidden');
+        loadOrders();
+        loadCustomers();
+        alert(`✅ Quote saved as order ${data.orderId} — $${total.toLocaleString()}`);
+      } catch (e) {
+        alert('Error saving: ' + e.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-save"></i> Save Customer & Quote';
+      }
+    }
+
     // Auto-login if session exists
     if (sessionStorage.getItem('mcAdminAuth') === '1') {
       document.getElementById('passwordScreen').classList.add('hidden');
@@ -848,6 +1923,7 @@
       loadCurrentConfig();
       loadOrders();
       loadPromoCodes();
+      loadCustomers();
     }
 
     document.getElementById('passwordInput').addEventListener('keypress', (e) => {

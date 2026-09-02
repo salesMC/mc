@@ -6,6 +6,24 @@
   <title>Sign In | MC Transportation</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .role-tabs { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0; margin-bottom: 1.5rem; }
+    .role-tab {
+      padding: 0.7rem 0.5rem; text-align: center;
+      font-size: 0.8rem; font-weight: 600; cursor: pointer;
+      border: 1px solid var(--line); background: transparent;
+      color: var(--ink-muted); transition: all 0.18s;
+    }
+    .role-tab:first-child { border-radius: 0.5rem 0 0 0.5rem; }
+    .role-tab:last-child { border-radius: 0 0.5rem 0.5rem 0; border-left: none; }
+    .role-tab:not(:first-child):not(:last-child) { border-left: none; border-radius: 0; }
+    .role-tab.active {
+      background: rgba(255,106,61,0.12);
+      border-color: rgba(255,106,61,0.4);
+      color: var(--orange);
+    }
+    .role-tab:not(.active):hover { color: white; border-color: var(--line-soft); }
+  </style>
 </head>
 <body>
 
@@ -22,14 +40,26 @@
           <i class="fas fa-right-to-bracket"></i>
         </div>
         <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Welcome back</h1>
-        <p class="text-dim mt-3">Sign in to manage your shipments and payments.</p>
+        <p class="text-dim mt-3">Sign in to manage your shipments and loads.</p>
       </div>
 
       <div class="tile p-8 md:p-10">
+        <div class="role-tabs" id="roleTabs">
+          <button type="button" class="role-tab active" data-role="carrier">
+            <i class="fas fa-truck block mb-1"></i> Carrier
+          </button>
+          <button type="button" class="role-tab" data-role="shipper">
+            <i class="fas fa-box block mb-1"></i> Shipper
+          </button>
+          <button type="button" class="role-tab" data-role="admin">
+            <i class="fas fa-shield-halved block mb-1"></i> Admin
+          </button>
+        </div>
+
         <form id="signInForm" class="space-y-5">
           <div>
             <label class="label-dark">Email</label>
-            <input id="signInEmail" type="email" placeholder="you@example.com" required class="input-dark">
+            <input id="signInEmail" type="email" placeholder="carrier@mctransportation.com" required class="input-dark">
           </div>
 
           <div>
@@ -47,11 +77,11 @@
 
           <div id="signInError" class="hidden text-sm text-red-400 flex items-center gap-2">
             <i class="fas fa-circle-exclamation"></i>
-            <span>Incorrect email or password.</span>
+            <span id="signInErrorText">Incorrect email or password.</span>
           </div>
 
-          <button type="submit" class="btn btn-primary w-full justify-center py-4">
-            Sign In
+          <button type="submit" id="signInBtn" class="btn btn-primary w-full justify-center py-4">
+            Sign In as <span id="signInRoleLabel">Carrier</span>
             <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
           </button>
         </form>
@@ -64,27 +94,101 @@
 
         <p class="text-center text-sm text-dim">
           New to MC Transportation?
-          <a href="/contact" class="text-[var(--orange)] hover:text-white transition-colors font-medium">Create an account</a>
+          <a href="/register" class="text-[var(--orange)] hover:text-white transition-colors font-medium">Create an account</a>
         </p>
+
+        <div class="mt-6 p-3 rounded-lg text-xs text-muted" style="background:rgba(255,255,255,0.03);border:1px solid var(--line);">
+          <p class="mb-1 font-medium text-dim">Demo accounts:</p>
+          <p>Carrier: carrier@mctransportation.com / carrier2026</p>
+          <p>Shipper: shipper@mctransportation.com / shipper2026</p>
+          <p>Admin: admin@mctransportation.com / mcadmin2026</p>
+        </div>
       </div>
 
       <script>
         (function () {
-          const ADMIN_PASSWORD = "mcadmin2026";
+          let selectedRole = 'carrier';
           const form = document.getElementById('signInForm');
+          const emailField = document.getElementById('signInEmail');
           const pwField = document.getElementById('signInPassword');
           const errEl = document.getElementById('signInError');
+          const errText = document.getElementById('signInErrorText');
+          const roleLabel = document.getElementById('signInRoleLabel');
+          const btn = document.getElementById('signInBtn');
 
-          form.addEventListener('submit', (e) => {
+          const placeholders = {
+            carrier: 'carrier@mctransportation.com',
+            shipper: 'shipper@mctransportation.com',
+            admin:   'admin@mctransportation.com'
+          };
+
+          const redirects = {
+            carrier: '/exchange/listings',
+            shipper: '/exchange/shipments',
+            admin:   '/admin'
+          };
+
+          if (sessionStorage.getItem('mcAdminAuth') === '1') {
+            window.location.href = '/admin';
+            return;
+          }
+          const existingRole = sessionStorage.getItem('mcRole');
+          if (sessionStorage.getItem('mcAuth') === '1' && existingRole) {
+            window.location.href = redirects[existingRole] || '/exchange/listings';
+            return;
+          }
+
+          document.querySelectorAll('.role-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+              selectedRole = tab.dataset.role;
+              document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+              tab.classList.add('active');
+              roleLabel.textContent = selectedRole.charAt(0).toUpperCase() + selectedRole.slice(1);
+              emailField.placeholder = placeholders[selectedRole];
+            });
+          });
+
+          form.addEventListener('submit', async (e) => {
             e.preventDefault();
             errEl.classList.add('hidden');
-            if (pwField.value === ADMIN_PASSWORD) {
-              sessionStorage.setItem('mcAdminAuth', '1');
-              window.location.href = '/admin';
-            } else {
+            btn.disabled = true;
+
+            try {
+              const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  email: emailField.value.trim(),
+                  password: pwField.value,
+                  role: selectedRole
+                })
+              });
+              const data = await res.json();
+
+              if (data.success) {
+                if (selectedRole === 'admin' || data.role === 'admin') {
+                  sessionStorage.setItem('mcAdminAuth', '1');
+                  sessionStorage.setItem('mcAdminEmail', data.email);
+                  sessionStorage.removeItem('mcAuth');
+                  sessionStorage.removeItem('mcRole');
+                  window.location.href = '/admin';
+                } else {
+                  sessionStorage.setItem('mcAuth', '1');
+                  sessionStorage.setItem('mcRole', data.role);
+                  sessionStorage.setItem('mcEmail', data.email);
+                  sessionStorage.removeItem('mcAdminAuth');
+                  window.location.href = redirects[selectedRole];
+                }
+              } else {
+                errText.textContent = data.message || 'Incorrect email or password.';
+                errEl.classList.remove('hidden');
+                pwField.focus();
+              }
+            } catch (err) {
+              errText.textContent = 'Connection error. Please try again.';
               errEl.classList.remove('hidden');
-              pwField.focus();
-              pwField.select();
+            } finally {
+              btn.disabled = false;
             }
           });
         })();
