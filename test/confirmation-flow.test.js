@@ -89,8 +89,16 @@ Module._load = function (request, parent, isMain) {
 const path = require('path');
 const { pool, expireCardHolds } = require(path.join(__dirname, '..', 'app.js'));
 const B = `http://localhost:${process.env.PORT}`;
-const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@mctransportation.com').toLowerCase();
-const ADMIN_PASSWORD = process.env.ADMIN_DEFAULT_PASSWORD || 'mcadmin2026';
+// The suite signs in as its own throw-away admin (created below, removed at the end)
+// so it never depends on — or touches — the real admin password.
+const ADMIN_EMAIL = 'test-admin@mcships.test';
+const ADMIN_PASSWORD = 'test-' + require('crypto').randomBytes(8).toString('hex');
+async function createTestAdmin() {
+  const bcrypt = require('bcryptjs');
+  await pool.execute('DELETE FROM employees WHERE email = ?', [ADMIN_EMAIL]);
+  await pool.execute('INSERT INTO employees (email, password, role, name) VALUES (?, ?, ?, ?)', [ADMIN_EMAIL, await bcrypt.hash(ADMIN_PASSWORD, 10), 'admin', 'Test Admin']);
+}
+async function removeTestAdmin() { await pool.execute('DELETE FROM employees WHERE email = ?', [ADMIN_EMAIL]); }
 
 // ---------- Tiny test harness ----------
 let passed = 0, failed = 0;
@@ -151,6 +159,7 @@ async function sendAndAuthorize(id, fee) {
 // ================================================================
 (async () => {
   await waitForServer();
+  await createTestAdmin();
   console.log('\nServer up — running tests\n');
 
   // ---------- 0. Authentication ----------
@@ -475,6 +484,8 @@ async function sendAndAuthorize(id, fee) {
   for (const id of [...new Set(created.customers)]) await api('DELETE', `/api/customers/${id}`);
   const left = (await api('GET', '/api/orders')).data.filter(x => String(x.id).startsWith('MC-T-'));
   check('test orders removed', left.length === 0, left.map(x => x.id));
+  await removeTestAdmin();
+  check('test admin removed', (await pool.execute('SELECT id FROM employees WHERE email = ?', [ADMIN_EMAIL]))[0].length === 0);
 
   console.log(`\n${passed} passed, ${failed} failed\n`);
   process.exit(failed ? 1 : 0);
