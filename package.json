@@ -19,5 +19,8 @@
     "mysql2": "^3.22.3",
     "nodemailer": "^6.10.1",
     "stripe": "^22.1.0"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

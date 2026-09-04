@@ -65,6 +65,10 @@ function appUrl(req) {
   return (process.env.APP_URL || `${req.protocol}://${req.get('host')}`).replace(/\/$/, '');
 }
 
+// Never let one bad request take the whole site down; log it and keep serving.
+process.on("uncaughtException", (e) => console.error("UNCAUGHT EXCEPTION:", e && e.stack || e));
+process.on("unhandledRejection", (e) => console.error("UNHANDLED REJECTION:", e && e.stack || e));
+
 const app  = express();
 const PORT = process.env.PORT || 3000;
 app.set('trust proxy', 1); // Railway/Heroku-style proxy → correct req.protocol / client IP
