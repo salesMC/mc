@@ -2956,7 +2956,7 @@ initDB().then(() => {
   app.listen(PORT, () => {
     console.log(`\n🚀 MC Transportation running on http://localhost:${PORT}`);
     console.log(`   Admin: http://localhost:${PORT}/admin\n`);
-    if (!mailer) console.log('   ✉️  Email disabled (no SMTP_HOST in .env) — confirmation links must be copied manually');
+    if (!mailer && !useResendApi) console.log('   ✉️  Email disabled (no SMTP_HOST in .env) — confirmation links must be copied manually');
   });
 
   // Card-hold housekeeping: once at boot, then hourly (unref so it never blocks shutdown)
