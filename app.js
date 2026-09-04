@@ -783,6 +783,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toSt
 if (!process.env.SESSION_SECRET) {
   console.warn('⚠️  SESSION_SECRET is not set in .env — everyone is logged out whenever the server restarts.');
 }
+// Changes on every deploy (Railway sets the commit SHA) so browsers fetch fresh scripts
+const ASSET_VERSION = (process.env.RAILWAY_GIT_COMMIT_SHA || '').slice(0, 8) || Date.now().toString(36);
 const SESSION_COOKIE = 'mc_session';
 const SESSION_TTL_SECONDS = { admin: 24 * 3600, carrier: 7 * 24 * 3600, shipper: 7 * 24 * 3600 };
 const REMEMBER_TTL_SECONDS = 30 * 24 * 3600; // "Keep me signed in"
@@ -826,6 +828,7 @@ app.use((req, res, next) => { req.session = readSession(req); next(); });
 // Values every template can use (keys live in .env, not in the page source files)
 app.use((req, res, next) => {
   res.locals.googleMapsKey = process.env.GOOGLE_MAPS_API_KEY || '';
+  res.locals.assetVersion  = ASSET_VERSION; // cache-buster for /js and /css after each deploy
   next();
 });
 
