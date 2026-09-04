@@ -961,7 +961,12 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
     if (!/^MC-[A-Z0-9-]{4,16}$/i.test(id)) id = 'MC-' + Date.now().toString().slice(-6);
 
     // Move base64 vehicle photos out of the request and into file storage
-    await storeVehiclePhotos(vehicles, id);
+    try {
+      await storeVehiclePhotos(vehicles, id);
+    } catch (e) {
+      console.error(`File storage error (${e.name}): ${e.message}`);
+      return res.status(502).json({ success: false, message: `Photo storage is not working (${e.name || "error"}). Check the AWS S3 settings.` });
+    }
 
     let total, distance, source, paymentStatus, stripePiId = null;
     if (isAdmin) {
