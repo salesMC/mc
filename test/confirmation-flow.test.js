@@ -217,7 +217,12 @@ async function sendAndAuthorize(id, fee) {
   o = await order('MC-T-SAN');
   const v = o.vehicles[0];
   check('unknown vehicle type/condition normalised, long strings trimmed', v.type === 'sedan' && v.condition === 'operable' && v.model.length === 60, { type: v.type, cond: v.condition, len: v.model.length });
-  check('non-image "photo" dropped, real image kept', v.photos.length === 1 && v.photos[0].data.startsWith('data:image/png'), v.photos.map(p => p.data.slice(0, 20)));
+  check('non-image "photo" dropped, real image stored as a file', v.photos.length === 1 && /^\/uploads\/MC-T-SAN_v1_\d+_\d+_[0-9a-f]{8}\.png$/.test(v.photos[0].url || '') && !v.photos[0].data, v.photos);
+  raw = await fetch(B + v.photos[0].url);
+  check('stored photo served as image/png with no-sniff + sandbox', raw.status === 200 && raw.headers.get('content-type') === 'image/png' && raw.headers.get('x-content-type-options') === 'nosniff' && /sandbox/.test(raw.headers.get('content-security-policy') || ''), [raw.status, raw.headers.get('content-type')]);
+  raw = await fetch(B + '/uploads/../app.js');
+  check('path traversal on /uploads rejected', raw.status === 404, raw.status);
+  try { require('fs').unlinkSync(require('path').join(__dirname, '..', 'uploads', v.photos[0].url.split('/').pop())); } catch {}
   r = await api('PATCH', '/api/orders/MC-T-SAN/status', { status: 'DROP TABLE' });
   check('invalid order status rejected', r.status === 400);
   r = await api('POST', '/api/promo-codes', { code: 'BAD', discount: 150, type: 'percent' });

@@ -438,8 +438,12 @@ async function showOrderDetail(orderId) {
           <div class="mt-4">
             <strong class="text-white text-sm block mb-2">Photos (${vehicle.photos.length})</strong>
             <div class="grid grid-cols-3 gap-2">
-              ${vehicle.photos.filter(p => /^data:image\/[a-z]+;base64,[A-Za-z0-9+/=]+$/.test(p?.data || '')).map(photo => `
-                <img src="${photo.data}" class="rounded-lg border border-[var(--line)] object-cover h-24" alt="vehicle photo">
+              ${vehicle.photos.map(p => {
+                if (p?.url && /^\/uploads\/[A-Za-z0-9_-]+\.[a-z]+$/.test(p.url)) return p.url;
+                if (/^data:image\/[a-z]+;base64,[A-Za-z0-9+/=]+$/.test(p?.data || '')) return p.data;
+                return null;
+              }).filter(Boolean).map(src => `
+                <a href="${src}" target="_blank" rel="noopener"><img src="${src}" class="rounded-lg border border-[var(--line)] object-cover h-24 w-full" alt="vehicle photo"></a>
               `).join('')}
             </div>
           </div>

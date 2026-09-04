@@ -602,15 +602,106 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Uploaded files (invoices, BOLs, listing attachments): serve as inert documents only
+// ---------------------------------------------------------------------------
+// File storage (vehicle photos, invoices, BOLs, listing attachments)
+// AWS S3 when AWS_S3_BUCKET is set; otherwise the local uploads/ folder.
+// The bucket stays private — files are always served through /uploads/:name.
+// ---------------------------------------------------------------------------
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-app.use('/uploads', express.static(uploadsDir, {
-  setHeaders: (res) => {
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+
+const S3_BUCKET = (process.env.AWS_S3_BUCKET || '').trim();
+const S3_PREFIX = 'uploads/';
+let s3 = null;
+if (S3_BUCKET) {
+  const { S3Client } = require('@aws-sdk/client-s3');
+  // Credentials come from AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY automatically
+  s3 = new S3Client({ region: (process.env.AWS_REGION || 'us-east-1').trim() });
+  console.log(`📦 File storage: S3 bucket "${S3_BUCKET}"`);
+} else {
+  console.log('📦 File storage: local uploads/ folder (set AWS_S3_BUCKET to use S3)');
+}
+
+const UPLOAD_TYPES = {
+  'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
+  'image/gif': 'gif', 'image/heic': 'heic', 'image/heif': 'heic', 'application/pdf': 'pdf'
+};
+const MIME_BY_EXT = { jpg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', heic: 'image/heic', pdf: 'application/pdf' };
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+const UPLOAD_NAME_RE = /^[A-Za-z0-9_-]{1,120}\.(jpg|png|webp|gif|heic|pdf)$/;
+
+async function storeFile(name, buf, mime) {
+  if (s3) {
+    const { PutObjectCommand } = require('@aws-sdk/client-s3');
+    await s3.send(new PutObjectCommand({ Bucket: S3_BUCKET, Key: S3_PREFIX + name, Body: buf, ContentType: mime }));
+  } else {
+    fs.writeFileSync(path.join(uploadsDir, name), buf);
   }
-}));
+}
+
+// Decode a base64 data-URL (images / PDF only, size-capped) and store it under a
+// server-chosen name (never the client's). Returns null when rejected.
+async function storeBase64Upload(dataUrl, prefix) {
+  if (!dataUrl) return null;
+  const match = String(dataUrl).match(/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/);
+  if (!match) return null;
+  const mime = match[1].toLowerCase();
+  const ext = UPLOAD_TYPES[mime];
+  if (!ext) return null;
+  const buf = Buffer.from(match[2], 'base64');
+  if (!buf.length || buf.length > MAX_UPLOAD_BYTES) return null;
+  const safeName = `${String(prefix).replace(/[^a-z0-9_-]/gi, '').slice(0, 60)}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
+  await storeFile(safeName, buf, MIME_BY_EXT[ext]);
+  return { url: `/uploads/${safeName}`, mime: MIME_BY_EXT[ext], name: safeName, size: buf.length };
+}
+
+// Vehicle photos arrive as base64 inside the vehicles array. Store each one as a
+// file and keep only {name, url} in the database.
+async function storeVehiclePhotos(vehicles, prefix) {
+  for (let i = 0; i < vehicles.length; i++) {
+    const photos = Array.isArray(vehicles[i].photos) ? vehicles[i].photos : [];
+    const stored = [];
+    for (let k = 0; k < photos.length; k++) {
+      const p = photos[k];
+      if (p && typeof p.url === 'string' && /^\/uploads\/[A-Za-z0-9_-]+\.[a-z]+$/.test(p.url)) { stored.push({ name: p.name || '', url: p.url }); continue; }
+      const saved = await storeBase64Upload(p && p.data, `${prefix}_v${i + 1}_${k + 1}`);
+      if (saved) stored.push({ name: str(p.name, 120) || saved.name, url: saved.url });
+    }
+    vehicles[i].photos = stored;
+  }
+  return vehicles;
+}
+
+// Serve stored files as inert documents (no scripts, sandboxed) from S3 or disk.
+app.get('/uploads/:name', async (req, res) => {
+  const name = req.params.name;
+  if (!UPLOAD_NAME_RE.test(name)) return res.status(404).end();
+  const ext = name.slice(name.lastIndexOf('.') + 1);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; sandbox");
+  res.setHeader('Cache-Control', 'private, max-age=86400');
+  if (s3) {
+    try {
+      const { GetObjectCommand } = require('@aws-sdk/client-s3');
+      const obj = await s3.send(new GetObjectCommand({ Bucket: S3_BUCKET, Key: S3_PREFIX + name }));
+      res.setHeader('Content-Type', obj.ContentType || MIME_BY_EXT[ext]);
+      if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
+      obj.Body.on('error', () => res.destroy()).pipe(res);
+      return;
+    } catch (e) {
+      if (e && (e.name === 'NoSuchKey' || e.$metadata?.httpStatusCode === 404)) {
+        // fall through to disk for files saved before S3 was switched on
+      } else {
+        console.error('S3 read error:', e.message);
+        return res.status(502).end();
+      }
+    }
+  }
+  const file = path.join(uploadsDir, name);
+  if (!fs.existsSync(file)) return res.status(404).end();
+  res.setHeader('Content-Type', MIME_BY_EXT[ext]);
+  fs.createReadStream(file).pipe(res);
+});
 
 // Bodies carry base64 vehicle photos, so the limit is generous but bounded
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
@@ -842,6 +933,9 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
 
     let id = str(b.id, 20);
     if (!/^MC-[A-Z0-9-]{4,16}$/i.test(id)) id = 'MC-' + Date.now().toString().slice(-6);
+
+    // Move base64 vehicle photos out of the request and into file storage
+    await storeVehiclePhotos(vehicles, id);
 
     let total, distance, source, paymentStatus, stripePiId = null;
     if (isAdmin) {
@@ -2431,26 +2525,6 @@ app.get('/api/exchange/loads', requireCarrier, async (req, res) => {
   }
 });
 
-// Helper: save a base64 data-URL to uploads/. Only images and PDFs, size-capped,
-// with a server-chosen file name (never the client's).
-const UPLOAD_TYPES = {
-  'image/jpeg': 'jpg', 'image/jpg': 'jpg', 'image/png': 'png', 'image/webp': 'webp',
-  'image/gif': 'gif', 'image/heic': 'heic', 'application/pdf': 'pdf'
-};
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
-function saveBase64Upload(dataUrl, prefix) {
-  if (!dataUrl) return null;
-  const match = String(dataUrl).match(/^data:([^;]+);base64,([A-Za-z0-9+/=]+)$/);
-  if (!match) return null;
-  const mime = match[1].toLowerCase();
-  const ext = UPLOAD_TYPES[mime];
-  if (!ext) return null;
-  const buf = Buffer.from(match[2], 'base64');
-  if (!buf.length || buf.length > MAX_UPLOAD_BYTES) return null;
-  const safeName = `${String(prefix).replace(/[^a-z0-9_-]/gi, '')}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}.${ext}`;
-  fs.writeFileSync(path.join(uploadsDir, safeName), buf);
-  return { url: `/uploads/${safeName}`, mime, name: safeName, size: buf.length };
-}
 
 // PATCH update a carrier load (driver, ETAs, status, invoice, BOL) — own loads only
 app.patch('/api/exchange/loads/:id', requireCarrier, async (req, res) => {
@@ -2480,12 +2554,12 @@ app.patch('/api/exchange/loads/:id', requireCarrier, async (req, res) => {
     let invoiceUrl = existing[0].invoice_url || null;
     let bolUrl = existing[0].bol_url || null;
     if (invoice?.data) {
-      const saved = saveBase64Upload(invoice.data, `invoice_${id}`);
+      const saved = await storeBase64Upload(invoice.data, `invoice_${id}`);
       if (!saved) return res.status(400).json({ success: false, message: 'Invoice must be an image or PDF under 8 MB' });
       invoiceUrl = saved.url;
     }
     if (bol?.data) {
-      const saved = saveBase64Upload(bol.data, `bol_${id}`);
+      const saved = await storeBase64Upload(bol.data, `bol_${id}`);
       if (!saved) return res.status(400).json({ success: false, message: 'BOL must be an image or PDF under 8 MB' });
       bolUrl = saved.url;
     }
@@ -2547,7 +2621,7 @@ app.post('/api/exchange/listings', requireShipper, async (req, res) => {
       for (let i = 0; i < Math.min(b.attachments.length, 10); i++) {
         const att = b.attachments[i];
         if (!att || !att.data) continue;
-        const saved = saveBase64Upload(att.data, `${id}_${i}`);
+        const saved = await storeBase64Upload(att.data, `${id}_${i}`);
         if (!saved) continue;
         attachments.push({
           name: str(att.name, 120) || saved.name,
