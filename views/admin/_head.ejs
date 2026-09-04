@@ -1,0 +1,156 @@
+<%# Shared <head> for admin pages. Expects `title`. %>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title><%= title %> · Admin · MC Transportation</title>
+<script>window.MC_GOOGLE_MAPS_KEY = "<%= googleMapsKey %>";</script>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<%- include("../partials/theme") %>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    .input-admin {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      background: var(--bg-deep);
+      border: 1px solid var(--line);
+      border-radius: 0.5rem;
+      color: var(--ink);
+      font-size: 1rem;
+      transition: all 0.18s ease;
+      outline: none;
+    }
+    .input-admin:focus { 
+      border-color: var(--orange); 
+      box-shadow: 0 0 0 3px rgba(255,106,61,0.15); 
+    }
+
+    table { border-collapse: collapse; width: 100%; }
+    th, td { 
+      padding: 14px 16px; 
+      text-align: left; 
+      border-bottom: 1px solid var(--line); 
+    }
+    th { 
+      background: var(--bg-panel); 
+      font-weight: 600; 
+      color: var(--ink-dim); 
+      text-transform: uppercase;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+    }
+
+    .status-badge {
+      padding: 5px 12px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .modal { animation: modalFade 0.2s ease forwards; }
+    @keyframes modalFade {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    tr:hover {
+      background: rgba(255,106,61,0.08);
+    }
+
+
+    /* ===== Admin top bar (standalone page, no marketing nav) ===== */
+    .admin-nav {
+      position: sticky; top: 0; z-index: 40;
+      background: rgba(13,17,23,0.92);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+    }
+    .admin-nav-link {
+      display: inline-flex; align-items: center;
+      padding: 0.5rem 0.85rem; border-radius: 0.5rem;
+      font-size: 0.85rem; font-weight: 600; color: var(--ink-dim);
+      white-space: nowrap; transition: all 0.15s; background: transparent; border: 0; cursor: pointer;
+    }
+    .admin-nav-link:hover { color: white; background: rgba(255,255,255,0.05); }
+    .admin-nav-link.active { color: var(--orange); background: rgba(255,106,61,0.1); }
+    .admin-nav-logout:hover { color: #F87171; background: rgba(248,113,113,0.08); }
+    html { scroll-behavior: smooth; }
+
+    /* ===== Customers ===== */
+    .type-badge { padding: 4px 10px; border-radius: 9999px; font-size: 0.72rem; font-weight: 600; white-space: nowrap; }
+    .type-dealer     { background: rgba(34,211,238,0.12);  color: #22D3EE; }
+    .type-auction    { background: rgba(167,139,250,0.12); color: #A78BFA; }
+    .type-oem        { background: rgba(244,114,182,0.12); color: #F472B6; }
+    .type-fleet      { background: rgba(190,242,100,0.12); color: #BEF264; }
+    .type-individual { background: rgba(255,255,255,0.06); color: #C9D1D9; }
+    .type-other      { background: rgba(255,255,255,0.06); color: #8B949E; }
+
+    .pay-pill {
+      display: inline-block; margin-left: 6px; padding: 2px 8px; border-radius: 9999px;
+      font-size: 0.65rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; vertical-align: middle;
+    }
+    .pay-unpaid { background: rgba(248,113,113,0.12); color: #F87171; border: 1px solid rgba(248,113,113,0.3); }
+    .pay-phone  { background: rgba(255,106,61,0.12);  color: #FF6A3D; border: 1px solid rgba(255,106,61,0.3); }
+    .pay-wait     { background: rgba(251,191,36,0.12);  color: #FBBF24; border: 1px solid rgba(251,191,36,0.3); }
+    .pay-hold     { background: rgba(34,211,238,0.12);  color: #22D3EE; border: 1px solid rgba(34,211,238,0.3); }
+    .pay-paid     { background: rgba(190,242,100,0.12); color: #BEF264; border: 1px solid rgba(190,242,100,0.3); }
+    .pay-fee      { background: rgba(167,139,250,0.12); color: #A78BFA; border: 1px solid rgba(167,139,250,0.3); }
+    .pay-released { background: rgba(255,255,255,0.06); color: #8B949E; border: 1px solid rgba(255,255,255,0.12); }
+
+    /* ===== Intake wizard (mirrors the /payment form) ===== */
+    .wiz-step {
+      display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.9rem; border-radius: 999px;
+      border: 1px solid var(--line); font-size: 0.78rem; font-weight: 600; color: var(--ink-muted); white-space: nowrap;
+    }
+    .wiz-step.active { border-color: #FF6A3D; background: rgba(255,106,61,0.12); color: white; }
+    .wiz-step.done   { color: #BEF264; border-color: rgba(190,242,100,0.35); }
+
+    .input-dark.error { border-color: #ef4444 !important; box-shadow: 0 0 0 3px rgba(239,68,68,0.2) !important; }
+    .error-msg { color: #ef4444; font-size: 0.78rem; margin-top: 4px; min-height: 18px; }
+    .vin-result { color: #BEF264; font-weight: 500; }
+    textarea.input-dark { min-height: 80px; resize: vertical; }
+    select.input-dark { appearance: auto; }
+
+    .btn-transport { transition: all 0.2s; border-color: var(--line); color: var(--ink-dim); }
+    .btn-transport.active { background: #FF6A3D; color: white; border-color: #FF6A3D; }
+
+    .upload-zone { border: 2px dashed #374151; background: #161B22; border-radius: 12px; transition: border-color 0.2s, background 0.2s; }
+    .upload-zone:hover { border-color: #FF6A3D; background: #1F2937; }
+
+    .vehicle-tab {
+      padding: 0.45rem 0.9rem; border-radius: 0.5rem; font-size: 0.82rem; font-weight: 600;
+      border: 1px solid #1F2937; color: #8B949E; white-space: nowrap; transition: all 0.15s;
+    }
+    .vehicle-tab.active { border-color: #FF6A3D; color: white; background: rgba(255,106,61,0.12); }
+    .vehicle-tab:hover:not(.active) { border-color: #374151; color: #C9D1D9; }
+    .add-vehicle-tab {
+      padding: 0.45rem 0.85rem; border-radius: 0.5rem; font-size: 0.82rem; font-weight: 600;
+      border: 1px dashed rgba(255,106,61,0.4); color: #FF6A3D; white-space: nowrap;
+    }
+    .add-vehicle-tab:hover { border-color: #FF6A3D; background: rgba(255,106,61,0.1); }
+    .remove-vtab { margin-left: 0.35rem; opacity: 0.5; }
+    .remove-vtab:hover { opacity: 1; color: #ef4444; }
+
+    @media (max-width: 768px) {
+      /* Table: hide less important columns, shrink padding */
+      th, td { padding: 10px 8px; font-size: 0.78rem; }
+      .col-hide-mobile { display: none; }
+      /* Orders header */
+      .orders-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+      .orders-header h2 { font-size: 1.4rem !important; }
+      /* Tile padding */
+      .tile { padding: 1.25rem !important; }
+      /* Modal */
+      #orderModal .modal-grid { grid-template-columns: 1fr !important; }
+      /* Tier table inputs */
+      #tiersBody input { width: 100% !important; }
+    }
+    @media (max-width: 480px) {
+      th, td { padding: 8px 6px; font-size: 0.72rem; }
+      /* Overflow table wrapper */
+      .overflow-x-auto { -webkit-overflow-scrolling: touch; }
+      /* Save/reset buttons stack */
+      .calc-btn-row { flex-direction: column !important; }
+    }
+  </style>

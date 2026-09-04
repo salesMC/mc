@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include("_head", { title: "Customers" }) %>
+</head>
+<body data-page="customers">
+
+  <%- include("_nav", { page: "customers" }) %>
+
+  <main class="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10">
+    <!-- ==================== CUSTOMERS SECTION ==================== -->
+    <div class="tile" id="sec-customers">
+      <div class="flex flex-wrap justify-between items-center mb-6 gap-4 orders-header">
+        <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+          <i class="fas fa-users"></i>
+          Customers
+          <span id="customerCount" class="text-sm font-semibold text-muted bg-[var(--bg-deep)] border border-[var(--line)] rounded-full px-3 py-1">0</span>
+        </h2>
+        <div class="flex flex-wrap items-center gap-3">
+          <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"></i>
+            <input id="customerSearch" type="text" placeholder="Search name, email, phone…"
+                   class="input-admin pl-9" style="width: 260px;" oninput="onCustomerSearch()">
+          </div>
+          <button onclick="loadCustomers()" class="btn btn-cyan flex items-center gap-2">
+            <i class="fas fa-sync-alt"></i> Refresh
+          </button>
+          <button onclick="openCustomerWizard()" class="btn btn-primary flex items-center gap-2">
+            <i class="fas fa-plus"></i> New Customer / Quote
+          </button>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr>
+              <th>Customer</th>
+              <th class="col-hide-mobile">Contact</th>
+              <th>Type</th>
+              <th class="text-center">Orders</th>
+              <th>Total</th>
+              <th class="col-hide-mobile">Last Order</th>
+              <th class="w-40 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="customersBody" class="text-dim"></tbody>
+        </table>
+      </div>
+
+      <div id="noCustomersMessage" class="hidden text-center py-16 text-muted">
+        <i class="fas fa-user-plus text-6xl mb-6 opacity-40"></i>
+        <p>No customers yet — add one when a customer calls in.</p>
+      </div>
+    </div>
+  </main>
+
+  <%- include("_modals") %>
+  <%- include("_foot") %>
+</body>
+</html>

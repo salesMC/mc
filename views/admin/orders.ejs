@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include("_head", { title: "Orders" }) %>
+</head>
+<body data-page="orders">
+
+  <%- include("_nav", { page: "orders" }) %>
+
+  <main class="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10">
+    <!-- ==================== ORDERS SECTION ==================== -->
+    <div class="tile" id="sec-orders">
+      <div class="flex flex-wrap justify-between items-center mb-8 gap-4 orders-header">
+        <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+          <i class="fas fa-clipboard-list"></i> 
+          Orders / Quotes
+        </h2>
+        <button onclick="loadOrders()" class="btn btn-cyan flex items-center gap-2">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr>
+              <th>Order ID</th>
+              <th>Date</th>
+              <th>Customer</th>
+              <th class="col-hide-mobile">Email</th>
+              <th class="col-hide-mobile">Vehicle</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th class="w-28 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ordersBody" class="text-dim"></tbody>
+        </table>
+      </div>
+
+      <div id="noOrdersMessage" class="hidden text-center py-16 text-muted">
+        <i class="fas fa-inbox text-6xl mb-6 opacity-40"></i>
+        <p>No orders yet</p>
+      </div>
+    </div>
+  </main>
+
+  <%- include("_modals") %>
+  <%- include("_foot") %>
+</body>
+</html>

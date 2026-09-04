@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirm Pickup · MC Transportation</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <%- include('partials/theme') %>
+  <style>
+    .clause { counter-increment: clause; position: relative; padding-left: 2.25rem; }
+    .clause::before {
+      content: counter(clause);
+      position: absolute; left: 0; top: 0.1rem;
+      width: 1.5rem; height: 1.5rem; border-radius: 999px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; color: var(--orange);
+      background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.3);
+    }
+    .summary-row { display: grid; grid-template-columns: 150px 1fr; gap: 0.5rem 1rem; padding: 0.55rem 0; border-bottom: 1px solid var(--line); font-size: 0.92rem; }
+    .summary-row:last-child { border-bottom: 0; }
+    .summary-row .k { color: var(--ink-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.06em; padding-top: 0.15rem; }
+    @media (max-width: 480px) { .summary-row { grid-template-columns: 1fr; gap: 0.15rem; } }
+    input[type=checkbox] { accent-color: var(--orange); }
+    .tile:hover { transform: none; }
+  </style>
+</head>
+<body>
+
+  <div class="min-h-screen relative overflow-hidden">
+    <div class="glow-orange" style="top: -160px; right: -120px;"></div>
+    <div class="glow-cyan" style="bottom: -140px; left: -100px;"></div>
+
+    <header class="relative z-10 border-b border-[var(--line)]">
+      <div class="max-w-3xl mx-auto px-5 h-16 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-2">
+          <span class="text-xl font-bold tracking-tight text-white">MC</span>
+          <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)] mx-1"></span>
+          <span class="text-[10px] tracking-[0.22em] uppercase text-[var(--ink-muted)] font-medium pt-0.5">Transportation</span>
+        </a>
+        <a href="tel:<%= phone.replace(/[^0-9+]/g, '') %>" class="text-sm text-dim hover:text-white"><i class="fas fa-phone mr-1.5 text-[var(--orange)]"></i><%= phone %></a>
+      </div>
+    </header>
+
+    <main class="relative z-10 max-w-3xl mx-auto px-5 py-10 md:py-14">
+
+    <% if (notFound) { %>
+      <div class="tile p-10 text-center">
+        <div class="w-14 h-14 mx-auto mb-6 rounded-xl flex items-center justify-center text-red-400" style="background: rgba(248,113,113,0.12); border: 1px solid rgba(248,113,113,0.3);">
+          <i class="fas fa-link-slash"></i>
+        </div>
+        <h1 class="text-2xl font-bold text-white mb-3">This confirmation link isn't valid</h1>
+        <p class="text-dim">It may have been copied incorrectly. Please call us at <a href="tel:<%= phone.replace(/[^0-9+]/g, '') %>" class="text-[var(--orange)]"><%= phone %></a> and we'll send you a new one.</p>
+      </div>
+    <% } else {
+      const c = order.contact || {};
+      const loc = order.location || {};
+      const vehicles = (order.vehicles && order.vehicles.length) ? order.vehicles : [order.vehicle || {}];
+      const fee = order.noShowFee != null ? order.noShowFee : 150;
+      const done = ['authorized', 'paid', 'fee_charged'].includes(order.paymentStatus);
+    %>
+
+      <div class="mb-8">
+        <div class="eyebrow text-[var(--orange)] mb-3">Pickup confirmation · Order <%= order.id %></div>
+        <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight">Confirm your vehicle pickup</h1>
+        <p class="text-dim mt-3">Prepared for <span class="text-white font-medium"><%= c.fullName || 'you' %></span>. Please review the details below, accept the agreement, and authorize a card hold. <strong class="text-white">You will not be charged until your vehicle is picked up.</strong></p>
+      </div>
+
+      <!-- Already confirmed -->
+      <div id="alreadyDone" class="tile p-8 md:p-10 text-center <%= done ? '' : 'hidden' %>">
+        <div class="w-14 h-14 mx-auto mb-6 rounded-xl flex items-center justify-center text-[var(--lime)]" style="background: rgba(190,242,100,0.12); border: 1px solid rgba(190,242,100,0.4);">
+          <i class="fas fa-check text-xl"></i>
+        </div>
+        <% if (order.paymentStatus === 'authorized') { %>
+          <h2 class="text-2xl font-bold text-white mb-2">You're confirmed</h2>
+          <p class="text-dim">A hold of <span class="text-white font-semibold"><%= money(order.holdAmount || order.total) %></span> is on your card. You'll be charged when the vehicle is picked up.</p>
+        <% } else if (order.paymentStatus === 'paid') { %>
+          <h2 class="text-2xl font-bold text-white mb-2">Pickup complete</h2>
+          <p class="text-dim">Your vehicle has been picked up and <span class="text-white font-semibold"><%= money(order.chargedAmount || order.total) %></span> was charged as agreed.</p>
+        <% } else { %>
+          <h2 class="text-2xl font-bold text-white mb-2">This order is closed</h2>
+          <p class="text-dim">Please call us at <a href="tel:<%= phone.replace(/[^0-9+]/g, '') %>" class="text-[var(--orange)]"><%= phone %></a> with any questions.</p>
+        <% } %>
+      </div>
+
+      <!-- Confirmation flow -->
+      <div id="confirmFlow" class="space-y-6 <%= done ? 'hidden' : '' %>">
+
+        <!-- Summary -->
+        <div class="tile p-6 md:p-8">
+          <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2"><i class="fas fa-clipboard-list text-[var(--orange)]"></i> Transport details</h2>
+          <div>
+            <div class="summary-row"><div class="k">Vehicle<%= vehicles.length > 1 ? 's' : '' %></div>
+              <div>
+                <% vehicles.forEach((v, i) => { %>
+                  <div class="<%= i ? 'mt-1' : '' %>">
+                    <span class="text-white font-medium"><%= [v.year, v.make, v.model].filter(Boolean).join(' ') || 'Vehicle' %></span>
+                    <span class="text-muted text-sm"><%= v.type ? ' · ' + v.type : '' %><%= v.condition === 'inoperable' ? ' · inoperable' : '' %><%= v.vin ? ' · VIN ' + v.vin : '' %></span>
+                  </div>
+                <% }) %>
+              </div>
+            </div>
+            <div class="summary-row"><div class="k">Pickup</div><div class="text-white"><%= loc.pickup || '—' %></div></div>
+            <div class="summary-row"><div class="k">Delivery</div><div class="text-white"><%= loc.delivery || '—' %></div></div>
+            <div class="summary-row"><div class="k">First pickup</div><div class="text-white"><%= order.pickupDate || '—' %></div></div>
+            <div class="summary-row"><div class="k">Deliver by</div><div class="text-white"><%= order.mustDeliverBy || '—' %></div></div>
+            <div class="summary-row"><div class="k">Transport</div><div class="text-white capitalize"><%= order.transportType || 'open' %></div></div>
+            <div class="summary-row"><div class="k">Quoted price</div><div class="text-2xl font-bold text-[var(--orange)]"><%= money(order.total) %></div></div>
+            <div class="summary-row"><div class="k">No-show fee</div><div class="text-white"><%= money(fee) %> <span class="text-muted text-sm">— only if the vehicle isn't available at pickup (see agreement)</span></div></div>
+          </div>
+        </div>
+
+        <!-- Agreement -->
+        <div class="tile p-6 md:p-8">
+          <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2"><i class="fas fa-file-contract text-[var(--orange)]"></i> Pickup agreement</h2>
+          <ol class="space-y-4 text-sm text-dim leading-relaxed" style="counter-reset: clause;">
+            <% clauses.forEach(cl => { %><li class="clause"><%= cl %></li><% }) %>
+          </ol>
+
+          <div class="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label class="label-dark">Type your full name as your signature <span class="text-red-400">*</span></label>
+              <input id="agreedName" class="input-dark" placeholder="<%= c.fullName || 'Full name' %>" autocomplete="name">
+            </div>
+            <div class="flex items-end">
+              <label class="flex items-start gap-3 cursor-pointer text-sm text-white select-none pb-3">
+                <input type="checkbox" id="agreeCheck" class="w-4 h-4 mt-0.5">
+                <span>I have read and agree to the pickup agreement above, including the no-show fee.</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card -->
+        <div class="tile p-6 md:p-8">
+          <h2 class="text-lg font-semibold text-white mb-1 flex items-center gap-2"><i class="fas fa-credit-card text-[var(--orange)]"></i> Authorize card hold</h2>
+          <p class="text-sm text-dim mb-5">A temporary hold of <span class="text-white font-semibold"><%= money(order.total) %></span> will be placed on your card. It is <strong class="text-white">not a charge</strong> — you're only charged once the vehicle is picked up.</p>
+
+          <div class="space-y-4">
+            <div>
+              <label class="label-dark">Card Number</label>
+              <div id="card-number" class="input-dark" style="padding-top:0.82rem;padding-bottom:0.82rem;"></div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="label-dark">Expiry</label>
+                <div id="card-expiry" class="input-dark" style="padding-top:0.82rem;padding-bottom:0.82rem;"></div>
+              </div>
+              <div>
+                <label class="label-dark">CVC</label>
+                <div id="card-cvc" class="input-dark" style="padding-top:0.82rem;padding-bottom:0.82rem;"></div>
+              </div>
+            </div>
+            <div>
+              <label class="label-dark">Name on card</label>
+              <input id="cardName" class="input-dark" placeholder="<%= c.fullName || 'Name on card' %>" autocomplete="cc-name">
+            </div>
+          </div>
+
+          <div id="confirmError" class="hidden mt-4 bg-red-900/30 border border-red-500/40 rounded-xl p-4 text-red-400 text-sm flex items-start gap-2">
+            <i class="fas fa-circle-exclamation mt-0.5 flex-shrink-0"></i><span id="confirmErrorMsg"></span>
+          </div>
+
+          <button id="confirmBtn" onclick="submitConfirmation()" class="btn btn-primary w-full justify-center py-4 text-base font-semibold mt-5">
+            <i class="fas fa-lock mr-1"></i> Agree &amp; Authorize Hold of <%= money(order.total) %>
+          </button>
+          <div id="confirmLoading" class="hidden text-center py-4 mt-2">
+            <i class="fas fa-circle-notch fa-spin text-2xl text-[var(--orange)] mb-2 block"></i>
+            <span class="text-dim text-sm">Authorizing your card…</span>
+          </div>
+          <p class="text-xs text-muted text-center mt-5 flex items-center justify-center gap-2">
+            <i class="fab fa-stripe text-lg"></i> Secured by Stripe. We never see or store your card number.
+          </p>
+          <p class="text-xs text-muted text-center mt-2">
+            Your card is kept securely by Stripe for up to 7 days for this pickup and removed automatically afterwards.
+          </p>
+        </div>
+      </div>
+
+      <!-- Success -->
+      <div id="successView" class="hidden tile p-8 md:p-10 text-center">
+        <div class="w-14 h-14 mx-auto mb-6 rounded-xl flex items-center justify-center text-[var(--lime)]" style="background: rgba(190,242,100,0.12); border: 1px solid rgba(190,242,100,0.4);">
+          <i class="fas fa-check text-xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-white mb-2">You're confirmed — thank you!</h2>
+        <p class="text-dim">A hold of <span class="text-white font-semibold"><%= money(order.total) %></span> has been placed on your card. We'll dispatch a carrier and you'll be charged only once the vehicle is picked up.</p>
+        <p class="text-sm text-muted mt-6">Questions or changes? Call <a href="tel:<%= phone.replace(/[^0-9+]/g, '') %>" class="text-[var(--orange)]"><%= phone %></a>.</p>
+      </div>
+
+    <% } %>
+    </main>
+
+    <footer class="relative z-10 max-w-3xl mx-auto px-5 py-8 text-xs text-muted flex flex-wrap justify-between gap-2">
+      <span>© 2026 MC Transportation LLC · Louisville, KY</span>
+      <span>Licensed &amp; Insured · DOT Compliant</span>
+    </footer>
+  </div>
+
+  <% if (!notFound) { %>
+  <script src="https://js.stripe.com/v3/"></script>
+  <script>
+    const TOKEN     = '<%= token %>';
+    const STRIPE_PK = '<%= stripePk %>';
+    const CONTACT   = { email: '<%= (order.contact || {}).email || '' %>', phone: '<%= (order.contact || {}).phone || '' %>' };
+    let stripeInstance, cardNumber, cardExpiry, cardCvc;
+
+    function showError(msg) {
+      document.getElementById('confirmErrorMsg').textContent = msg;
+      document.getElementById('confirmError').classList.remove('hidden');
+      document.getElementById('confirmBtn').classList.remove('hidden');
+      document.getElementById('confirmLoading').classList.add('hidden');
+    }
+
+    (function initStripe() {
+      if (document.getElementById('confirmFlow').classList.contains('hidden')) return;
+      try {
+        stripeInstance = Stripe(STRIPE_PK);
+        const elements = stripeInstance.elements();
+        const style = {
+          base: { color: '#FFFFFF', fontFamily: 'Inter, system-ui, sans-serif', fontSize: '16px', '::placeholder': { color: '#8B949E' }, iconColor: '#FF6A3D' },
+          invalid: { color: '#F87171', iconColor: '#F87171' }
+        };
+        cardNumber = elements.create('cardNumber', { style, showIcon: true });
+        cardExpiry = elements.create('cardExpiry', { style });
+        cardCvc    = elements.create('cardCvc',    { style });
+        cardNumber.mount('#card-number'); cardExpiry.mount('#card-expiry'); cardCvc.mount('#card-cvc');
+      } catch (e) {
+        console.error(e);
+        showError('The payment form could not be loaded. Please refresh the page or call us.');
+      }
+    })();
+
+    async function submitConfirmation() {
+      document.getElementById('confirmError').classList.add('hidden');
+      const agreedName = document.getElementById('agreedName').value.trim();
+      const agreed     = document.getElementById('agreeCheck').checked;
+      const cardName   = document.getElementById('cardName').value.trim();
+      if (!agreedName) return showError('Please type your full name as your signature.');
+      if (!agreed)     return showError('Please check the box to accept the pickup agreement.');
+      if (!cardName)   return showError('Please enter the name on the card.');
+      if (!stripeInstance || !cardNumber) return showError('Payment form not ready. Please refresh the page.');
+
+      document.getElementById('confirmBtn').classList.add('hidden');
+      document.getElementById('confirmLoading').classList.remove('hidden');
+
+      try {
+        // 1. Record the agreement, get a hold PaymentIntent
+        const agreeRes = await fetch(`/api/confirm/${TOKEN}/agree`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ agreedName, agreed: true })
+        });
+        const agreeData = await agreeRes.json();
+        if (!agreeData.success) {
+          if (agreeData.alreadyConfirmed) { location.reload(); return; }
+          throw new Error(agreeData.message || 'Could not start the authorization');
+        }
+
+        // 2. Authorize the card (hold only — manual capture)
+        const { error, paymentIntent } = await stripeInstance.confirmCardPayment(agreeData.clientSecret, {
+          payment_method: { card: cardNumber, billing_details: { name: cardName, email: CONTACT.email || undefined, phone: CONTACT.phone || undefined } }
+        });
+        if (error) throw new Error(error.message);
+        if (paymentIntent.status !== 'requires_capture')
+          throw new Error('The card authorization did not complete (status: ' + paymentIntent.status + ').');
+
+        // 3. Let the server verify and record the hold
+        const doneRes = await fetch(`/api/confirm/${TOKEN}/complete`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paymentIntentId: paymentIntent.id })
+        });
+        const doneData = await doneRes.json();
+        if (!doneData.success) throw new Error(doneData.message || 'Could not record your confirmation. Please call us.');
+
+        document.getElementById('confirmFlow').classList.add('hidden');
+        document.getElementById('successView').classList.remove('hidden');
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch (e) {
+        showError(e.message || 'Something went wrong. Please try again or call us.');
+      }
+    }
+  </script>
+  <% } %>
+</body>
+</html>

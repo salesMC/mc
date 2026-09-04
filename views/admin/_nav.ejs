@@ -1,0 +1,43 @@
+<%# Admin top bar. Expects `page` = 'orders' | 'customers' | 'promo-codes' | 'calculator' %>
+<%
+  const adminLinks = [
+    ['orders',      '/admin/orders',      'fa-clipboard-list', 'Orders'],
+    ['customers',   '/admin/customers',   'fa-users',          'Customers'],
+    ['promo-codes', '/admin/promo-codes', 'fa-tag',            'Promo Codes'],
+    ['calculator',  '/admin/calculator',  'fa-calculator',     'Calculator'],
+  ];
+%>
+<nav class="admin-nav">
+  <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
+    <a href="/admin/orders" class="flex items-center gap-2 flex-shrink-0">
+      <span class="text-xl font-bold tracking-tight text-white">MC</span>
+      <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)] mx-1"></span>
+      <span class="text-[10px] tracking-[0.22em] uppercase text-[var(--ink-muted)] font-medium pt-0.5">Admin</span>
+    </a>
+
+    <div class="hidden md:flex items-center gap-1">
+      <% adminLinks.forEach(([key, href, icon, label]) => { %>
+        <a href="<%= href %>" class="admin-nav-link <%= page === key ? 'active' : '' %>">
+          <i class="fas <%= icon %> mr-1.5"></i><%= label %>
+        </a>
+      <% }) %>
+    </div>
+
+    <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+      <span id="adminNavEmail" class="hidden lg:inline text-xs text-muted truncate max-w-[200px]"></span>
+      <a href="/" target="_blank" class="admin-nav-link" title="Open the public website in a new tab">
+        <i class="fas fa-arrow-up-right-from-square mr-1.5"></i><span class="hidden sm:inline">View site</span>
+      </a>
+      <button type="button" onclick="adminLogout()" class="admin-nav-link admin-nav-logout">
+        <i class="fas fa-right-from-bracket mr-1.5"></i><span class="hidden sm:inline">Log out</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile page links -->
+  <div class="md:hidden border-t border-[var(--line)] px-3 py-2 flex gap-1 overflow-x-auto" style="scrollbar-width:none;">
+    <% adminLinks.forEach(([key, href, icon, label]) => { %>
+      <a href="<%= href %>" class="admin-nav-link <%= page === key ? 'active' : '' %>"><%= label %></a>
+    <% }) %>
+  </div>
+</nav>

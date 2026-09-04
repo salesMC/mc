@@ -755,7 +755,7 @@
       if (document.getElementById('gmaps-post-script')) return;
       const script = document.createElement('script');
       script.id = 'gmaps-post-script';
-      script.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyADY34xlNO8-qSU_2Lq7qZ7l1jydiRL74w&libraries=places&callback=initPostGoogleMaps';
+      script.src = 'https://maps.googleapis.com/maps/api/js?key=<%= googleMapsKey %>&libraries=places&callback=initPostGoogleMaps';
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);

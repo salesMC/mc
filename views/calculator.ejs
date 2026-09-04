@@ -247,8 +247,10 @@
       addons: { inoperable: 75, modified: 100, urgent: 100 }
     };
 
-    const saved = localStorage.getItem('calculatorConfig');
-    if (saved) calculatorConfig = JSON.parse(saved);
+    // Pricing config is managed in the admin panel and served by the API
+    fetch('/api/settings/calculator').then(r => r.json()).then(cfg => {
+      if (cfg && cfg.tiers) calculatorConfig = cfg;
+    }).catch(() => {});
 
     // ==================== GOOGLE MAPS AUTOCOMPLETE ====================
     let fromAutocomplete, toAutocomplete;
@@ -305,7 +307,7 @@ function calculatePrice() {
   const miles = Math.max(0, parseFloat(document.getElementById('distance').value) || 0);
   let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
   for (let tier of calculatorConfig.tiers) {
-    if (miles <= tier.max) { 
+    if (miles <= (tier.max == null ? Infinity : tier.max)) {
       cpm = tier.rate; 
       break; 
     }
@@ -331,7 +333,7 @@ function showPriceModal(total) {
   const miles = parseFloat(document.getElementById('distance').value) || 0;
   let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
   for (let tier of calculatorConfig.tiers) {
-    if (miles <= tier.max) { 
+    if (miles <= (tier.max == null ? Infinity : tier.max)) {
       cpm = tier.rate; 
       break; 
     }
@@ -482,7 +484,7 @@ function getVehicleTypeLabel(type) {
 
     window.addEventListener('load', () => {
       const script = document.createElement('script');
-      script.src = "https://maps.googleapis.com/maps/api/js?key=AIzaSyADY34xlNO8-qSU_2Lq7qZ7l1jydiRL74w&libraries=places&callback=initGoogleMaps";
+      script.src = "https://maps.googleapis.com/maps/api/js?key=<%= googleMapsKey %>&libraries=places&callback=initGoogleMaps";
       script.async = true;
       script.defer = true;
       document.head.appendChild(script);
@@ -496,3 +498,5 @@ function getVehicleTypeLabel(type) {
     localStorage.setItem('calculatorTotal', total);
 }
   </script>
+</body>
+</html>

@@ -1,0 +1,103 @@
+  <!-- Order Detail Modal -->
+  <div id="orderModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center sticky top-0 bg-panel z-10">
+        <h3 class="text-2xl font-bold text-white" id="modalOrderId">Order Details</h3>
+        <button onclick="closeModal()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+
+      <div class="p-8 space-y-8" id="modalContent"></div>
+
+      <div class="p-6 border-t border-[var(--line)] flex justify-end">
+        <button onclick="closeModal()" class="btn btn-ghost px-8 py-3">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Intake Wizard (phone-in quote) -->
+  <div id="customerWizardModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-3xl w-full max-h-[92vh] flex flex-col modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center gap-4">
+        <div>
+          <h3 class="text-2xl font-bold text-white" id="wizTitle">New Customer / Quote</h3>
+          <p class="text-xs text-muted mt-1">Phone-in intake — collects the same details as the online order form.</p>
+        </div>
+        <button onclick="closeCustomerWizard()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+      <div class="px-6 pt-4 flex gap-2 overflow-x-auto" id="wizSteps" style="scrollbar-width:none;"></div>
+      <div class="p-6 overflow-y-auto flex-1" id="wizContent"></div>
+      <div class="p-5 border-t border-[var(--line)] flex justify-between items-center gap-3">
+        <button id="wizPrevBtn" onclick="wizPrev()" class="btn btn-ghost px-6 py-3">← Back</button>
+        <div class="flex items-center gap-4 ml-auto">
+          <div class="text-right hidden sm:block">
+            <div class="text-xs text-muted">Estimated</div>
+            <div class="text-xl font-bold text-[var(--orange)]" id="wizRunningTotal">$0</div>
+          </div>
+          <button id="wizNextBtn" onclick="wizNext()" class="btn btn-primary px-8 py-3">Next →</button>
+          <button id="wizSaveBtn" onclick="wizSave()" class="btn btn-primary px-8 py-3 hidden">
+            <i class="fas fa-save"></i> Save Customer &amp; Quote
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Detail Modal -->
+  <div id="customerDetailModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center sticky top-0 bg-panel z-10">
+        <h3 class="text-2xl font-bold text-white" id="customerDetailName">Customer</h3>
+        <button onclick="closeCustomerDetail()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+      <div class="p-8 space-y-8" id="customerDetailContent"></div>
+      <div class="p-6 border-t border-[var(--line)] flex flex-wrap justify-end gap-3">
+        <button id="customerDetailEditBtn" class="btn btn-ghost px-6 py-3"><i class="fas fa-pencil"></i> Edit</button>
+        <button id="customerDetailQuoteBtn" class="btn btn-primary px-6 py-3"><i class="fas fa-file-invoice-dollar"></i> New Quote</button>
+        <button onclick="closeCustomerDetail()" class="btn btn-ghost px-6 py-3">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Customer Edit Modal -->
+  <div id="customerEditModal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
+    <div class="bg-panel rounded-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto modal">
+      <div class="p-6 border-b border-[var(--line)] flex justify-between items-center">
+        <h3 class="text-2xl font-bold text-white">Edit Customer</h3>
+        <button onclick="closeCustomerEdit()" class="text-3xl leading-none text-dim hover:text-white">&times;</button>
+      </div>
+      <div class="p-8">
+        <input type="hidden" id="ceId">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label class="label-dark">Full Name <span class="text-red-400">*</span></label>
+            <input id="ceName" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Phone</label>
+            <input id="cePhone" type="tel" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Email</label>
+            <input id="ceEmail" type="email" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Company</label>
+            <input id="ceCompany" class="input-dark">
+          </div>
+          <div>
+            <label class="label-dark">Customer Type</label>
+            <select id="ceType" class="input-dark"></select>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="label-dark">Notes</label>
+            <textarea id="ceNotes" class="input-dark"></textarea>
+          </div>
+        </div>
+        <p id="ceError" class="hidden mt-4 text-sm text-red-400"></p>
+      </div>
+      <div class="p-6 border-t border-[var(--line)] flex justify-end gap-3">
+        <button onclick="closeCustomerEdit()" class="btn btn-ghost px-6 py-3">Cancel</button>
+        <button onclick="saveCustomerEdit()" class="btn btn-primary px-6 py-3"><i class="fas fa-save"></i> Save</button>
+      </div>
+    </div>
+  </div>

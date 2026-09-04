@@ -70,12 +70,12 @@
 
           <div>
             <label class="label-dark">Password</label>
-            <input id="regPassword" type="password" placeholder="Min. 6 characters" required minlength="6" class="input-dark" autocomplete="new-password">
+            <input id="regPassword" type="password" placeholder="Min. 8 characters" required minlength="8" class="input-dark" autocomplete="new-password">
           </div>
 
           <div>
             <label class="label-dark">Confirm Password</label>
-            <input id="regPassword2" type="password" placeholder="Repeat password" required minlength="6" class="input-dark" autocomplete="new-password">
+            <input id="regPassword2" type="password" placeholder="Repeat password" required minlength="8" class="input-dark" autocomplete="new-password">
           </div>
 
           <label class="flex items-start gap-3 cursor-pointer text-sm text-dim">
@@ -170,8 +170,8 @@
           errEl.classList.remove('hidden');
           return;
         }
-        if (password.length < 6) {
-          errText.textContent = 'Password must be at least 6 characters.';
+        if (password.length < 8) {
+          errText.textContent = 'Password must be at least 8 characters.';
           errEl.classList.remove('hidden');
           return;
         }
