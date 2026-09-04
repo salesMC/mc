@@ -13,10 +13,15 @@ const nodemailer = require('nodemailer');
 // Replace with your LIVE secret key when going live
 const stripe = Stripe(process.env.STRIPE_SECRET_KEY);
 
-// ==================== MAIL (SMTP via nodemailer) ====================
+// ==================== MAIL ====================
 // Set SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS / MAIL_FROM in .env.
 // Without SMTP_HOST nothing is sent — the admin UI still shows the link to copy.
-const mailer = process.env.SMTP_HOST
+//
+// Resend (SMTP_HOST=smtp.resend.com) is sent through Resend's HTTPS API using
+// SMTP_PASS as the API key: hosts like Railway block outbound SMTP ports, and the
+// API works everywhere. Any other SMTP host goes through nodemailer as usual.
+const useResendApi = /(^|\.)resend\.com$/i.test((process.env.SMTP_HOST || '').trim()) && !!process.env.SMTP_PASS;
+const mailer = process.env.SMTP_HOST && !useResendApi
   ? nodemailer.createTransport({
       host  : process.env.SMTP_HOST,
       port  : Number(process.env.SMTP_PORT) || 587,
@@ -24,13 +29,34 @@ const mailer = process.env.SMTP_HOST
       auth  : process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS } : undefined
     })
   : null;
+if (useResendApi) console.log('📧 Mail: Resend API');
+else if (mailer) console.log(`📧 Mail: SMTP via ${process.env.SMTP_HOST}`);
+
+async function sendViaResend({ from, to, subject, html, text }) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 20000);
+  try {
+    const r = await fetch('https://api.resend.com/emails', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { Authorization: `Bearer ${process.env.SMTP_PASS}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from, to: Array.isArray(to) ? to : [to], subject, html, text })
+    });
+    if (!r.ok) {
+      let msg = `Resend HTTP ${r.status}`;
+      try { const j = await r.json(); if (j && j.message) msg = j.message; } catch {}
+      throw new Error(msg);
+    }
+  } finally { clearTimeout(timer); }
+}
 
 async function sendMail({ to, subject, html, text }) {
-  if (!mailer) {
-    console.log(`📧 [SMTP not configured] would send "${subject}" to ${to}`);
+  if (!mailer && !useResendApi) {
+    console.log(`📧 [mail not configured] would send "${subject}" to ${to}`);
     return { sent: false, reason: 'Email is not set up yet (add SMTP_HOST, SMTP_USER, SMTP_PASS to .env)' };
   }
-  await mailer.sendMail({ from: process.env.MAIL_FROM || process.env.SMTP_USER, to, subject, html, text });
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
+  if (useResendApi) await sendViaResend({ from, to, subject, html, text });
+  else await mailer.sendMail({ from, to, subject, html, text });
   return { sent: true };
 }
 
