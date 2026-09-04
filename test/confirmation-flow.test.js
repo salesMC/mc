@@ -57,6 +57,16 @@ const fakeStripe = {
   paymentMethods: {
     detach: async (id) => { S.detached.push(id); return { id }; }
   },
+  refunds: {
+    create: async (p) => {
+      const pi = getPI(p.payment_intent);
+      if (pi.status !== 'succeeded') throw stripeErr('Charge has not succeeded', 'StripeInvalidRequestError');
+      pi.amount_refunded = (pi.amount_refunded || 0) + p.amount;
+      if (pi.amount_refunded > pi.amount_received) throw stripeErr('Refund amount exceeds charge', 'StripeInvalidRequestError');
+      const rf = { id: `re_test${++S.n}`, object: 'refund', amount: p.amount, payment_intent: pi.id, status: 'succeeded', metadata: p.metadata || {} };
+      (S.refunds = S.refunds || []).push(rf); return rf;
+    }
+  },
   // what Stripe.js does in the browser after confirmCardPayment on a manual-capture intent
   __authorize(id) { const pi = getPI(id); pi.status = 'requires_capture'; pi.payment_method = `pm_test_visa_${id}`; return pi; },
   // ...and on a normal (auto-capture) checkout intent
@@ -79,7 +89,7 @@ Module._load = function (request, parent, isMain) {
 const path = require('path');
 const { pool, expireCardHolds } = require(path.join(__dirname, '..', 'app.js'));
 const B = `http://localhost:${process.env.PORT}`;
-const ADMIN_EMAIL = 'admin@mctransportation.com';
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@mctransportation.com').toLowerCase();
 const ADMIN_PASSWORD = process.env.ADMIN_DEFAULT_PASSWORD || 'mcadmin2026';
 
 // ---------- Tiny test harness ----------
@@ -155,6 +165,36 @@ async function sendAndAuthorize(id, fee) {
   const setCookie = raw.headers.get('set-cookie') || '';
   adminCookie = setCookie.split(';')[0];
   check('admin login sets an httpOnly session cookie', raw.status === 200 && /mc_session=/.test(setCookie) && /HttpOnly/.test(setCookie) && /SameSite=Lax/.test(setCookie), setCookie.slice(0, 60));
+  check('without "keep me signed in" the cookie is a browser-session cookie (no Max-Age)', !/Max-Age/.test(setCookie), setCookie.replace(/mc_session=[^;]+/, 'mc_session=…'));
+  raw = await api('POST', '/api/auth/login', { email: ADMIN_EMAIL, password: ADMIN_PASSWORD, role: 'admin', remember: true }, { auth: false, raw: true });
+  check('"keep me signed in" → 30-day cookie', /Max-Age=2592000/.test(raw.headers.get('set-cookie') || ''), raw.headers.get('set-cookie')?.replace(/mc_session=[^;]+/, 'mc_session=…'));
+
+  // Forgot / reset password
+  r = await api('POST', '/api/auth/forgot', { email: 'nobody@x.test' }, { auth: false });
+  check('forgot-password for unknown email still answers ok (no account discovery)', r.status === 200 && r.data.success);
+  r = await api('POST', '/api/auth/forgot', { email: ADMIN_EMAIL }, { auth: false });
+  const resetMail = lastMailTo(ADMIN_EMAIL);
+  const resetToken = resetMail && (resetMail.text.match(/\/reset-password\/([a-f0-9]{64})/) || [])[1];
+  check('forgot-password emails a reset link', r.data.success && !!resetToken, resetMail && resetMail.subject);
+  let page = await fetch(`${B}/reset-password/${resetToken}`);
+  check('reset page loads', page.status === 200 && (await page.text()).includes('Choose a new password'));
+  page = await fetch(`${B}/reset-password/not-a-token`);
+  check('bad reset token → 404', page.status === 404);
+  r = await api('POST', '/api/auth/reset', { token: resetToken, password: 'short' }, { auth: false });
+  check('reset with short password → 400', r.status === 400);
+  const TEMP_PW = 'temporary-pass-' + Date.now();
+  raw = await api('POST', '/api/auth/reset', { token: resetToken, password: TEMP_PW }, { auth: false, raw: true });
+  const resetData = await raw.json();
+  check('reset sets the new password and signs in', raw.status === 200 && resetData.success && resetData.role === 'admin' && /mc_session=/.test(raw.headers.get('set-cookie') || ''), resetData);
+  r = await api('POST', '/api/auth/reset', { token: resetToken, password: 'another-password' }, { auth: false });
+  check('reset link cannot be reused', r.status === 400);
+  r = await api('POST', '/api/auth/login', { email: ADMIN_EMAIL, password: ADMIN_PASSWORD }, { auth: false });
+  check('old password no longer works', r.status === 401);
+  r = await api('POST', '/api/auth/login', { email: ADMIN_EMAIL, password: TEMP_PW, role: 'admin' }, { auth: false });
+  check('new password works', r.status === 200 && r.data.success);
+  // put the original password back so the rest of the suite (and the admin) keep working
+  r = await api('POST', '/api/auth/change-password', { currentPassword: TEMP_PW, newPassword: ADMIN_PASSWORD });
+  check('password restored', r.status === 200 && r.data.success, r.data);
   r = await api('GET', '/api/auth/me');
   check('/api/auth/me reports admin', r.data.authenticated && r.data.role === 'admin' && r.data.email === ADMIN_EMAIL, r.data);
   r = await api('GET', '/api/orders');
@@ -249,7 +289,7 @@ async function sendAndAuthorize(id, fee) {
   const token1 = o.confirmToken;
   r = await api('POST', '/api/orders/MC-T-SEND/send-confirmation', {});
   check('resend keeps the same token and fee', r.data.link.endsWith(token1) && (await order('MC-T-SEND')).noShowFee === 175);
-  let page = await fetch(`${B}/confirm/${token1}`);
+  page = await fetch(`${B}/confirm/${token1}`);
   let html = await page.text();
   check('confirmation page renders publicly (200) with amounts and agreement', page.status === 200 && html.includes('Authorize Hold of $650') && html.includes('$175') && html.includes('id="agreeCheck"') && html.includes('7 days'));
   check('bad token → 404', (await fetch(`${B}/confirm/${'0'.repeat(48)}`)).status === 404);
@@ -299,6 +339,46 @@ async function sendAndAuthorize(id, fee) {
   check('second pickup → 409', r.status === 409);
   r = await api('POST', '/api/orders/MC-T-SEND/charge-fee', {});
   check('fee after paid → 409', r.status === 409);
+
+  // ---------- 5b. Partial charge + refunds + payments page ----------
+  console.log('\n5b) Partial charge, refunds and the Payments list');
+  await newOrder('MC-T-PART');
+  const part = await sendAndAuthorize('MC-T-PART', 150);
+  r = await api('POST', '/api/orders/MC-T-PART/pickup', { amount: 900 });
+  check('charging more than the hold → 400', r.status === 400, r.data);
+  r = await api('POST', '/api/orders/MC-T-PART/pickup', { amount: 0 });
+  check('charging $0 → 400', r.status === 400);
+  r = await api('POST', '/api/orders/MC-T-PART/pickup', { amount: 300 });
+  check('custom amount: captures $300 of the $650 hold', r.data.success && r.data.amount === 300 && S.intents[part.agree.data.paymentIntentId].amount_received === 30000, r.data);
+  o = await order('MC-T-PART');
+  check('order charged $300, state "charged"', o.chargedAmount === 300 && o.paymentState === 'charged' && o.refundedAmount === 0, { c: o.chargedAmount, s: o.paymentState });
+  r = await api('POST', '/api/orders/MC-T-PART/refund', { amount: 500 }, { auth: true });
+  check('refund more than charged → 400', r.status === 400, r.data);
+  r = await api('POST', '/api/orders/MC-T-PART/refund', { amount: 100, reason: 'late pickup' }, { auth: false });
+  check('refund without login → 401', r.status === 401);
+  r = await api('POST', '/api/orders/MC-T-PART/refund', { amount: 100, reason: 'late pickup' });
+  check('partial refund $100 → remaining $200', r.data.success && r.data.amount === 100 && r.data.remaining === 200, r.data);
+  o = await order('MC-T-PART');
+  check('order → partially_refunded, refund noted', o.paymentState === 'partially_refunded' && o.refundedAmount === 100 && /Refund \$100\.00: late pickup/.test(o.notes || ''), { s: o.paymentState, n: o.notes });
+  r = await api('POST', '/api/orders/MC-T-PART/refund', {});
+  check('refund with no amount refunds the rest ($200)', r.data.success && r.data.amount === 200 && r.data.remaining === 0, r.data);
+  o = await order('MC-T-PART');
+  check('order → refunded', o.paymentState === 'refunded' && o.refundedAmount === 300);
+  r = await api('POST', '/api/orders/MC-T-PART/refund', {});
+  check('refunding again → 409', r.status === 409);
+  r = await api('POST', '/api/orders/MC-T-SAN/refund', {});
+  check('refund on an unpaid order → 409', r.status === 409);
+  check('Stripe got two refunds on the right intent', (S.refunds || []).filter(x => x.payment_intent === part.agree.data.paymentIntentId).map(x => x.amount).join(',') === '10000,20000');
+  r = await api('GET', '/api/payments', null, { auth: false });
+  check('payments list without login → 401', r.status === 401);
+  r = await api('GET', '/api/payments');
+  const payPart = r.data && r.data.payments && r.data.payments.find(p => p.id === 'MC-T-PART');
+  const paySend = r.data && r.data.payments && r.data.payments.find(p => p.id === 'MC-T-SEND');
+  check('payments list has states + totals', r.status === 200 && payPart && payPart.paymentState === 'refunded' && payPart.refundedAmount === 300 && paySend && paySend.paymentState === 'charged' && typeof r.data.totals.charged === 'number', { part: payPart && payPart.paymentState, send: paySend && paySend.paymentState });
+  page = await fetch(`${B}/admin/payments`, { redirect: 'manual' });
+  check('payments page requires login (redirect)', page.status === 302);
+  page = await fetch(`${B}/admin/payments`, { headers: { Cookie: adminCookie } });
+  check('payments page renders', page.status === 200 && (await page.text()).includes('id="paymentsBody"'));
 
   // ---------- 6. Vehicle gone → no-show fee ----------
   console.log('\n6) Vehicle gone → charge no-show fee, release hold');

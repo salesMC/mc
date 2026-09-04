@@ -31,13 +31,16 @@
             <input id="signInEmail" type="email" placeholder="you@example.com" class="input-dark" required autocomplete="username">
           </div>
           <div>
-            <label class="label-dark">Password</label>
+            <div class="flex items-center justify-between mb-2">
+              <label class="label-dark mb-0">Password</label>
+              <button type="button" onclick="toggleForgot(true)" class="text-xs text-[var(--cyan)] hover:text-white transition-colors">Forgot password?</button>
+            </div>
             <input id="passwordInput" type="password" placeholder="••••••••" class="input-dark" required autocomplete="current-password">
           </div>
 
           <label class="flex items-center gap-3 cursor-pointer text-sm text-dim select-none">
             <input type="checkbox" id="rememberMe" class="w-4 h-4" style="accent-color: var(--orange);">
-            Save my email and password on this device
+            Keep me signed in for 30 days
           </label>
 
           <p id="passwordError" class="hidden text-sm text-red-400 flex items-center gap-2">
@@ -49,6 +52,18 @@
                   class="btn btn-primary w-full py-4 text-base font-semibold">
             Sign In
           </button>
+        </form>
+
+        <!-- Forgot password -->
+        <form id="forgotForm" onsubmit="return false" class="hidden space-y-5">
+          <p class="text-sm text-dim">Enter the email you sign in with and we'll send a link to choose a new password.</p>
+          <div>
+            <label class="label-dark">Email</label>
+            <input id="forgotEmail" type="email" placeholder="you@example.com" class="input-dark" autocomplete="username">
+          </div>
+          <p id="forgotMsg" class="hidden text-sm"></p>
+          <button type="button" onclick="sendReset()" class="btn btn-primary w-full py-4 text-base font-semibold">Send reset link</button>
+          <button type="button" onclick="toggleForgot(false)" class="w-full text-sm text-dim hover:text-white transition-colors"><i class="fas fa-arrow-left mr-1"></i> Back to sign in</button>
         </form>
       </div>
 
@@ -77,36 +92,17 @@
       }
     }).catch(() => {});
 
-    // "Save my email and password" — stored in localStorage on this device only.
-    // Note: base64 is obfuscation, not encryption; anyone with access to this
-    // browser profile can recover it. Same trade-off as a browser password manager
-    // without a master password.
-    const REMEMBER_KEY = 'mcAdminRemember';
-
-    function loadSavedCredentials() {
-      try {
-        const raw = localStorage.getItem(REMEMBER_KEY);
-        if (!raw) return;
-        const { email, password } = JSON.parse(atob(raw));
-        document.getElementById('signInEmail').value   = email || '';
-        document.getElementById('passwordInput').value = password || '';
-        document.getElementById('rememberMe').checked  = true;
-      } catch (e) { localStorage.removeItem(REMEMBER_KEY); }
-    }
-
-    function persistCredentials(email, password) {
-      if (document.getElementById('rememberMe').checked) {
-        localStorage.setItem(REMEMBER_KEY, btoa(JSON.stringify({ email, password })));
-      } else {
-        localStorage.removeItem(REMEMBER_KEY);
-      }
-    }
+    // Older builds kept the password in localStorage; wipe that if present.
+    try { localStorage.removeItem('mcAdminRemember'); } catch (e) {}
+    // Remember only the email (never the password); "Keep me signed in" is a server-side 30-day session.
+    try { document.getElementById('signInEmail').value = localStorage.getItem('mcAdminEmail') || ''; } catch (e) {}
 
     async function checkPassword() {
       const email = document.getElementById('signInEmail').value.trim();
       const pw    = document.getElementById('passwordInput').value;
+      const remember = document.getElementById('rememberMe').checked;
       const err   = document.getElementById('passwordError');
-      const btn   = document.querySelector('#signInForm button');
+      const btn   = document.querySelector('#signInForm button.btn');
       err.classList.add('hidden');
       btn.disabled = true;
 
@@ -114,14 +110,14 @@
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password: pw, role: 'admin' })
+          body: JSON.stringify({ email, password: pw, role: 'admin', remember })
         });
         const data = await res.json();
 
         if (data.success) {
           sessionStorage.setItem('mcAdminAuth', '1');
           sessionStorage.setItem('mcAdminEmail', data.email);
-          persistCredentials(email, pw);
+          try { localStorage.setItem('mcAdminEmail', email); } catch (e) {}
           window.location.href = nextUrl;
         } else {
           err.querySelector('span').textContent = data.message || 'Incorrect email or password.';
@@ -135,10 +131,36 @@
       }
     }
 
-    loadSavedCredentials();
+    function toggleForgot(show) {
+      document.getElementById('signInForm').classList.toggle('hidden', show);
+      document.getElementById('forgotForm').classList.toggle('hidden', !show);
+      if (show) {
+        document.getElementById('forgotEmail').value = document.getElementById('signInEmail').value.trim();
+        document.getElementById('forgotMsg').classList.add('hidden');
+        document.getElementById('forgotEmail').focus();
+      }
+    }
+
+    async function sendReset() {
+      const email = document.getElementById('forgotEmail').value.trim();
+      const msg = document.getElementById('forgotMsg');
+      const btn = document.querySelector('#forgotForm button.btn');
+      if (!email) { msg.textContent = 'Enter your email first.'; msg.className = 'text-sm text-red-400'; return; }
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/forgot', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email }) });
+        const data = await res.json();
+        msg.textContent = data.message || (data.success ? 'Check your inbox for the reset link.' : 'Could not send the link. Try again.');
+        msg.className = 'text-sm ' + (data.success ? 'text-lime-400' : 'text-red-400');
+      } catch (e) {
+        msg.textContent = 'Connection error. Please try again.'; msg.className = 'text-sm text-red-400';
+      } finally { btn.disabled = false; }
+    }
+
     ['signInEmail', 'passwordInput'].forEach(id => {
       document.getElementById(id).addEventListener('keypress', (e) => { if (e.key === 'Enter') checkPassword(); });
     });
+    document.getElementById('forgotEmail').addEventListener('keypress', (e) => { if (e.key === 'Enter') sendReset(); });
   </script>
 </body>
 </html>

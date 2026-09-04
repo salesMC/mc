@@ -38,6 +38,7 @@ async function initAdminPage() {
   await loadCurrentConfig(); // pricing config: calculator page + customer quote wizard
 
   if (page === 'orders')      loadOrders();
+  if (page === 'payments')    loadPayments();
   if (page === 'promo-codes') loadPromoCodes();
   if (page === 'customers') {
     loadCustomers().then(() => {
@@ -329,27 +330,33 @@ async function loadOrders() {
     orders.forEach(order => {
       const tr = document.createElement('tr');
       tr.className = "cursor-pointer";
+      const vehicle = [order.vehicle?.year, order.vehicle?.make, order.vehicle?.model].filter(Boolean).join(' ');
       tr.innerHTML = `
-        <td class="font-mono text-orange-400">${esc(order.id)}</td>
-        <td class="text-xs">${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ''}</td>
-        <td class="font-medium text-white">${esc(order.contact?.fullName || '—')}</td>
-        <td class="text-sm col-hide-mobile">${esc(order.contact?.email || '—')}</td>
-        <td class="text-sm col-hide-mobile">${esc([order.vehicle?.year, order.vehicle?.make, order.vehicle?.model].filter(Boolean).join(' '))}</td>
-        <td class="font-semibold text-[var(--orange)]">$${Number(order.total || 0).toLocaleString()}</td>
+        <td>
+          <div class="font-mono text-orange-400 font-semibold">${esc(order.id)}</div>
+          <div class="text-[11px] text-muted mt-0.5">${order.createdAt ? new Date(order.createdAt).toLocaleDateString() : ''} · ${order.source === 'admin' ? 'Phone' : 'Website'}</div>
+        </td>
+        <td>
+          <div class="font-medium text-white">${esc(order.contact?.fullName || '—')}</div>
+          <div class="text-[11px] text-muted mt-0.5 truncate max-w-[220px]">${esc(order.contact?.email || order.contact?.phone || '')}</div>
+        </td>
+        <td class="text-sm col-hide-mobile">${esc(vehicle || '—')}</td>
+        <td class="text-right font-semibold text-white whitespace-nowrap">${money(order.total)}</td>
         <td>
           <span onclick="event.stopImmediatePropagation(); changeOrderStatus('${esc(order.id)}', this)"
-                class="status-badge ${statusClasses[order.status] || statusClasses['New']}">
+                class="status-badge ${statusClasses[order.status] || statusClasses['New']}" title="Click to change">
             ${esc(order.status || 'New')}
-          </span>${paymentPill(order)}
+          </span>
         </td>
-        <td class="text-center">
+        <td>${payStatePill(order.paymentState)}</td>
+        <td class="text-center whitespace-nowrap">
           <button onclick="event.stopImmediatePropagation(); showOrderDetail('${esc(order.id)}')"
-                  class="text-cyan-400 hover:text-white p-2">
+                  class="text-cyan-400 hover:text-white p-2" title="Open">
             <i class="fas fa-eye"></i>
           </button>
           ${order.status === 'Done' || order.status === 'Canceled' ? `
             <button onclick="event.stopImmediatePropagation(); deleteOrder('${esc(order.id)}', this)"
-                    class="text-red-400 hover:text-red-500 p-2 ml-1">
+                    class="text-red-400 hover:text-red-500 p-2" title="Delete">
               <i class="fas fa-trash"></i>
             </button>
           ` : ''}
@@ -562,15 +569,23 @@ function yearOptions(selected) {
   for (let y = 2030; y >= 1900; y--) h += `<option value="${y}" ${String(y) === String(selected) ? 'selected' : ''}>${y}</option>`;
   return h;
 }
-function paymentPill(o) {
-  let h = '';
-  if (o.source === 'admin') h += '<span class="pay-pill pay-phone" title="Created by admin (phone-in)">Phone</span>';
-  if (o.paymentStatus && o.paymentStatus !== 'paid') {
-    const [label, cls] = payLabel(o.paymentStatus);
-    h += `<span class="pay-pill ${cls}">${label}</span>`;
-  }
-  return h;
+// One pill per order for the money situation (server computes paymentState)
+const PAY_STATE_LABELS = {
+  unpaid:             ['Unpaid',             'pay-unpaid',   'No card on file yet'],
+  pending:            ['Pending',            'pay-wait',     'Confirmation emailed — waiting for the customer'],
+  holding:            ['Holding',            'pay-hold',     'Card authorized, nothing charged yet'],
+  charged:            ['Charged',            'pay-paid',     'Payment collected'],
+  partially_refunded: ['Partially refunded', 'pay-fee',      'Part of the charge was refunded'],
+  refunded:           ['Refunded',           'pay-released', 'Fully refunded'],
+  fee_charged:        ['No-show fee',        'pay-fee',      'No-show fee collected, transport not charged'],
+  released:           ['Released',           'pay-released', 'Hold cancelled without charging'],
+  expired:            ['Expired',            'pay-unpaid',   'Hold lapsed after 7 days — send a new confirmation']
+};
+function payStatePill(state) {
+  const [label, cls, title] = PAY_STATE_LABELS[state] || [state || '—', 'pay-released', ''];
+  return `<span class="pay-pill ${cls}" style="margin-left:0" title="${esc(title)}">${label}</span>`;
 }
+function paymentPill(o) { return payStatePill(o.paymentState); }
 
 let customersCache = [];
 let customerSearchTimer = null;
@@ -1415,15 +1430,20 @@ function money(n) { return '$' + Number(n || 0).toLocaleString(); }
 // Source + payment line under the total. Web orders keep the manual paid/unpaid toggle;
 // phone-in orders are driven by the confirmation panel above.
 function paymentSummaryLine(o) {
-  const [label, cls] = payLabel(o.paymentStatus);
   const src = o.source === 'admin'
     ? '<i class="fas fa-phone mr-1"></i>Phone-in order'
     : '<i class="fas fa-globe mr-1"></i>Website order';
-  const toggle = o.source !== 'admin' && ['paid', 'unpaid'].includes(o.paymentStatus)
+  const toggle = o.source !== 'admin' && ['paid', 'unpaid'].includes(o.paymentStatus) && !o.stripePaymentIntentId
     ? `<button onclick="toggleOrderPayment('${o.id}', '${o.paymentStatus === 'unpaid' ? 'paid' : 'unpaid'}')"
                class="ml-2 text-cyan-400 hover:text-white underline">${o.paymentStatus === 'unpaid' ? 'Mark paid' : 'Mark unpaid'}</button>`
     : '';
-  return `<p class="text-xs text-muted mt-2">${src} · <span class="pay-pill ${cls}" style="margin-left:0">${label}</span>${toggle}</p>`;
+  const charged = o.chargedAmount != null ? o.chargedAmount : (o.paymentStatus === 'paid' ? o.total : 0);
+  const remaining = Math.max(0, Math.round((charged - (o.refundedAmount || 0)) * 100) / 100);
+  const refund = ['charged', 'partially_refunded', 'fee_charged'].includes(o.paymentState) && remaining > 0 && (o.stripePaymentIntentId || o.feePaymentIntentId)
+    ? `<button onclick="refundOrder('${o.id}', ${remaining})" class="ml-2 text-amber-300 hover:text-white underline">Refund…</button>`
+    : '';
+  const refunded = o.refundedAmount ? ` · <span class="text-amber-300">${money(o.refundedAmount)} refunded</span>` : '';
+  return `<p class="text-xs text-muted mt-2">${src} · ${payStatePill(o.paymentState)}${refunded}${toggle}${refund}</p>`;
 }
 
 function confirmationPanelHTML(o) {
@@ -1486,7 +1506,7 @@ function confirmationPanelHTML(o) {
         </p>
         ${agreedRow}
         <div class="flex flex-wrap gap-3 mt-4">
-          <button onclick="markPickedUp('${o.id}', ${Number(o.total) || 0})" class="btn btn-primary py-3">
+          <button onclick="markPickedUp('${o.id}', ${Number(o.holdAmount || o.total) || 0})" class="btn btn-primary py-3">
             <i class="fas fa-truck-pickup"></i> Vehicle picked up — charge ${money(o.total)}
           </button>
           <button onclick="chargeNoShowFee('${o.id}', ${Number(fee) || 0})" class="btn btn-ghost py-3" style="color:#FBBF24;border-color:rgba(251,191,36,0.4)">
@@ -1534,9 +1554,20 @@ function copyText(text, btn) {
 
 function panelMsg(msg, ok) {
   const el = document.getElementById('confirmPanelMsg');
-  if (!el) { alert(msg); return; }
-  el.textContent = msg;
-  el.className = 'text-sm mb-3 ' + (ok ? 'text-lime-400' : 'text-red-400');
+  if (el) {
+    el.textContent = msg;
+    el.className = 'text-sm mb-3 ' + (ok ? 'text-lime-400' : 'text-red-400');
+    return;
+  }
+  // No open order panel (e.g. Payments page) → small toast in the corner
+  let t = document.getElementById('adminToast');
+  if (!t) { t = document.createElement('div'); t.id = 'adminToast'; t.className = 'admin-toast'; document.body.appendChild(t); }
+  t.textContent = msg;
+  t.classList.toggle('admin-toast-ok', !!ok);
+  t.classList.toggle('admin-toast-err', !ok);
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(() => t.classList.remove('show'), 5000);
 }
 
 async function postOrderAction(orderId, action, body) {
@@ -1558,34 +1589,141 @@ async function sendConfirmation(orderId) {
   } catch (e) { panelMsg(e.message, false); }
 }
 
-async function markPickedUp(orderId, amount) {
-  if (!confirm(`Mark the vehicle as picked up and charge the customer ${money(amount)} now?`)) return;
+// Ask for an amount with a default; returns a number or null when cancelled/invalid
+function askAmount(message, defaultValue, max) {
+  const raw = prompt(message, Number(defaultValue || 0).toFixed(2));
+  if (raw === null) return null;
+  const n = Number(String(raw).replace(/[$,\s]/g, ''));
+  if (!(n > 0)) { alert('Enter an amount greater than 0.'); return null; }
+  if (max != null && n > max + 0.005) { alert(`The most you can enter is ${money(max)}.`); return null; }
+  return Math.round(n * 100) / 100;
+}
+
+async function markPickedUp(orderId, amount, afterwards) {
+  const amt = askAmount(`Mark the vehicle as picked up and charge the customer now.\n\nAmount to charge (up to ${money(amount)} on hold):`, amount, amount);
+  if (amt === null) return;
   try {
-    const d = await postOrderAction(orderId, 'pickup');
-    loadOrders();
-    await showOrderDetail(orderId);
+    const d = await postOrderAction(orderId, 'pickup', { amount: amt });
+    await (afterwards ? afterwards() : refreshAfterPayment(orderId));
     panelMsg(`Charged ${money(d.amount)}.`, true);
   } catch (e) { panelMsg(e.message, false); }
 }
 
+async function refundOrder(orderId, remaining, afterwards) {
+  const amt = askAmount(`Refund to the customer's card.\n\nAmount to refund (up to ${money(remaining)}):`, remaining, remaining);
+  if (amt === null) return;
+  const reason = prompt('Reason (optional, saved in the order notes):', '') || '';
+  try {
+    const d = await postOrderAction(orderId, 'refund', { amount: amt, reason });
+    await (afterwards ? afterwards() : refreshAfterPayment(orderId));
+    panelMsg(`Refunded ${money(d.amount)}. ${d.remaining > 0 ? money(d.remaining) + ' still charged.' : 'Fully refunded.'}`, true);
+  } catch (e) { panelMsg(e.message, false); }
+}
+
+async function refreshAfterPayment(orderId) {
+  if (document.getElementById('ordersBody')) { loadOrders(); await showOrderDetail(orderId); }
+  if (document.getElementById('paymentsBody')) await loadPayments();
+}
+
 async function chargeNoShowFee(orderId, fee) {
-  const amt = prompt('The vehicle was not available. Charge a no-show / dry-run fee of $', fee);
+  const amt = askAmount('The vehicle was not available.\n\nNo-show / dry-run fee to charge:', fee);
   if (amt === null) return;
   try {
     const d = await postOrderAction(orderId, 'charge-fee', { amount: amt });
-    loadOrders();
-    await showOrderDetail(orderId);
+    await refreshAfterPayment(orderId);
     panelMsg(`No-show fee ${money(d.amount)} charged and the transport hold released.`, true);
   } catch (e) { panelMsg(e.message, false); }
 }
 
 async function releaseHold(orderId) {
-  if (!confirm('Release the card hold without charging the customer?')) return;
+  if (!confirm('Release the card hold without charging the customer? The saved card is removed too.')) return;
   try {
     await postOrderAction(orderId, 'release-hold');
-    loadOrders();
-    await showOrderDetail(orderId);
-    panelMsg('Hold released. The card stays on file.', true);
+    await refreshAfterPayment(orderId);
+    panelMsg('Hold released and the card removed.', true);
+  } catch (e) { panelMsg(e.message, false); }
+}
+
+// ==================== PAYMENTS PAGE ====================
+let paymentsCache = [];
+let paymentsFilter = 'all';
+const PAYMENT_FILTERS = {
+  all:      () => true,
+  pending:  p => p.paymentState === 'pending' || p.paymentState === 'unpaid',
+  holding:  p => p.paymentState === 'holding',
+  charged:  p => ['charged', 'partially_refunded', 'fee_charged'].includes(p.paymentState),
+  refunded: p => ['refunded', 'partially_refunded'].includes(p.paymentState),
+  other:    p => ['released', 'expired'].includes(p.paymentState)
+};
+
+async function loadPayments() {
+  const tbody = document.getElementById('paymentsBody');
+  if (!tbody) return;
+  try {
+    const res = await fetch('/api/payments');
+    const data = await res.json();
+    paymentsCache = data.payments || [];
+    const t = data.totals || {};
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = money(v); };
+    set('payTotalHolding', t.holding); set('payTotalCharged', t.charged); set('payTotalRefunded', t.refunded); set('payTotalPending', t.pending);
+    renderPayments();
+  } catch (e) { console.error('loadPayments:', e); }
+}
+
+function setPaymentsFilter(f) {
+  paymentsFilter = f;
+  document.querySelectorAll('[data-pay-filter]').forEach(b => b.classList.toggle('active', b.dataset.payFilter === f));
+  renderPayments();
+}
+
+function renderPayments() {
+  const tbody = document.getElementById('paymentsBody');
+  if (!tbody) return;
+  const q = (document.getElementById('paymentsSearch')?.value || '').trim().toLowerCase();
+  const rows = paymentsCache.filter(PAYMENT_FILTERS[paymentsFilter] || PAYMENT_FILTERS.all)
+    .filter(p => !q || [p.id, p.customer, p.email, p.phone, p.vehicle].some(v => String(v || '').toLowerCase().includes(q)));
+  const empty = document.getElementById('noPaymentsMessage');
+  if (empty) empty.classList.toggle('hidden', rows.length > 0);
+  tbody.innerHTML = rows.map(p => {
+    const charged = p.chargedAmount || 0, refunded = p.refundedAmount || 0, remaining = Math.max(0, Math.round((charged - refunded) * 100) / 100);
+    let amountCell = '';
+    if (p.paymentState === 'holding') amountCell = `<div class="text-cyan-300 font-semibold">${money(p.holdAmount || p.total)} on hold</div><div class="text-[11px] text-muted">until ${p.holdExpiresAt ? new Date(p.holdExpiresAt).toLocaleDateString() : '—'}</div>`;
+    else if (['charged', 'partially_refunded', 'refunded', 'fee_charged'].includes(p.paymentState)) amountCell = `<div class="text-white font-semibold">${money(charged)} charged</div>${refunded ? `<div class="text-[11px] text-amber-300">${money(refunded)} refunded</div>` : `<div class="text-[11px] text-muted">${p.chargedAt ? new Date(p.chargedAt).toLocaleDateString() : ''}</div>`}`;
+    else amountCell = `<div class="text-muted">${money(p.total)} quoted</div><div class="text-[11px] text-muted">${p.paymentState === 'pending' ? 'waiting for customer' : p.paymentState === 'expired' ? 'hold expired' : p.paymentState === 'released' ? 'released' : 'not charged'}</div>`;
+
+    const btn = (label, cls, fn, title) => `<button onclick="event.stopImmediatePropagation(); ${fn}" class="pay-action ${cls}" title="${esc(title || '')}">${label}</button>`;
+    const id = esc(p.id);
+    let actions = '';
+    if (p.paymentState === 'holding') {
+      actions += btn('Charge', 'pay-action-primary', `markPickedUp('${id}', ${Number(p.holdAmount || p.total)}, loadPayments)`, 'Vehicle picked up — charge the full amount or a custom amount');
+      actions += btn('No-show fee', '', `chargeNoShowFee('${id}', ${Number(p.noShowFee || 150)})`, 'Vehicle was gone — charge the agreed fee instead');
+      actions += btn('Release', 'pay-action-danger', `releaseHold('${id}')`, 'Cancel the hold without charging');
+    }
+    if (['charged', 'partially_refunded', 'fee_charged'].includes(p.paymentState) && remaining > 0 && (p.stripePaymentIntentId || p.feePaymentIntentId))
+      actions += btn('Refund', 'pay-action-danger', `refundOrder('${id}', ${remaining}, loadPayments)`, `Refund up to ${money(remaining)}`);
+    if (['unpaid', 'released', 'expired', 'pending'].includes(p.paymentState) && p.source === 'admin')
+      actions += btn(p.paymentState === 'pending' ? 'Resend link' : 'Send confirmation', 'pay-action-primary', `sendConfirmationFromPayments('${id}')`, 'Email the customer the pickup confirmation + card link');
+    actions += btn('<i class="fas fa-eye"></i>', '', `showOrderDetail('${id}')`, 'Open order');
+
+    return `<tr class="cursor-pointer" onclick="showOrderDetail('${id}')">
+      <td><div class="font-mono text-orange-400 font-semibold">${id}</div><div class="text-[11px] text-muted mt-0.5">${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''} · ${p.source === 'admin' ? 'Phone' : 'Website'}</div></td>
+      <td><div class="font-medium text-white">${esc(p.customer || '—')}</div><div class="text-[11px] text-muted mt-0.5 truncate max-w-[220px]">${esc(p.email || p.phone || '')}</div></td>
+      <td class="col-hide-mobile text-sm">${esc(p.vehicle || '—')}</td>
+      <td>${payStatePill(p.paymentState)}</td>
+      <td class="text-sm">${amountCell}</td>
+      <td class="text-right whitespace-nowrap">${actions}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function sendConfirmationFromPayments(orderId) {
+  const p = paymentsCache.find(x => x.id === orderId);
+  const fee = askAmount('No-show fee the customer agrees to if the vehicle is gone at pickup:', p?.noShowFee || 150);
+  if (fee === null) return;
+  try {
+    const d = await postOrderAction(orderId, 'send-confirmation', { noShowFee: fee });
+    await loadPayments();
+    panelMsg(d.emailSent ? `Confirmation email sent to ${d.sentTo}.` : `Link generated, but no email was sent: ${d.emailError}`, d.emailSent);
   } catch (e) { panelMsg(e.message, false); }
 }
 

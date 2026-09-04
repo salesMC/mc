@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include("_head", { title: "Payments" }) %>
+</head>
+<body data-page="payments">
+
+  <%- include("_nav", { page: "payments" }) %>
+
+  <main class="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10">
+    <div class="tile" id="sec-payments">
+      <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white flex items-center gap-3">
+            <i class="fas fa-credit-card"></i> Payments
+          </h2>
+          <p class="text-dim text-sm mt-2">Card holds, charges and refunds for every order. Money is only taken when you click <strong class="text-white">Charge</strong>.</p>
+        </div>
+        <button onclick="loadPayments()" class="btn btn-cyan flex items-center gap-2">
+          <i class="fas fa-sync-alt"></i> Refresh
+        </button>
+      </div>
+
+      <!-- Totals -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        <div class="pay-stat"><div class="pay-stat-label">Waiting on customers</div><div id="payTotalPending" class="pay-stat-value text-amber-300">$0</div></div>
+        <div class="pay-stat"><div class="pay-stat-label">On hold (not charged)</div><div id="payTotalHolding" class="pay-stat-value text-cyan-300">$0</div></div>
+        <div class="pay-stat"><div class="pay-stat-label">Charged</div><div id="payTotalCharged" class="pay-stat-value text-lime-300">$0</div></div>
+        <div class="pay-stat"><div class="pay-stat-label">Refunded</div><div id="payTotalRefunded" class="pay-stat-value text-white">$0</div></div>
+      </div>
+
+      <!-- Filters -->
+      <div class="flex flex-wrap items-center gap-2 mb-5">
+        <div class="flex flex-wrap gap-1">
+          <button data-pay-filter="all"      onclick="setPaymentsFilter('all')"      class="pay-filter active">All</button>
+          <button data-pay-filter="pending"  onclick="setPaymentsFilter('pending')"  class="pay-filter">Pending</button>
+          <button data-pay-filter="holding"  onclick="setPaymentsFilter('holding')"  class="pay-filter">Holding</button>
+          <button data-pay-filter="charged"  onclick="setPaymentsFilter('charged')"  class="pay-filter">Charged</button>
+          <button data-pay-filter="refunded" onclick="setPaymentsFilter('refunded')" class="pay-filter">Refunded</button>
+          <button data-pay-filter="other"    onclick="setPaymentsFilter('other')"    class="pay-filter">Released / Expired</button>
+        </div>
+        <input id="paymentsSearch" oninput="renderPayments()" type="search" placeholder="Search order, name, email, vehicle…"
+               class="input-admin ml-auto w-full sm:w-72">
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr>
+              <th>Order</th>
+              <th>Customer</th>
+              <th class="col-hide-mobile">Vehicle</th>
+              <th>Status</th>
+              <th>Amount</th>
+              <th class="text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="paymentsBody" class="text-dim"></tbody>
+        </table>
+      </div>
+
+      <div id="noPaymentsMessage" class="hidden text-center py-16 text-muted">
+        <i class="fas fa-credit-card text-6xl mb-6 opacity-40"></i>
+        <p>Nothing here</p>
+      </div>
+
+      <div class="mt-6 text-xs text-muted leading-relaxed">
+        <strong class="text-dim">How the statuses work:</strong>
+        <span class="pay-pill pay-wait" style="margin-left:4px">Pending</span> confirmation emailed, waiting for the customer to agree and enter a card ·
+        <span class="pay-pill pay-hold">Holding</span> card authorized, nothing taken yet (holds last 7 days) ·
+        <span class="pay-pill pay-paid">Charged</span> money collected ·
+        <span class="pay-pill pay-fee">No-show fee</span> the agreed fee was charged instead of the transport ·
+        <span class="pay-pill pay-released">Released</span> hold cancelled without charging ·
+        <span class="pay-pill pay-unpaid">Expired</span> the 7 days passed, send a new confirmation.
+      </div>
+    </div>
+  </main>
+
+  <%- include("_modals") %>
+  <%- include("_foot") %>
+</body>
+</html>

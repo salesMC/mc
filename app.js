@@ -1,5 +1,7 @@
 // app.js
 require('dotenv').config();
+// Login email of the default admin account (used only when no admin exists yet)
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@mctransportation.com').trim().toLowerCase();
 const express = require('express');
 const path    = require('path');
 const fs      = require('fs');
@@ -173,10 +175,32 @@ function mapOrderRow(r, withPhotos = false) {
     holdExpiresAt : r.hold_expires_at || null,
     chargedAt     : r.charged_at || null,
     chargedAmount : r.charged_amount != null ? Number(r.charged_amount) : null,
+    refundedAmount: r.refunded_amount != null ? Number(r.refunded_amount) : 0,
+    refundedAt    : r.refunded_at || null,
     pickedUpAt    : r.picked_up_at || null,
     hasCardOnFile : !!r.stripe_payment_method_id,
+    stripePaymentIntentId: r.stripe_payment_intent_id || null,
+    feePaymentIntentId   : r.fee_payment_intent_id || null,
+    paymentState  : paymentStateOf(r),
     createdAt     : r.created_at
   };
+}
+
+// One word for the money situation, used by the admin Payments page:
+//   unpaid → no card yet · pending → confirmation emailed, waiting on customer
+//   holding → card authorized, not charged · charged → money collected
+//   fee_charged → no-show fee collected · refunded / partially_refunded
+//   released → hold cancelled by admin · expired → hold lapsed (card removed)
+function paymentStateOf(r) {
+  const ps = r.payment_status || 'paid';
+  const charged = Number(r.charged_amount) || (ps === 'paid' ? Number(r.total) || 0 : 0);
+  const refunded = Number(r.refunded_amount) || 0;
+  if ((ps === 'paid' || ps === 'fee_charged') && refunded > 0)
+    return refunded >= charged - 0.005 ? 'refunded' : 'partially_refunded';
+  if (ps === 'paid') return 'charged';
+  if (ps === 'authorized') return 'holding';
+  if (ps === 'confirmation_sent') return 'pending';
+  return ps; // unpaid, fee_charged, released, expired
 }
 
 function mapCustomerRow(r) {
@@ -334,6 +358,8 @@ async function initDB() {
       ['fee_payment_intent_id', 'VARCHAR(64)'],
       ['hold_amount', 'DECIMAL(10,2)'],
       ['hold_expires_at', 'DATETIME'],
+      ['refunded_amount', 'DECIMAL(10,2)'],
+      ['refunded_at', 'DATETIME'],
       ['charged_at', 'DATETIME'],
       ['charged_amount', 'DECIMAL(10,2)'],
       ['picked_up_at', 'DATETIME'],
@@ -354,7 +380,7 @@ async function initDB() {
         created_at DATETIME            NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    for (const [col, def] of [['name', 'VARCHAR(255)'], ['company', 'VARCHAR(255)']]) {
+    for (const [col, def] of [['name', 'VARCHAR(255)'], ['company', 'VARCHAR(255)'], ['reset_token_hash', 'VARCHAR(64)'], ['reset_expires', 'DATETIME']]) {
       try { await conn.execute(`ALTER TABLE employees ADD COLUMN ${col} ${def}`); } catch (e) { /* exists */ }
     }
 
@@ -533,9 +559,9 @@ async function initDB() {
       const pw = process.env.ADMIN_DEFAULT_PASSWORD || 'mcadmin2026';
       await conn.execute(
         'INSERT INTO employees (email, password, role) VALUES (?, ?, ?)',
-        ['admin@mctransportation.com', await bcrypt.hash(pw, 10), 'admin']
+        [ADMIN_EMAIL, await bcrypt.hash(pw, 10), 'admin']
       );
-      console.log('✅ Default admin created: admin@mctransportation.com (change the password after first login)');
+      console.log(`✅ Default admin created: ${ADMIN_EMAIL} (change the password after first login)`);
     }
 
     // Demo carrier/shipper accounts + sample listings only when explicitly requested
@@ -759,12 +785,13 @@ if (!process.env.SESSION_SECRET) {
 }
 const SESSION_COOKIE = 'mc_session';
 const SESSION_TTL_SECONDS = { admin: 24 * 3600, carrier: 7 * 24 * 3600, shipper: 7 * 24 * 3600 };
+const REMEMBER_TTL_SECONDS = 30 * 24 * 3600; // "Keep me signed in"
 
 function signSession(payload) {
   return crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
 }
-function createSessionToken(user) {
-  const ttl = SESSION_TTL_SECONDS[user.role] || 24 * 3600;
+function createSessionToken(user, ttl) {
+  ttl = ttl || SESSION_TTL_SECONDS[user.role] || 24 * 3600;
   const payload = Buffer.from(JSON.stringify({
     uid: user.id, email: user.email, role: user.role, exp: Date.now() + ttl * 1000
   })).toString('base64url');
@@ -783,10 +810,13 @@ function readSession(req) {
     return s;
   } catch (e) { return null; }
 }
-function setSessionCookie(req, res, user) {
-  const ttl = SESSION_TTL_SECONDS[user.role] || 24 * 3600;
+// remember=true → 30-day cookie that survives closing the browser; otherwise the
+// cookie lasts for the browser session (and the token itself for the role's TTL).
+function setSessionCookie(req, res, user, remember = false) {
+  const ttl = remember ? REMEMBER_TTL_SECONDS : (SESSION_TTL_SECONDS[user.role] || 24 * 3600);
+  const maxAge = remember ? `; Max-Age=${ttl}` : '';
   res.setHeader('Set-Cookie',
-    `${SESSION_COOKIE}=${createSessionToken(user)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${ttl}${req.secure ? '; Secure' : ''}`);
+    `${SESSION_COOKIE}=${createSessionToken(user, ttl)}; Path=/; HttpOnly; SameSite=Lax${maxAge}${req.secure ? '; Secure' : ''}`);
 }
 function clearSessionCookie(res) {
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
@@ -913,6 +943,7 @@ app.get('/admin/orders',      requireAdminPage, (req, res) => res.render('admin/
 app.get('/admin/customers',   requireAdminPage, (req, res) => res.render('admin/customers'));
 app.get('/admin/promo-codes', requireAdminPage, (req, res) => res.render('admin/promo-codes'));
 app.get('/admin/calculator',  requireAdminPage, (req, res) => res.render('admin/calculator'));
+app.get('/admin/payments',    requireAdminPage, (req, res) => res.render('admin/payments'));
 app.get('/sign-in',        (req, res) => res.render('sign-in'));
 app.get('/register',       (req, res) => res.render('register'));
 
@@ -1434,7 +1465,14 @@ app.post('/api/orders/:id/pickup', requireAdmin, async (req, res) => {
     if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
     if (row.payment_status !== 'authorized')
       return res.status(409).json({ success: false, message: `Order payment status is "${row.payment_status}", not "authorized"` });
-    const amountCents = Math.round(Number(row.total) * 100);
+    // Optional custom amount (e.g. a partial charge) — never more than what was held
+    const requested = req.body && req.body.amount != null && req.body.amount !== '' ? Number(req.body.amount) : null;
+    if (requested != null && !(requested > 0)) return res.status(400).json({ success: false, message: 'Invalid charge amount' });
+    const heldAmount = row.hold_amount != null ? Number(row.hold_amount) : Number(row.total);
+    if (requested != null && requested > heldAmount + 0.005)
+      return res.status(400).json({ success: false, message: `You can charge up to $${heldAmount.toFixed(2)} (the amount on hold)` });
+    const amountCents = Math.round((requested != null ? requested : Number(row.total)) * 100);
+    if (amountCents < 50) return res.status(400).json({ success: false, message: 'Charge amount is too small' });
 
     let charged = null; // { piId, amount, how }
     if (row.stripe_payment_intent_id) {
@@ -1551,6 +1589,80 @@ app.post('/api/orders/:id/release-hold', requireAdmin, async (req, res) => {
   } catch (err) {
     console.error('POST /api/orders/:id/release-hold:', err);
     res.status(500).json({ success: false, message: err.message || 'Server error' });
+  }
+});
+
+// ---- Admin: refund part or all of what was charged (transport charge or no-show fee) ----
+app.post('/api/orders/:id/refund', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (!['paid', 'fee_charged'].includes(row.payment_status))
+      return res.status(409).json({ success: false, message: 'Nothing has been charged on this order yet' });
+    const piId = row.payment_status === 'fee_charged' ? row.fee_payment_intent_id : row.stripe_payment_intent_id;
+    if (!piId) return res.status(409).json({ success: false, message: 'No Stripe payment is linked to this order, so it cannot be refunded here' });
+
+    const charged = row.charged_amount != null ? Number(row.charged_amount) : Number(row.total);
+    const alreadyRefunded = Number(row.refunded_amount) || 0;
+    const remaining = Math.round((charged - alreadyRefunded) * 100) / 100;
+    if (remaining <= 0) return res.status(409).json({ success: false, message: 'This order is already fully refunded' });
+
+    const requested = req.body && req.body.amount != null && req.body.amount !== '' ? Number(req.body.amount) : remaining;
+    if (!(requested > 0)) return res.status(400).json({ success: false, message: 'Invalid refund amount' });
+    if (requested > remaining + 0.005)
+      return res.status(400).json({ success: false, message: `You can refund up to $${remaining.toFixed(2)}` });
+    const amountCents = Math.round(requested * 100);
+    const reason = str(req.body.reason, 200) || null;
+
+    const refund = await stripe.refunds.create({
+      payment_intent: piId, amount: amountCents,
+      metadata: { orderId: row.id, reason: reason || '' }
+    });
+    if (refund.status && !['succeeded', 'pending'].includes(refund.status))
+      return res.status(402).json({ success: false, message: `Refund not completed (status: ${refund.status})` });
+
+    const newTotal = Math.round((alreadyRefunded + amountCents / 100) * 100) / 100;
+    await pool.execute(
+      `UPDATE orders SET refunded_amount = ?, refunded_at = NOW(),
+              notes = CASE WHEN ? IS NULL THEN notes ELSE CONCAT(COALESCE(notes, ''), CASE WHEN notes IS NULL OR notes = '' THEN '' ELSE '\n' END, ?) END
+       WHERE id = ?`,
+      [newTotal, reason, reason ? `Refund $${(amountCents / 100).toFixed(2)}: ${reason}` : null, row.id]
+    );
+    res.json({ success: true, refundId: refund.id, amount: amountCents / 100, refundedTotal: newTotal, remaining: Math.round((charged - newTotal) * 100) / 100 });
+  } catch (err) {
+    console.error('POST /api/orders/:id/refund:', err);
+    res.status(stripeErrorStatus(err)).json({ success: false, message: err.message || 'Server error' });
+  }
+});
+
+// ---- Admin: payments overview (every order's money situation, newest first) ----
+app.get('/api/payments', requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await pool.execute('SELECT * FROM orders ORDER BY created_at DESC');
+    const list = rows.map(r => {
+      const o = mapOrderRow(r, false);
+      return {
+        id: o.id, createdAt: o.createdAt, status: o.status, source: o.source,
+        customer: (o.contact && o.contact.fullName) || '', email: (o.contact && o.contact.email) || '', phone: (o.contact && o.contact.phone) || '',
+        vehicle: o.vehicle ? [o.vehicle.year, o.vehicle.make, o.vehicle.model].filter(Boolean).join(' ') : '',
+        total: o.total, paymentStatus: o.paymentStatus, paymentState: o.paymentState,
+        holdAmount: o.holdAmount, holdExpiresAt: o.holdExpiresAt, chargedAmount: o.chargedAmount, chargedAt: o.chargedAt,
+        refundedAmount: o.refundedAmount, refundedAt: o.refundedAt, noShowFee: o.noShowFee,
+        hasCardOnFile: o.hasCardOnFile, confirmSentAt: o.confirmSentAt, agreedAt: o.agreedAt, pickedUpAt: o.pickedUpAt,
+        stripePaymentIntentId: o.stripePaymentIntentId, feePaymentIntentId: o.feePaymentIntentId
+      };
+    });
+    const totals = list.reduce((t, p) => {
+      if (p.paymentState === 'holding') t.holding += p.holdAmount || p.total || 0;
+      if (['charged', 'partially_refunded', 'refunded', 'fee_charged'].includes(p.paymentState)) t.charged += p.chargedAmount || 0;
+      t.refunded += p.refundedAmount || 0;
+      if (p.paymentState === 'pending') t.pending += p.total || 0;
+      return t;
+    }, { holding: 0, charged: 0, refunded: 0, pending: 0 });
+    res.json({ payments: list, totals });
+  } catch (err) {
+    console.error('GET /api/payments:', err);
+    res.status(500).json({ success: false });
   }
 });
 
@@ -1710,10 +1822,76 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (role && role !== 'admin' && user.role !== role)
       return res.status(401).json({ success: false, message: 'Invalid role for this account' });
 
-    setSessionCookie(req, res, user);
+    setSessionCookie(req, res, user, bool(req.body.remember));
     res.json({ success: true, role: user.role, email: user.email, name: user.name || null });
   } catch (err) {
     console.error('POST /api/auth/login:', err);
+    res.status(500).json({ success: false });
+  }
+});
+
+// ---- Forgot / reset password (any role) ----
+// POST /api/auth/forgot {email} → emails a one-hour reset link. Always answers "ok"
+// so the form can't be used to discover which emails have accounts.
+const RESET_TTL_MINUTES = 60;
+const hashToken = (t) => crypto.createHash('sha256').update(String(t)).digest('hex');
+app.post('/api/auth/forgot', loginLimiter, async (req, res) => {
+  const email = str(req.body.email, 254).toLowerCase();
+  if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+  try {
+    const [rows] = await pool.execute('SELECT id, email, name FROM employees WHERE email = ?', [email]);
+    if (rows.length) {
+      const user = rows[0];
+      const token = crypto.randomBytes(32).toString('hex');
+      await pool.execute(
+        'UPDATE employees SET reset_token_hash = ?, reset_expires = DATE_ADD(NOW(), INTERVAL ? MINUTE) WHERE id = ?',
+        [hashToken(token), RESET_TTL_MINUTES, user.id]
+      );
+      const link = `${appUrl(req)}/reset-password/${token}`;
+      const mail = await sendMail({
+        to: user.email,
+        subject: 'Reset your MC Transportation password',
+        html: emailShell(`<p>Hi${user.name ? ' ' + escHtml(user.name) : ''},</p>
+          <p>Someone asked to reset the password for <strong>${escHtml(user.email)}</strong>. If that was you, click the button below. The link works for ${RESET_TTL_MINUTES} minutes.</p>
+          <p style="text-align:center;margin:28px 0"><a href="${link}" style="background:#ff6a3d;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;display:inline-block">Choose a new password</a></p>
+          <p style="color:#666;font-size:13px">If you didn't ask for this, ignore this email. Your password stays the same.</p>`),
+        text: `Reset your MC Transportation password (link valid ${RESET_TTL_MINUTES} minutes): ${link}\n\nIf you didn't ask for this, ignore this email.`
+      }).catch(e => ({ sent: false, reason: e.message }));
+      if (!mail.sent) console.error('forgot-password mail not sent:', mail.reason);
+    }
+    res.json({ success: true, message: 'If that email has an account, a reset link is on its way.' });
+  } catch (err) {
+    console.error('POST /api/auth/forgot:', err);
+    res.status(500).json({ success: false });
+  }
+});
+
+// GET /reset-password/:token → page; POST /api/auth/reset {token, password} → sets it
+app.get('/reset-password/:token', (req, res) => {
+  const token = String(req.params.token || '');
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(404).render('404');
+  res.render('reset-password', { token });
+});
+app.post('/api/auth/reset', loginLimiter, async (req, res) => {
+  const token = String(req.body.token || '');
+  const password = typeof req.body.password === 'string' ? req.body.password : '';
+  if (!/^[a-f0-9]{64}$/.test(token)) return res.status(400).json({ success: false, message: 'This reset link is not valid' });
+  if (password.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  try {
+    const [rows] = await pool.execute(
+      'SELECT * FROM employees WHERE reset_token_hash = ? AND reset_expires IS NOT NULL AND reset_expires > NOW()',
+      [hashToken(token)]
+    );
+    if (!rows.length) return res.status(400).json({ success: false, message: 'This reset link has expired or was already used. Request a new one.' });
+    const user = rows[0];
+    await pool.execute(
+      'UPDATE employees SET password = ?, reset_token_hash = NULL, reset_expires = NULL WHERE id = ?',
+      [await bcrypt.hash(password, 10), user.id]
+    );
+    setSessionCookie(req, res, user, false);
+    res.json({ success: true, role: user.role, email: user.email });
+  } catch (err) {
+    console.error('POST /api/auth/reset:', err);
     res.status(500).json({ success: false });
   }
 });
