@@ -276,6 +276,12 @@ async function sendAndAuthorize(id, fee) {
   raw = await fetch(B + '/documents/invoices/nothing.pdf');
   check('missing document → 404', raw.status === 404, raw.status);
   try { require('fs').rmSync(require('path').join(__dirname, '..', 'uploads', 'MC-T-SAN'), { recursive: true, force: true }); } catch {}
+  r = await api('PATCH', '/api/orders/MC-T-SAN/price', { total: 725, reason: 'repeat dealer' });
+  check('admin can change the price before a card is on hold', r.status === 200 && r.data.total === 725 && r.data.previous === 650, r.data);
+  o = await order('MC-T-SAN');
+  check('new price saved and the change noted on the order', o.total === 725 && (o.notes || '').includes('Price changed: $650 → $725 — repeat dealer'), { t: o.total, n: o.notes });
+  r = await api('PATCH', '/api/orders/MC-T-SAN/price', { total: -5 });
+  check('negative price rejected', r.status === 400);
   r = await api('PATCH', '/api/orders/MC-T-SAN/status', { status: 'DROP TABLE' });
   check('invalid order status rejected', r.status === 400);
   r = await api('POST', '/api/promo-codes', { code: 'BAD', discount: 150, type: 'percent' });
@@ -357,6 +363,8 @@ async function sendAndAuthorize(id, fee) {
   check('second pickup → 409', r.status === 409);
   r = await api('POST', '/api/orders/MC-T-SEND/charge-fee', {});
   check('fee after paid → 409', r.status === 409);
+  r = await api('PATCH', '/api/orders/MC-T-SEND/price', { total: 10 });
+  check('price locked once charged → 409', r.status === 409);
 
   // Deleting an order that still has a hold releases it first
   await newOrder('MC-T-DEL');

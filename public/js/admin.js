@@ -631,7 +631,11 @@ async function showOrderDetail(orderId, { fromHistory = false } = {}) {
       <div class="mt-10 pt-6 border-t border-[var(--line)] flex justify-between items-center">
         <div>
           <p class="text-muted text-sm">Total Amount</p>
-          <p class="text-4xl font-bold text-[var(--orange)]">$${Number(order.total || 0).toLocaleString()}</p>
+          <p class="text-4xl font-bold text-[var(--orange)]">$${Number(order.total || 0).toLocaleString()}
+            ${['unpaid', 'pending', 'released', 'expired'].includes(order.paymentState)
+              ? `<button onclick="editOrderPrice('${esc(order.id)}', ${Number(order.total) || 0})" class="ml-2 align-middle text-sm text-cyan-400 hover:text-white" title="Change the quoted price (admin only)"><i class="fas fa-pen-to-square"></i> Edit</button>`
+              : `<span class="ml-2 align-middle text-xs text-muted" title="Locked while a card hold or charge exists"><i class="fas fa-lock"></i></span>`}
+          </p>
           ${paymentSummaryLine(order)}
         </div>
         <div class="text-right">
@@ -993,7 +997,7 @@ function wizRender(step) {
     el.innerHTML = wizRouteHTML();
     wizInitMaps();
   } else {
-    el.innerHTML = wizQuoteHTML();
+    el.innerHTML = wizQuoteHTML(); wizPriceDiff();
   }
   wizRenderSteps();
   el.scrollTop = 0;
@@ -1016,6 +1020,7 @@ function wizCollect() {
     wiz.mustDeliverBy = g('wr-deliverBy').value;
   } else if (wiz.step === 3 && g('wizFinalPrice')) {
     wiz.finalPrice = g('wizFinalPrice').value;
+    wiz.priceReason = (g('wizPriceReason')?.value || '').trim();
     wiz.notes = g('wizNotes').value.trim();
   }
 }
@@ -1484,29 +1489,64 @@ function wizQuoteHTML() {
     <div class="mb-6">${rows}</div>
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
-      <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-5">
-        <div class="text-xs text-muted">Calculated price</div>
-        <div class="text-2xl font-bold text-white mb-4">$${computed.toLocaleString()}</div>
-        <label class="label-dark">Final quoted price ($)</label>
-        <input id="wizFinalPrice" type="number" min="0" step="1" class="input-dark text-2xl font-bold"
-               style="color: var(--orange);" value="${esc(final)}" oninput="wiz.finalPrice = this.value">
-        <button type="button" onclick="wiz.finalPrice = null; document.getElementById('wizFinalPrice').value = ${computed}"
-                class="text-xs text-cyan-400 hover:text-white mt-2"><i class="fas fa-rotate-left mr-1"></i>Use calculated price</button>
+      <div class="bg-[var(--bg-deep)] border rounded-xl p-5" style="border-color: rgba(255,106,61,0.4)">
+        <div class="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <div class="text-xs text-muted uppercase tracking-wider">Calculated price</div>
+            <div class="text-xl font-bold text-white">$${computed.toLocaleString()}</div>
+          </div>
+          <span class="pay-pill pay-phone" style="margin-left:0" title="Only you see this. The customer sees the final price only.">Admin only</span>
+        </div>
+        <label class="label-dark"><i class="fas fa-pen-to-square text-[var(--orange)] mr-1"></i> Adjust the price (what the customer pays)</label>
+        <div class="flex items-center gap-2">
+          <span class="text-2xl font-bold text-white">$</span>
+          <input id="wizFinalPrice" type="number" min="0" step="1" class="input-dark text-2xl font-bold flex-1"
+                 style="color: var(--orange);" value="${esc(final)}" oninput="wiz.finalPrice = this.value; wizPriceDiff()">
+        </div>
+        <div id="wizPriceDiff" class="text-xs mt-2 min-h-[18px]"></div>
+        <div class="flex flex-wrap gap-1.5 mt-3">
+          ${[['-$25', -25], ['-$50', -50], ['-$100', -100], ['-5%', -0.05], ['-10%', -0.10], ['+$50', 50]].map(([l, d]) =>
+            `<button type="button" onclick="wizPriceQuick(${d})" class="pay-action" style="margin-left:0">${l}</button>`).join('')}
+          <button type="button" onclick="wiz.finalPrice = null; document.getElementById('wizFinalPrice').value = ${computed}; wizPriceDiff()"
+                  class="pay-action" style="margin-left:0"><i class="fas fa-rotate-left"></i> Calculated</button>
+        </div>
+        <label class="label-dark mt-4">Reason for the adjustment <span class="text-muted font-normal">(saved on the order)</span></label>
+        <input id="wizPriceReason" class="input-dark" placeholder="e.g. repeat dealer, matched competitor, flexible dates…" value="${esc(wiz.priceReason || '')}" oninput="wiz.priceReason = this.value">
       </div>
       <div>
         <label class="label-dark">Internal order notes</label>
         <textarea id="wizNotes" class="input-dark" style="min-height:140px" placeholder="Call notes, special instructions, gate codes…">${esc(wiz.notes)}</textarea>
         <p class="text-xs text-muted mt-2">
-          Saved as an <span class="text-red-400 font-semibold">unpaid</span> phone-in order.
-          Mark it paid from the order details once payment is collected.
+          Saved as a phone-in order with <span class="text-red-400 font-semibold">no card yet</span>.
+          Next step is sending the customer the pickup confirmation from the order.
         </p>
       </div>
     </div>`;
 }
+// Shows "-$50 (7.7% off)" under the price box, and applies the quick buttons
+function wizPriceDiff() {
+  const el = document.getElementById('wizPriceDiff'); if (!el || !wiz) return;
+  const computed = wizComputedTotal(), final = Number(document.getElementById('wizFinalPrice')?.value);
+  if (!(final >= 0) || final === computed) { el.textContent = 'Same as the calculated price.'; el.className = 'text-xs mt-2 min-h-[18px] text-muted'; return; }
+  const diff = final - computed, pct = computed ? Math.abs(diff) / computed * 100 : 0;
+  el.textContent = `${diff < 0 ? '−' : '+'}$${Math.abs(diff).toLocaleString()} (${pct.toFixed(1)}% ${diff < 0 ? 'off' : 'more'}) vs calculated`;
+  el.className = 'text-xs mt-2 min-h-[18px] ' + (diff < 0 ? 'text-amber-300' : 'text-lime-300');
+}
+function wizPriceQuick(d) {
+  const input = document.getElementById('wizFinalPrice'); if (!input) return;
+  const base = Number(input.value) || wizComputedTotal();
+  const next = Math.max(0, Math.round(Math.abs(d) < 1 ? base * (1 + d) : base + d));
+  input.value = next; wiz.finalPrice = next; wizPriceDiff();
+}
 
 async function wizSave() {
   wizCollect();
-  const total = Math.max(0, Math.round(Number(wiz.finalPrice)) || wizComputedTotal());
+  const computed = wizComputedTotal();
+  const total = Math.max(0, Math.round(Number(wiz.finalPrice)) || computed);
+  if (total !== computed) {
+    const line = `Price adjusted: calculated $${computed.toLocaleString()} → quoted $${total.toLocaleString()}${wiz.priceReason ? ' — ' + wiz.priceReason : ''}`;
+    wiz.notes = (wiz.notes ? wiz.notes + '\n' : '') + line;
+  }
   const c = wiz.customer;
   const btn = document.getElementById('wizSaveBtn');
   btn.disabled = true;
@@ -1933,3 +1973,19 @@ function toggleRowMenu(btn) {
   if (!open) list.classList.remove('hidden');
 }
 document.addEventListener('click', (e) => { if (!e.target.closest('.row-menu')) closeRowMenus(); });
+
+// ==================== EDIT PRICE ON AN EXISTING ORDER (admin only) ====================
+async function editOrderPrice(orderId, current) {
+  const amt = askAmount(`New quoted price for order ${orderId} (currently ${money(current)}):`, current);
+  if (amt === null) return;
+  const reason = prompt('Reason (optional, saved on the order):', '') || '';
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}/price`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ total: amt, reason }) });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.success) throw new Error(d.message || 'Could not change the price');
+    if (document.getElementById('ordersBody')) loadOrders();
+    if (document.getElementById('paymentsBody')) loadPayments();
+    await showOrderDetail(orderId, { fromHistory: true });
+    panelMsg(`Price changed to ${money(d.total)}.`, true);
+  } catch (e) { panelMsg(e.message, false); }
+}

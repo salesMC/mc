@@ -1728,6 +1728,30 @@ app.post('/api/orders/:id/release-hold', requireAdmin, async (req, res) => {
   }
 });
 
+// ---- Admin: change the quoted price before any card is on hold ----
+app.patch('/api/orders/:id/price', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (['authorized', 'paid', 'fee_charged'].includes(row.payment_status))
+      return res.status(409).json({ success: false, message: 'The price is locked once a card hold or charge exists. Release the hold first, then change the price and send a new confirmation.' });
+    const total = Math.round(Number(req.body.total));
+    if (!(total >= 0) || total > 1000000) return res.status(400).json({ success: false, message: 'Enter a valid price' });
+    const reason = str(req.body.reason, 200);
+    const old = Number(row.total);
+    if (total === old) return res.json({ success: true, total });
+    const line = `Price changed: $${old.toLocaleString()} → $${total.toLocaleString()}${reason ? ' — ' + reason : ''} (${new Date().toLocaleDateString('en-US')})`;
+    await pool.execute(
+      `UPDATE orders SET total = ?, notes = CONCAT(COALESCE(notes, ''), CASE WHEN notes IS NULL OR notes = '' THEN '' ELSE '\n' END, ?) WHERE id = ?`,
+      [total, line, row.id]
+    );
+    res.json({ success: true, total, previous: old });
+  } catch (err) {
+    console.error('PATCH /api/orders/:id/price:', err);
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
+  }
+});
+
 // ---- Admin: refund part or all of what was charged (transport charge or no-show fee) ----
 app.post('/api/orders/:id/refund', requireAdmin, async (req, res) => {
   try {
