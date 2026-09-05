@@ -39,7 +39,7 @@
           <button data-pay-filter="refunded" onclick="setPaymentsFilter('refunded')" class="pay-filter">Refunded</button>
           <button data-pay-filter="other"    onclick="setPaymentsFilter('other')"    class="pay-filter">Released / Expired</button>
         </div>
-        <input id="paymentsSearch" oninput="renderPayments()" type="search" placeholder="Search order, name, email, vehicle…"
+        <input id="paymentsSearch" oninput="paymentsSearchChanged()" type="search" placeholder="Search order, name, email, vehicle…"
                class="input-admin ml-auto w-full sm:w-72">
       </div>
 
@@ -63,6 +63,7 @@
         <i class="fas fa-credit-card text-6xl mb-6 opacity-40"></i>
         <p>Nothing here</p>
       </div>
+      <div id="paymentsPager" class="pager"></div>
 
       <div class="mt-6 text-xs text-muted leading-relaxed">
         <strong class="text-dim">How the statuses work:</strong>

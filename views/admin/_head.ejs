@@ -122,6 +122,23 @@
     .pay-action-danger { color: #F87171; border-color: rgba(248,113,113,0.3); background: rgba(248,113,113,0.06); }
     .pay-action-danger:hover { background: rgba(248,113,113,0.14); color: #fca5a5; }
 
+    /* Paging bar under each list */
+    .pager { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding-top: 14px; font-size: 0.8rem; color: var(--ink-muted); }
+    .pager:empty { display: none; }
+    .pager button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--line); color: var(--ink-dim); background: transparent; font-weight: 600; }
+    .pager button:hover:not(:disabled) { color: white; border-color: var(--line-soft); }
+    .pager button:disabled { opacity: .35; cursor: default; }
+    .pager select { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg-deep); color: var(--ink-dim); }
+
+    /* Global search dropdown */
+    .gs-section { padding: 8px 12px 4px; font-size: 0.65rem; text-transform: uppercase; letter-spacing: .1em; color: var(--ink-muted); border-top: 1px solid var(--line); }
+    .gs-section:first-child { border-top: 0; }
+    .gs-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; cursor: pointer; font-size: 0.85rem; }
+    .gs-item:hover, .gs-item.active { background: rgba(255,106,61,0.10); }
+    .gs-item .gs-main { color: white; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gs-item .gs-sub { color: var(--ink-muted); font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .gs-empty { padding: 14px 12px; font-size: 0.85rem; color: var(--ink-muted); }
+
     /* Toast used when there is no open order panel */
     .admin-toast {
       position: fixed; right: 20px; bottom: 20px; z-index: 9999; max-width: 380px;

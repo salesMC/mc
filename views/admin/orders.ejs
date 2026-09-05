@@ -20,6 +20,31 @@
         </button>
       </div>
 
+      <!-- Search + filters -->
+      <div class="flex flex-wrap items-center gap-2 mb-5">
+        <input id="ordersSearch" type="search" placeholder="Search order #, name, email, phone, VIN, vehicle, address…"
+               class="input-admin flex-1 min-w-[240px]" oninput="ordersFilterChanged()">
+        <select id="ordersStatus" class="input-admin w-auto" onchange="ordersFilterChanged()">
+          <option value="">All statuses</option>
+          <option value="New">New</option>
+          <option value="In Work">In Work</option>
+          <option value="Done">Done</option>
+          <option value="Canceled">Canceled</option>
+        </select>
+        <select id="ordersPayment" class="input-admin w-auto" onchange="ordersFilterChanged()">
+          <option value="">All payments</option>
+          <option value="unpaid">No card yet</option>
+          <option value="pending">Awaiting card</option>
+          <option value="holding">On hold · not charged</option>
+          <option value="charged">Charged</option>
+          <option value="partially_refunded">Partly refunded</option>
+          <option value="refunded">Refunded</option>
+          <option value="fee_charged">No-show fee charged</option>
+          <option value="released">Released</option>
+          <option value="expired">Hold expired</option>
+        </select>
+      </div>
+
       <div class="overflow-x-auto">
         <table class="w-full text-sm">
           <thead>
@@ -39,8 +64,9 @@
 
       <div id="noOrdersMessage" class="hidden text-center py-16 text-muted">
         <i class="fas fa-inbox text-6xl mb-6 opacity-40"></i>
-        <p>No orders yet</p>
+        <p>No orders match</p>
       </div>
+      <div id="ordersPager" class="pager"></div>
     </div>
   </main>
 

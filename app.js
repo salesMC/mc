@@ -182,6 +182,7 @@ function mapOrderRow(r, withPhotos = false) {
     stripePaymentIntentId: r.stripe_payment_intent_id || null,
     feePaymentIntentId   : r.fee_payment_intent_id || null,
     paymentState  : paymentStateOf(r),
+    agreement     : safeJson(r.agreement_json) || null,   // signed pickup agreement record (proof)
     createdAt     : r.created_at
   };
 }
@@ -360,6 +361,7 @@ async function initDB() {
       ['hold_expires_at', 'DATETIME'],
       ['refunded_amount', 'DECIMAL(10,2)'],
       ['refunded_at', 'DATETIME'],
+      ['agreement_json', 'MEDIUMTEXT'],
       ['charged_at', 'DATETIME'],
       ['charged_amount', 'DECIMAL(10,2)'],
       ['picked_up_at', 'DATETIME'],
@@ -963,6 +965,18 @@ app.get('/admin/customers',   requireAdminPage, (req, res) => res.render('admin/
 app.get('/admin/promo-codes', requireAdminPage, (req, res) => res.render('admin/promo-codes'));
 app.get('/admin/calculator',  requireAdminPage, (req, res) => res.render('admin/calculator'));
 app.get('/admin/payments',    requireAdminPage, (req, res) => res.render('admin/payments'));
+// Printable record of the customer's signed pickup agreement (proof for disputes)
+app.get('/admin/orders/:id/agreement', requireAdminPage, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).render('404');
+    const order = mapOrderRow(row, false);
+    res.render('admin/agreement', { order, agreement: order.agreement, money, phone: COMPANY_PHONE });
+  } catch (err) {
+    console.error('GET /admin/orders/:id/agreement:', err);
+    res.status(500).send('Server error');
+  }
+});
 app.get('/sign-in',        (req, res) => res.render('sign-in'));
 app.get('/register',       (req, res) => res.render('register'));
 
@@ -972,15 +986,70 @@ app.get('/exchange/shipments', (req, res) => res.render('exchange/shipments'));
 // ==================== API: ORDERS ====================
 
 // GET all orders (photos stripped — only loaded in detail view)
+const ORDER_STATUSES = ['New', 'In Work', 'Done', 'Canceled'];
+
+// Shared search for orders: id, contact (name/email/phone/company), vehicle
+// (make/model/VIN), route. Returns SQL fragment + params.
+function orderSearchWhere(q, status) {
+  const clauses = [], params = [];
+  if (q) {
+    const like = `%${q}%`;
+    clauses.push('(id LIKE ? OR contact LIKE ? OR vehicle LIKE ? OR vehicles LIKE ? OR location LIKE ? OR notes LIKE ?)');
+    params.push(like, like, like, like, like, like);
+  }
+  if (status && ORDER_STATUSES.includes(status)) { clauses.push('status = ?'); params.push(status); }
+  return { where: clauses.length ? 'WHERE ' + clauses.join(' AND ') : '', params };
+}
+function pageParams(req, defaultLimit = 50) {
+  const page  = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(200, Math.max(5, parseInt(req.query.limit, 10) || defaultLimit));
+  return { page, limit, paged: req.query.page != null };
+}
+function paginate(list, page, limit) {
+  const total = list.length, pages = Math.max(1, Math.ceil(total / limit));
+  const p = Math.min(page, pages);
+  return { slice: list.slice((p - 1) * limit, p * limit), total, page: p, pages };
+}
+
+// GET orders — ?q=&status=&payment=<paymentState>&page=&limit=
+// Without ?page it returns the plain array (older callers); with ?page → {orders,total,page,pages}
 app.get('/api/orders', requireAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute(
-      'SELECT * FROM orders ORDER BY created_at DESC'
-    );
-    res.json(rows.map(r => mapOrderRow(r)));
+    const q = str(req.query.q, 100), status = str(req.query.status, 20), payment = str(req.query.payment, 30);
+    const { where, params } = orderSearchWhere(q, status);
+    const [rows] = await pool.execute(`SELECT * FROM orders ${where} ORDER BY created_at DESC`, params);
+    let list = rows.map(r => mapOrderRow(r));
+    if (payment) list = list.filter(o => o.paymentState === payment);
+    const { page, limit, paged } = pageParams(req);
+    if (!paged) return res.json(list);
+    const pg = paginate(list, page, limit);
+    res.json({ orders: pg.slice, total: pg.total, page: pg.page, pages: pg.pages });
   } catch (err) {
     console.error('GET /api/orders:', err);
     res.json([]);
+  }
+});
+
+// Global admin search box: a few best matches from orders and customers
+app.get('/api/search', requireAdmin, async (req, res) => {
+  const q = str(req.query.q, 100);
+  if (!q) return res.json({ orders: [], customers: [] });
+  try {
+    const { where, params } = orderSearchWhere(q, '');
+    const [orders] = await pool.execute(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT 6`, params);
+    const like = `%${q}%`;
+    const [customers] = await pool.execute(
+      `SELECT c.*, COUNT(o.id) AS order_count, COALESCE(SUM(o.total),0) AS total_spent, MAX(o.created_at) AS last_order_at
+         FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
+        WHERE c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.company LIKE ?
+        GROUP BY c.id ORDER BY last_order_at DESC LIMIT 6`, [like, like, like, like]);
+    res.json({
+      orders: orders.map(r => { const o = mapOrderRow(r); return { id: o.id, customer: (o.contact || {}).fullName || '', email: (o.contact || {}).email || '', vehicle: o.vehicle ? [o.vehicle.year, o.vehicle.make, o.vehicle.model].filter(Boolean).join(' ') : '', total: o.total, status: o.status, paymentState: o.paymentState, createdAt: o.createdAt }; }),
+      customers: customers.map(mapCustomerRow)
+    });
+  } catch (err) {
+    console.error('GET /api/search:', err);
+    res.json({ orders: [], customers: [] });
   }
 });
 
@@ -1117,7 +1186,7 @@ app.patch('/api/orders/:id/payment', requireAdmin, async (req, res) => {
 
 // PATCH update status
 app.patch('/api/orders/:id/status', requireAdmin, async (req, res) => {
-  const allowed = ['New', 'In Work', 'Done', 'Canceled'];
+  const allowed = ORDER_STATUSES;
   if (!allowed.includes(req.body.status))
     return res.status(400).json({ success: false, message: 'Invalid status' });
   try {
@@ -1374,11 +1443,29 @@ app.post('/api/confirm/:token/agree', publicLimiter, async (req, res) => {
       metadata            : { orderId: order.id, kind: 'pickup_hold', agreementVersion: AGREEMENT_VERSION }
     });
 
+    // Proof of agreement: exactly what the customer saw and accepted, frozen at this moment
+    const signedName = String(agreedName).trim().slice(0, 255);
+    const agreement = {
+      version     : AGREEMENT_VERSION,
+      agreedAt    : new Date().toISOString(),
+      agreedName  : signedName,
+      ip          : clientIp(req),
+      userAgent   : str(req.headers['user-agent'], 300) || null,
+      amount      : order.total,
+      noShowFee   : orderFee(order),
+      clauses     : agreementClauses(order),
+      order       : {
+        id: order.id, contact: order.contact, location: order.location,
+        pickupDate: order.pickupDate, mustDeliverBy: order.mustDeliverBy, transportType: order.transportType,
+        vehicles: (order.vehicles || (order.vehicle ? [order.vehicle] : [])).map(v => ({ year: v.year, make: v.make, model: v.model, vin: v.vin, type: v.type, condition: v.condition }))
+      },
+      stripe      : { customerId: stripeCustomerId, paymentIntentId: pi.id }
+    };
     await pool.execute(
       `UPDATE orders SET stripe_customer_id = ?, stripe_payment_intent_id = ?,
-              agreed_name = ?, agreed_ip = ?, agreed_at = NOW()
+              agreed_name = ?, agreed_ip = ?, agreed_at = NOW(), agreement_json = ?
        WHERE id = ?`,
-      [stripeCustomerId, pi.id, String(agreedName).trim().slice(0, 255), clientIp(req), order.id]
+      [stripeCustomerId, pi.id, signedName, clientIp(req), JSON.stringify(agreement), order.id]
     );
     res.json({ success: true, clientSecret: pi.client_secret, paymentIntentId: pi.id });
   } catch (err) {
@@ -1395,7 +1482,7 @@ app.post('/api/confirm/:token/complete', publicLimiter, async (req, res) => {
     const piId = req.body.paymentIntentId || row.stripe_payment_intent_id;
     if (!piId) return res.status(400).json({ success: false, message: 'No payment authorization to verify' });
 
-    const pi = await stripe.paymentIntents.retrieve(piId);
+    const pi = await stripe.paymentIntents.retrieve(piId, { expand: ['payment_method'] });
     if (!pi.metadata || pi.metadata.orderId !== row.id)
       return res.status(400).json({ success: false, message: 'Payment does not belong to this order' });
     if (pi.status !== 'requires_capture')
@@ -1403,11 +1490,19 @@ app.post('/api/confirm/:token/complete', publicLimiter, async (req, res) => {
 
     const paymentMethodId = typeof pi.payment_method === 'string' ? pi.payment_method : (pi.payment_method && pi.payment_method.id) || null;
     const holdExpires = new Date(pi.created * 1000 + HOLD_DAYS * 86400000);
+    // Add the card + authorization details to the signed-agreement record
+    const card = pi.payment_method && pi.payment_method.card ? pi.payment_method.card : null;
+    const agreement = safeJson(row.agreement_json) || {};
+    agreement.authorization = {
+      authorizedAt: new Date().toISOString(), paymentIntentId: pi.id, amount: pi.amount / 100,
+      holdExpiresAt: holdExpires.toISOString(),
+      card: card ? { brand: card.brand, last4: card.last4, expMonth: card.exp_month, expYear: card.exp_year, funding: card.funding } : null
+    };
     await pool.execute(
       `UPDATE orders SET payment_status = 'authorized', stripe_payment_intent_id = ?,
-              stripe_payment_method_id = ?, hold_amount = ?, hold_expires_at = ?
+              stripe_payment_method_id = ?, hold_amount = ?, hold_expires_at = ?, agreement_json = ?
        WHERE id = ?`,
-      [pi.id, paymentMethodId, pi.amount / 100, holdExpires, row.id]
+      [pi.id, paymentMethodId, pi.amount / 100, holdExpires, JSON.stringify(agreement), row.id]
     );
 
     // Best-effort notifications (never fail the confirmation because of email)
@@ -1678,7 +1773,20 @@ app.get('/api/payments', requireAdmin, async (req, res) => {
       if (p.paymentState === 'pending') t.pending += p.total || 0;
       return t;
     }, { holding: 0, charged: 0, refunded: 0, pending: 0 });
-    res.json({ payments: list, totals });
+    // Optional search / state filter / paging (totals always cover everything)
+    const q = str(req.query.q, 100).toLowerCase(), state = str(req.query.state, 30);
+    const STATE_GROUPS = {
+      pending: ['pending', 'unpaid'], holding: ['holding'], charged: ['charged', 'partially_refunded', 'fee_charged'],
+      refunded: ['refunded', 'partially_refunded'], other: ['released', 'expired']
+    };
+    let filtered = list;
+    if (state && STATE_GROUPS[state]) filtered = filtered.filter(p => STATE_GROUPS[state].includes(p.paymentState));
+    else if (state) filtered = filtered.filter(p => p.paymentState === state);
+    if (q) filtered = filtered.filter(p => [p.id, p.customer, p.email, p.phone, p.vehicle].some(v => String(v || '').toLowerCase().includes(q)));
+    const { page, limit, paged } = pageParams(req);
+    if (!paged) return res.json({ payments: filtered, totals });
+    const pg = paginate(filtered, page, limit);
+    res.json({ payments: pg.slice, totals, total: pg.total, page: pg.page, pages: pg.pages });
   } catch (err) {
     console.error('GET /api/payments:', err);
     res.status(500).json({ success: false });
@@ -1711,7 +1819,11 @@ app.get('/api/customers', requireAdmin, async (req, res) => {
          ORDER BY c.created_at DESC`,
       params
     );
-    res.json(rows.map(mapCustomerRow));
+    const list = rows.map(mapCustomerRow);
+    const { page, limit, paged } = pageParams(req);
+    if (!paged) return res.json(list);
+    const pg = paginate(list, page, limit);
+    res.json({ customers: pg.slice, total: pg.total, page: pg.page, pages: pg.pages });
   } catch (err) {
     console.error('GET /api/customers:', err);
     res.json([]);

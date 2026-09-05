@@ -37,16 +37,126 @@ async function initAdminPage() {
 
   await loadCurrentConfig(); // pricing config: calculator page + customer quote wizard
 
-  if (page === 'orders')      loadOrders();
+  const open = new URLSearchParams(location.search).get('open');
+  if (page === 'orders') {
+    loadOrders();
+    if (open) showOrderDetail(open);      // /admin/orders?open=<id>
+  }
   if (page === 'payments')    loadPayments();
   if (page === 'promo-codes') loadPromoCodes();
   if (page === 'customers') {
-    loadCustomers().then(() => {
-      // /admin/customers?open=<id> deep-links to a customer (used from the order modal)
-      const open = new URLSearchParams(location.search).get('open');
-      if (open) showCustomerDetail(Number(open));
-    });
+    loadCustomers();
+    if (open) showCustomerDetail(Number(open)); // /admin/customers?open=<id>
   }
+  initGlobalSearch();
+}
+
+// ==================== PAGING HELPER ====================
+// Renders "Showing 1–50 of 320 · Prev / Next · per page" into a .pager element.
+function renderPager(el, { page, pages, total, limit }, onPage, onLimit) {
+  if (!el) return;
+  if (!total) { el.innerHTML = ''; return; }
+  const from = (page - 1) * limit + 1, to = Math.min(total, page * limit);
+  el.innerHTML = `
+    <span>Showing <strong class="text-white">${from}–${to}</strong> of <strong class="text-white">${total}</strong></span>
+    <span class="flex items-center gap-2">
+      <button ${page <= 1 ? 'disabled' : ''} data-go="1" title="First"><i class="fas fa-angles-left"></i></button>
+      <button ${page <= 1 ? 'disabled' : ''} data-go="${page - 1}"><i class="fas fa-angle-left"></i> Prev</button>
+      <span>Page <strong class="text-white">${page}</strong> of ${pages}</span>
+      <button ${page >= pages ? 'disabled' : ''} data-go="${page + 1}">Next <i class="fas fa-angle-right"></i></button>
+      <button ${page >= pages ? 'disabled' : ''} data-go="${pages}" title="Last"><i class="fas fa-angles-right"></i></button>
+      <select data-limit>${[25, 50, 100, 200].map(n => `<option value="${n}" ${n === limit ? 'selected' : ''}>${n} / page</option>`).join('')}</select>
+    </span>`;
+  el.querySelectorAll('button[data-go]').forEach(b => b.onclick = () => onPage(Number(b.dataset.go)));
+  el.querySelector('select[data-limit]').onchange = (e) => onLimit(Number(e.target.value));
+}
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+// ==================== DETAIL NAVIGATION (order ⇄ customer, in place) ====================
+// A small history so you can open an order, jump to its customer, open another of
+// their orders, and come back — without ever leaving the page you're on.
+let detailStack = [];
+function detailPush(kind, id) {
+  const top = detailStack[detailStack.length - 1];
+  if (!top || top.kind !== kind || String(top.id) !== String(id)) detailStack.push({ kind, id });
+  updateBackButtons();
+}
+function updateBackButtons() {
+  const show = detailStack.length > 1;
+  ['orderBackBtn', 'customerBackBtn'].forEach(id => { const b = document.getElementById(id); if (b) b.classList.toggle('hidden', !show); });
+}
+async function detailBack() {
+  if (detailStack.length < 2) return;
+  detailStack.pop();
+  const prev = detailStack[detailStack.length - 1];
+  if (prev.kind === 'order') await showOrderDetail(prev.id, { fromHistory: true });
+  else await showCustomerDetail(prev.id, { fromHistory: true });
+}
+function detailReset() { detailStack = []; updateBackButtons(); }
+
+// ==================== GLOBAL SEARCH (top bar) ====================
+let gsActive = -1, gsItems = [];
+function initGlobalSearch() {
+  const input = document.getElementById('globalSearch');
+  if (!input) return;
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) { e.preventDefault(); input.focus(); input.select(); }
+    if (e.key === 'Escape') globalSearchClose();
+  });
+  document.addEventListener('click', (e) => { if (!e.target.closest('#globalSearchWrap')) globalSearchClose(); });
+}
+const globalSearchFetch = debounce(async (q) => {
+  const box = document.getElementById('globalSearchResults');
+  try {
+    const d = await (await fetch('/api/search?q=' + encodeURIComponent(q))).json();
+    gsItems = [];
+    let html = '';
+    if (d.orders.length) {
+      html += '<div class="gs-section">Orders</div>';
+      d.orders.forEach(o => {
+        const i = gsItems.push({ kind: 'order', id: o.id }) - 1;
+        html += `<div class="gs-item" data-i="${i}" onclick="globalSearchOpen(${i})">
+          <div class="min-w-0"><div class="gs-main"><span class="font-mono text-orange-400">${esc(o.id)}</span> · ${esc(o.customer || '—')}</div><div class="gs-sub">${esc(o.vehicle || '')}${o.email ? ' · ' + esc(o.email) : ''}</div></div>
+          <div class="text-right shrink-0"><div class="text-white text-sm">${money(o.total)}</div>${payStatePill(o.paymentState)}</div></div>`;
+      });
+    }
+    if (d.customers.length) {
+      html += '<div class="gs-section">Customers</div>';
+      d.customers.forEach(c => {
+        const i = gsItems.push({ kind: 'customer', id: c.id }) - 1;
+        html += `<div class="gs-item" data-i="${i}" onclick="globalSearchOpen(${i})">
+          <div class="min-w-0"><div class="gs-main">${esc(c.name)}${c.company ? ' <span class="text-muted font-normal">· ' + esc(c.company) + '</span>' : ''}</div><div class="gs-sub">${esc(c.email || '')}${c.phone ? ' · ' + esc(c.phone) : ''}</div></div>
+          <div class="text-right shrink-0 text-xs text-muted">${c.orderCount} order${c.orderCount === 1 ? '' : 's'}<div class="text-white">${money(c.totalSpent)}</div></div></div>`;
+      });
+    }
+    if (!html) html = `<div class="gs-empty">Nothing found for “${esc(q)}”</div>`;
+    box.innerHTML = html; box.classList.remove('hidden'); gsActive = -1;
+  } catch (e) { console.error('search:', e); }
+}, 200);
+function globalSearchInput() {
+  const q = document.getElementById('globalSearch').value.trim();
+  if (q.length < 2) return globalSearchClose();
+  globalSearchFetch(q);
+}
+function globalSearchKey(e) {
+  const items = document.querySelectorAll('#globalSearchResults .gs-item');
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    gsActive = e.key === 'ArrowDown' ? Math.min(items.length - 1, gsActive + 1) : Math.max(0, gsActive - 1);
+    items.forEach((el, i) => el.classList.toggle('active', i === gsActive));
+    items[gsActive]?.scrollIntoView({ block: 'nearest' });
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    globalSearchOpen(gsActive >= 0 ? gsActive : 0);
+  }
+}
+function globalSearchClose() { const box = document.getElementById('globalSearchResults'); if (box) box.classList.add('hidden'); }
+async function globalSearchOpen(i) {
+  const it = gsItems[i]; if (!it) return;
+  globalSearchClose();
+  document.getElementById('globalSearch').blur();
+  detailReset();
+  if (it.kind === 'order') await showOrderDetail(it.id); else await showCustomerDetail(it.id);
 }
 
 // ==================== PROMO CODES ====================
@@ -306,13 +416,24 @@ function resetConfig() {
 }
 
 // ==================== ORDERS MANAGEMENT ====================
+const ordersView = { page: 1, limit: 50 };
+const ordersFilterChanged = debounce(() => { ordersView.page = 1; loadOrders(); }, 250);
+
 async function loadOrders() {
   try {
     const tbody = document.getElementById('ordersBody');
     if (!tbody) return; // not on the Orders page
-    const res = await fetch('/api/orders');
-    const orders = await res.json();
+    const q = document.getElementById('ordersSearch')?.value.trim() || '';
+    const status = document.getElementById('ordersStatus')?.value || '';
+    const payment = document.getElementById('ordersPayment')?.value || '';
+    const params = new URLSearchParams({ page: ordersView.page, limit: ordersView.limit });
+    if (q) params.set('q', q); if (status) params.set('status', status); if (payment) params.set('payment', payment);
+    const res = await fetch('/api/orders?' + params);
+    const data = await res.json();
+    const orders = data.orders || [];
     tbody.innerHTML = '';
+    renderPager(document.getElementById('ordersPager'), { page: data.page, pages: data.pages, total: data.total, limit: ordersView.limit },
+      p => { ordersView.page = p; loadOrders(); }, n => { ordersView.limit = n; ordersView.page = 1; loadOrders(); });
 
     if (orders.length === 0) {
       document.getElementById('noOrdersMessage').classList.remove('hidden');
@@ -404,11 +525,13 @@ async function deleteOrder(orderId) {
   }
 }
 
-async function showOrderDetail(orderId) {
+async function showOrderDetail(orderId, { fromHistory = false } = {}) {
   try {
-    const res = await fetch('/api/orders/' + orderId);
+    const res = await fetch('/api/orders/' + encodeURIComponent(orderId));
     const order = await res.json();
     if (!order || !order.id) return;
+    if (!fromHistory) detailPush('order', order.id); else updateBackButtons();
+    document.getElementById('customerDetailModal')?.classList.add('hidden');
 
     document.getElementById('modalOrderId').textContent = `Order ${order.id}`;
     order.status = String(order.status || 'New');
@@ -467,9 +590,9 @@ async function showOrderDetail(orderId) {
           <p><strong>Phone:</strong> ${esc(contact.phone || '—')}</p>
           ${contact.company ? `<p><strong>Company:</strong> ${esc(contact.company)}</p>` : ''}
           ${order.customerId ? `
-            <button onclick="window.location.href='/admin/customers?open=${order.customerId}'"
+            <button onclick="showCustomerDetail(${order.customerId})"
                     class="text-cyan-400 hover:text-white text-sm mt-3 inline-flex items-center gap-1">
-              <i class="fas fa-user"></i> View customer &amp; history
+              <i class="fas fa-user"></i> View customer &amp; all their orders
             </button>` : ''}
         </div>
         <div>
@@ -523,6 +646,7 @@ async function showOrderDetail(orderId) {
 
 function closeModal() {
   document.getElementById('orderModal').classList.add('hidden');
+  detailReset();
 }
 
 async function toggleOrderPayment(orderId, paymentStatus) {
@@ -590,15 +714,20 @@ function paymentPill(o) { return payStatePill(o.paymentState); }
 let customersCache = [];
 let customerSearchTimer = null;
 
+const customersView = { page: 1, limit: 50 };
 async function loadCustomers() {
   const tbody = document.getElementById('customersBody');
   if (!tbody) return; // not on the Customers page
   const q = document.getElementById('customerSearch')?.value.trim() || '';
   try {
-    const res = await fetch('/api/customers' + (q ? '?q=' + encodeURIComponent(q) : ''));
-    customersCache = await res.json();
+    const params = new URLSearchParams({ page: customersView.page, limit: customersView.limit });
+    if (q) params.set('q', q);
+    const data = await (await fetch('/api/customers?' + params)).json();
+    customersCache = data.customers || [];
     tbody.innerHTML = '';
-    document.getElementById('customerCount').textContent = customersCache.length;
+    document.getElementById('customerCount').textContent = data.total || 0;
+    renderPager(document.getElementById('customersPager'), { page: data.page, pages: data.pages, total: data.total, limit: customersView.limit },
+      p => { customersView.page = p; loadCustomers(); }, n => { customersView.limit = n; customersView.page = 1; loadCustomers(); });
 
     const empty = document.getElementById('noCustomersMessage');
     if (!customersCache.length) { empty.classList.remove('hidden'); return; }
@@ -636,14 +765,16 @@ async function loadCustomers() {
 
 function onCustomerSearch() {
   clearTimeout(customerSearchTimer);
-  customerSearchTimer = setTimeout(loadCustomers, 250);
+  customerSearchTimer = setTimeout(() => { customersView.page = 1; loadCustomers(); }, 250);
 }
 
-async function showCustomerDetail(id) {
+async function showCustomerDetail(id, { fromHistory = false } = {}) {
   try {
     const res = await fetch('/api/customers/' + id);
     const c = await res.json();
     if (!c || !c.id) return;
+    if (!fromHistory) detailPush('customer', c.id); else updateBackButtons();
+    document.getElementById('orderModal')?.classList.add('hidden');
 
     document.getElementById('customerDetailName').textContent = c.name;
     document.getElementById('customerDetailQuoteBtn').onclick = () => { closeCustomerDetail(); openCustomerWizard(c.id); };
@@ -715,6 +846,7 @@ async function showCustomerDetail(id) {
 
 function closeCustomerDetail() {
   document.getElementById('customerDetailModal').classList.add('hidden');
+  detailReset();
 }
 
 // Look a customer up in the loaded list, falling back to the API (e.g. deep links)
@@ -1457,10 +1589,16 @@ function confirmationPanelHTML(o) {
       <button onclick="copyText('${esc(link)}', this)" class="btn btn-ghost px-3 py-2 text-xs shrink-0"><i class="fas fa-copy"></i> Copy</button>
       <a href="${esc(link)}" target="_blank" class="btn btn-ghost px-3 py-2 text-xs shrink-0" title="Preview the customer page"><i class="fas fa-arrow-up-right-from-square"></i></a>
     </div>` : '';
+  const card = o.agreement && o.agreement.authorization && o.agreement.authorization.card;
   const agreedRow = o.agreedAt ? `
-    <p class="text-sm mt-2"><i class="fas fa-file-signature text-lime-400 mr-1"></i>
-      Agreed by <strong class="text-white">${esc(o.agreedName || '—')}</strong> on ${fmtDateTime(o.agreedAt)}${o.agreedIp ? ` <span class="text-muted">(IP ${esc(o.agreedIp)})</span>` : ''}
-    </p>` : '';
+    <div class="mt-3 p-3 rounded-lg text-sm" style="background:rgba(190,242,100,0.06);border:1px solid rgba(190,242,100,0.25)">
+      <div><i class="fas fa-file-signature text-lime-400 mr-1"></i>
+        Signed by <strong class="text-white">${esc(o.agreedName || '—')}</strong> on ${fmtDateTime(o.agreedAt)}${o.agreedIp ? ` <span class="text-muted">· IP ${esc(o.agreedIp)}</span>` : ''}${card ? ` · <span class="text-white">${esc((card.brand || '').toUpperCase())} •••• ${esc(card.last4)}</span>` : ''}
+      </div>
+      <a href="/admin/orders/${encodeURIComponent(o.id)}/agreement" target="_blank" rel="noopener" class="inline-flex items-center gap-1 mt-2 text-cyan-400 hover:text-white text-xs font-semibold">
+        <i class="fas fa-file-contract"></i> View signed agreement &amp; receipt (printable)
+      </a>
+    </div>` : '';
   const feeInput = `
     <div>
       <label class="label-dark">No-show / dry-run fee ($)</label>
@@ -1668,16 +1806,21 @@ const PAYMENT_FILTERS = {
   other:    p => ['released', 'expired'].includes(p.paymentState)
 };
 
+const paymentsView = { page: 1, limit: 50 };
 async function loadPayments() {
   const tbody = document.getElementById('paymentsBody');
   if (!tbody) return;
   try {
-    const res = await fetch('/api/payments');
-    const data = await res.json();
+    const q = (document.getElementById('paymentsSearch')?.value || '').trim();
+    const params = new URLSearchParams({ page: paymentsView.page, limit: paymentsView.limit });
+    if (q) params.set('q', q); if (paymentsFilter && paymentsFilter !== 'all') params.set('state', paymentsFilter);
+    const data = await (await fetch('/api/payments?' + params)).json();
     paymentsCache = data.payments || [];
     const t = data.totals || {};
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = money(v); };
     set('payTotalHolding', t.holding); set('payTotalCharged', t.charged); set('payTotalRefunded', t.refunded); set('payTotalPending', t.pending);
+    renderPager(document.getElementById('paymentsPager'), { page: data.page, pages: data.pages, total: data.total, limit: paymentsView.limit },
+      p => { paymentsView.page = p; loadPayments(); }, n => { paymentsView.limit = n; paymentsView.page = 1; loadPayments(); });
     renderPayments();
   } catch (e) { console.error('loadPayments:', e); }
 }
@@ -1685,15 +1828,15 @@ async function loadPayments() {
 function setPaymentsFilter(f) {
   paymentsFilter = f;
   document.querySelectorAll('[data-pay-filter]').forEach(b => b.classList.toggle('active', b.dataset.payFilter === f));
-  renderPayments();
+  paymentsView.page = 1;
+  loadPayments();
 }
+const paymentsSearchChanged = debounce(() => { paymentsView.page = 1; loadPayments(); }, 250);
 
 function renderPayments() {
   const tbody = document.getElementById('paymentsBody');
   if (!tbody) return;
-  const q = (document.getElementById('paymentsSearch')?.value || '').trim().toLowerCase();
-  const rows = paymentsCache.filter(PAYMENT_FILTERS[paymentsFilter] || PAYMENT_FILTERS.all)
-    .filter(p => !q || [p.id, p.customer, p.email, p.phone, p.vehicle].some(v => String(v || '').toLowerCase().includes(q)));
+  const rows = paymentsCache; // already searched, filtered and paged by the server
   const empty = document.getElementById('noPaymentsMessage');
   if (empty) empty.classList.toggle('hidden', rows.length > 0);
   tbody.innerHTML = rows.map(p => {

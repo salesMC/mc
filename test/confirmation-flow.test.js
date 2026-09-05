@@ -325,6 +325,15 @@ async function sendAndAuthorize(id, fee) {
     o.paymentStatus === 'authorized' && o.holdAmount === 650 && o.hasCardOnFile && o.agreedName === 'Test Caller' && !!o.agreedAt && !!o.agreedIp
       && Math.abs(new Date(o.holdExpiresAt) - Date.now() - 7 * 86400000) < 5 * 60 * 1000, o);
   check('customer receipt email sent', !!lastMailTo('mc-t-send@example.test') && lastMailTo('mc-t-send@example.test').subject.includes('Pickup confirmed'));
+  const ag = o.agreement;
+  check('signed-agreement record stored (name, ip, clauses, order snapshot, authorization)',
+    !!ag && ag.agreedName === 'Test Caller' && ag.version === '2026-09-v2' && Array.isArray(ag.clauses) && ag.clauses.length === 5
+      && ag.order && ag.order.id === 'MC-T-SEND' && ag.amount === 650 && ag.noShowFee === 175
+      && ag.authorization && ag.authorization.paymentIntentId === pi1.id && ag.authorization.amount === 650, ag && Object.keys(ag));
+  page = await fetch(`${B}/admin/orders/MC-T-SEND/agreement`, { headers: { Cookie: adminCookie } }); html = await page.text();
+  check('printable agreement page shows signer, clauses and hold', page.status === 200 && html.includes('Test Caller') && html.includes('no-show / dry-run fee') && html.includes('Vehicle Pickup Agreement'));
+  page = await fetch(`${B}/admin/orders/MC-T-SEND/agreement`, { redirect: 'manual' });
+  check('agreement page requires admin login', page.status === 302);
   check('admin notified', !!lastMailTo('admin@mcships.test') && lastMailTo('admin@mcships.test').subject.includes('MC-T-SEND'));
   r = await api('POST', `/api/confirm/${token1}/agree`, { agreedName: 'Again', agreed: true }, { auth: false });
   check('agreeing again → 409 alreadyConfirmed', r.status === 409 && r.data.alreadyConfirmed === true);
@@ -388,6 +397,29 @@ async function sendAndAuthorize(id, fee) {
   check('payments page requires login (redirect)', page.status === 302);
   page = await fetch(`${B}/admin/payments`, { headers: { Cookie: adminCookie } });
   check('payments page renders', page.status === 200 && (await page.text()).includes('id="paymentsBody"'));
+
+  // ---------- 5c. Search + paging ----------
+  console.log('\n5c) Search, filters and paging');
+  r = await api('GET', '/api/orders?q=MC-T-PART&page=1&limit=25');
+  check('orders search by id → paged result', r.data && r.data.total === 1 && r.data.orders[0].id === 'MC-T-PART' && r.data.page === 1 && r.data.pages === 1, r.data && { total: r.data.total });
+  r = await api('GET', '/api/orders?q=' + encodeURIComponent('mc-t-part@example.test') + '&page=1');
+  check('orders search by customer email', r.data && r.data.total === 1 && r.data.orders[0].id === 'MC-T-PART');
+  r = await api('GET', '/api/orders?payment=refunded&page=1');
+  check('orders filtered by payment state', r.data && r.data.orders.length >= 1 && r.data.orders.every(x => x.paymentState === 'refunded'));
+  r = await api('GET', '/api/orders?status=Canceled&page=1');
+  check('orders filtered by status', r.data && r.data.orders.every(x => x.status === 'Canceled'));
+  r = await api('GET', '/api/orders?page=1&limit=5');
+  check('paging: limit respected, totals reported', r.data && r.data.orders.length <= 5 && r.data.total >= r.data.orders.length && r.data.pages >= 1);
+  r = await api('GET', '/api/orders');
+  check('no ?page → plain array (older callers keep working)', Array.isArray(r.data));
+  r = await api('GET', '/api/payments?state=refunded&page=1&limit=10');
+  check('payments filtered + paged, totals still global', r.data && r.data.payments.every(p => ['refunded', 'partially_refunded'].includes(p.paymentState)) && typeof r.data.totals.charged === 'number' && r.data.pages >= 1);
+  r = await api('GET', '/api/customers?q=Test%20Caller&page=1&limit=10');
+  check('customers search + paged', r.data && Array.isArray(r.data.customers) && r.data.total >= 1 && r.data.customers.every(c => /Test Caller/.test(c.name)));
+  r = await api('GET', '/api/search?q=MC-T-PART');
+  check('global search finds the order and its customer', r.data && r.data.orders.some(x => x.id === 'MC-T-PART') && Array.isArray(r.data.customers), r.data && { o: r.data.orders.length, c: r.data.customers.length });
+  r = await api('GET', '/api/search?q=MC-T-PART', null, { auth: false });
+  check('global search requires login', r.status === 401);
 
   // ---------- 6. Vehicle gone → no-show fee ----------
   console.log('\n6) Vehicle gone → charge no-show fee, release hold');
