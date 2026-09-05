@@ -331,7 +331,7 @@ async function sendAndAuthorize(id, fee) {
   r = await api('POST', '/api/orders/MC-T-SEND/send-confirmation', {});
   check('resend after authorization → 409', r.status === 409);
   page = await fetch(`${B}/confirm/${token1}`); html = await page.text();
-  check("confirmation page now shows 'You're confirmed'", html.includes("You're confirmed") && html.includes('class="space-y-6 hidden"'));
+  check("confirmation page now shows 'card on hold'", html.includes('Pickup confirmed — card on hold') && html.includes('class="space-y-6 hidden"'));
 
   // ---------- 5. Vehicle picked up → capture ----------
   console.log('\n5) Vehicle picked up → capture the hold');
