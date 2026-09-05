@@ -73,7 +73,7 @@
           <i class="fas fa-check text-xl"></i>
         </div>
         <% if (order.paymentStatus === 'authorized') { %>
-          <h2 class="text-2xl font-bold text-white mb-2">You're confirmed</h2>
+          <h2 class="text-2xl font-bold text-white mb-2">Pickup confirmed — card on hold</h2>
           <p class="text-dim">A hold of <span class="text-white font-semibold"><%= money(order.holdAmount || order.total) %></span> is on your card. You'll be charged when the vehicle is picked up.</p>
         <% } else if (order.paymentStatus === 'paid') { %>
           <h2 class="text-2xl font-bold text-white mb-2">Pickup complete</h2>
@@ -183,8 +183,8 @@
         <div class="w-14 h-14 mx-auto mb-6 rounded-xl flex items-center justify-center text-[var(--lime)]" style="background: rgba(190,242,100,0.12); border: 1px solid rgba(190,242,100,0.4);">
           <i class="fas fa-check text-xl"></i>
         </div>
-        <h2 class="text-2xl font-bold text-white mb-2">You're confirmed — thank you!</h2>
-        <p class="text-dim">A hold of <span class="text-white font-semibold"><%= money(order.total) %></span> has been placed on your card. We'll dispatch a carrier and you'll be charged only once the vehicle is picked up.</p>
+        <h2 class="text-2xl font-bold text-white mb-2">Pickup confirmed — nothing charged yet</h2>
+        <p class="text-dim">We placed a <span class="text-white font-semibold"><%= money(order.total) %> hold</span> on your card. Your bank may show it as "pending", but no money has been taken. The card is charged only after the vehicle is picked up.</p>
         <p class="text-sm text-muted mt-6">Questions or changes? Call <a href="tel:<%= phone.replace(/[^0-9+]/g, '') %>" class="text-[var(--orange)]"><%= phone %></a>.</p>
       </div>
 
