@@ -1854,26 +1854,35 @@ function renderPayments() {
 
     const btn = (label, cls, fn, title) => `<button onclick="event.stopImmediatePropagation(); ${fn}" class="pay-action ${cls}" title="${esc(title || '')}">${label}</button>`;
     const id = esc(p.id);
-    let actions = '';
+    // One main button per row; everything else lives in the "⋯" menu
+    let primary = '';
+    const menu = [];
     if (p.paymentState === 'holding') {
-      actions += btn('Charge', 'pay-action-primary', `markPickedUp('${id}', ${Number(p.holdAmount || p.total)}, loadPayments)`, 'Vehicle picked up — charge the full amount or a custom amount');
-      actions += btn('No-show fee', '', `chargeNoShowFee('${id}', ${Number(p.noShowFee || 150)})`, 'Vehicle was gone — charge the agreed fee instead');
-      actions += btn('Release', 'pay-action-danger', `releaseHold('${id}')`, 'Cancel the hold without charging');
+      primary = btn('<i class="fas fa-truck-pickup"></i> Charge', 'pay-action-primary', `markPickedUp('${id}', ${Number(p.holdAmount || p.total)}, loadPayments)`, 'Vehicle picked up — charge the full amount or a custom amount');
+      menu.push(['fa-ban', 'Charge no-show fee instead', `chargeNoShowFee('${id}', ${Number(p.noShowFee || 150)})`]);
+      menu.push(['fa-unlock', 'Release hold (no charge, no fee)', `releaseHold('${id}')`]);
     }
     if (['charged', 'partially_refunded', 'fee_charged'].includes(p.paymentState) && remaining > 0 && (p.stripePaymentIntentId || p.feePaymentIntentId))
-      actions += btn('Refund', 'pay-action-danger', `refundOrder('${id}', ${remaining}, loadPayments)`, `Refund up to ${money(remaining)}`);
+      primary = btn('<i class="fas fa-rotate-left"></i> Refund', '', `refundOrder('${id}', ${remaining}, loadPayments)`, `Refund up to ${money(remaining)}`);
     if (['unpaid', 'released', 'expired', 'pending'].includes(p.paymentState) && p.source === 'admin')
-      actions += btn(p.paymentState === 'pending' ? 'Resend link' : 'Send confirmation', 'pay-action-primary', `sendConfirmationFromPayments('${id}')`, 'Email the customer the pickup confirmation + card link');
-    actions += btn('<i class="fas fa-eye"></i>', '', `showOrderDetail('${id}')`, 'Open order');
-    actions += btn('<i class="fas fa-trash"></i>', 'pay-action-danger', `deleteOrder('${id}', '${esc(p.paymentState)}')`, 'Delete order');
+      primary = btn(p.paymentState === 'pending' ? '<i class="fas fa-paper-plane"></i> Resend link' : '<i class="fas fa-paper-plane"></i> Send confirmation', 'pay-action-primary', `sendConfirmationFromPayments('${id}')`, 'Email the customer the pickup confirmation + card link');
+    menu.push(['fa-eye', 'Open order', `showOrderDetail('${id}')`]);
+    menu.push(['fa-trash', 'Delete order', `deleteOrder('${id}', '${esc(p.paymentState)}')`, 'danger']);
+    const menuHtml = `
+      <span class="row-menu">
+        <button class="pay-action" onclick="event.stopImmediatePropagation(); toggleRowMenu(this)" title="More"><i class="fas fa-ellipsis"></i></button>
+        <div class="row-menu-list hidden">
+          ${menu.map(([icon, label, fn, kind]) => `<button onclick="event.stopImmediatePropagation(); closeRowMenus(); ${fn}" class="${kind === 'danger' ? 'danger' : ''}"><i class="fas ${icon}"></i> ${label}</button>`).join('')}
+        </div>
+      </span>`;
 
     return `<tr class="cursor-pointer" onclick="showOrderDetail('${id}')">
-      <td><div class="font-mono text-orange-400 font-semibold">${id}</div><div class="text-[11px] text-muted mt-0.5">${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''} · ${p.source === 'admin' ? 'Phone' : 'Website'}</div></td>
-      <td><div class="font-medium text-white">${esc(p.customer || '—')}</div><div class="text-[11px] text-muted mt-0.5 truncate max-w-[220px]">${esc(p.email || p.phone || '')}</div></td>
+      <td><div class="font-mono text-orange-400 font-semibold">${id}</div><div class="text-[11px] text-muted mt-1">${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''} · ${p.source === 'admin' ? 'Phone' : 'Website'}</div></td>
+      <td><div class="font-medium text-white">${esc(p.customer || '—')}</div><div class="text-[11px] text-muted mt-1 truncate max-w-[260px]">${esc(p.email || p.phone || '')}</div></td>
       <td class="col-hide-mobile text-sm">${esc(p.vehicle || '—')}</td>
       <td>${payStatePill(p.paymentState)}</td>
       <td class="text-sm">${amountCell}</td>
-      <td class="text-right whitespace-nowrap">${actions}</td>
+      <td class="text-right whitespace-nowrap">${primary}${menuHtml}</td>
     </tr>`;
   }).join('');
 }
@@ -1915,3 +1924,12 @@ async function submitPasswordChange() {
     else say(d.message || 'Could not change the password.', false);
   } catch (e) { say('Connection error. Try again.', false); }
 }
+
+// ==================== ROW "⋯" MENUS ====================
+function closeRowMenus() { document.querySelectorAll('.row-menu-list').forEach(m => m.classList.add('hidden')); }
+function toggleRowMenu(btn) {
+  const list = btn.nextElementSibling; const open = !list.classList.contains('hidden');
+  closeRowMenus();
+  if (!open) list.classList.remove('hidden');
+}
+document.addEventListener('click', (e) => { if (!e.target.closest('.row-menu')) closeRowMenus(); });

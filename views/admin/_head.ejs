@@ -139,6 +139,22 @@
     .gs-item .gs-sub { color: var(--ink-muted); font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .gs-empty { padding: 14px 12px; font-size: 0.85rem; color: var(--ink-muted); }
 
+    /* Payments page: roomier rows */
+    .payments-tile th, .payments-tile td { padding: 18px 18px; }
+    .payments-tile .pay-stat { padding: 18px 20px; }
+    .payments-tile .pay-action { padding: 8px 14px; font-size: 0.8rem; }
+
+    /* "⋯" row menu */
+    .row-menu { position: relative; display: inline-block; }
+    .row-menu-list { position: absolute; right: 0; top: calc(100% + 6px); min-width: 230px; z-index: 30; text-align: left;
+      background: #161B22; border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 30px rgba(0,0,0,0.5); padding: 6px; }
+    .row-menu-list button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border-radius: 8px;
+      font-size: 0.82rem; font-weight: 500; color: var(--ink-dim); background: transparent; border: 0; text-align: left; cursor: pointer; }
+    .row-menu-list button:hover { background: rgba(255,255,255,0.06); color: white; }
+    .row-menu-list button.danger { color: #F87171; }
+    .row-menu-list button.danger:hover { background: rgba(248,113,113,0.12); }
+    .row-menu-list i { width: 16px; text-align: center; opacity: .8; }
+
     /* Toast used when there is no open order panel */
     .admin-toast {
       position: fixed; right: 20px; bottom: 20px; z-index: 9999; max-width: 380px;

@@ -7,8 +7,8 @@
 
   <%- include("_nav", { page: "payments" }) %>
 
-  <main class="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10">
-    <div class="tile" id="sec-payments">
+  <main class="relative mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10" style="max-width: 1500px;">
+    <div class="tile payments-tile" id="sec-payments">
       <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
         <div>
           <h2 class="text-3xl font-bold text-white flex items-center gap-3">
@@ -65,15 +65,17 @@
       </div>
       <div id="paymentsPager" class="pager"></div>
 
-      <div class="mt-6 text-xs text-muted leading-relaxed">
-        <strong class="text-dim">How the statuses work:</strong>
+      <details class="mt-8 text-xs text-muted">
+        <summary class="cursor-pointer select-none inline-flex items-center gap-2 text-dim hover:text-white"><i class="fas fa-circle-question"></i> What do the statuses mean?</summary>
+        <div class="mt-3 leading-loose pl-1">
         <span class="pay-pill pay-wait" style="margin-left:4px">Awaiting card</span> confirmation emailed, customer hasn't authorized yet ·
         <span class="pay-pill pay-hold">On hold · not charged</span> money reserved on the card, not taken. <strong class="text-dim">Charge</strong> at pickup, or <strong class="text-dim">Release</strong> if the pickup is off (customer pays nothing, no Stripe fee) ·
         <span class="pay-pill pay-paid">Charged</span> money collected, Stripe keeps ~3% even if refunded later ·
         <span class="pay-pill pay-fee">No-show fee charged</span> only the agreed fee was taken ·
         <span class="pay-pill pay-released">Released · $0</span> hold cancelled, nothing charged ·
         <span class="pay-pill pay-unpaid">Hold expired</span> 7 days passed with no action, send a new confirmation.
-      </div>
+        </div>
+      </details>
     </div>
   </main>
 
