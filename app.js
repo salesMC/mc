@@ -1465,7 +1465,7 @@ app.post('/api/confirm/:token/agree', publicLimiter, async (req, res) => {
       capture_method      : 'manual',          // hold now, charge at pickup
       setup_future_usage  : 'off_session',     // keep the card for the fee / after the hold lapses
       payment_method_types: ['card'],
-      description         : `MC Transportation – pickup authorization for order ${order.id}`,
+      description         : `Mcships – pickup authorization for order ${order.id}`,
       metadata            : { orderId: order.id, kind: 'pickup_hold', agreementVersion: AGREEMENT_VERSION }
     });
 
@@ -1632,7 +1632,7 @@ app.post('/api/orders/:id/pickup', requireAdmin, async (req, res) => {
         amount: amountCents, currency: 'usd',
         customer: row.stripe_customer_id, payment_method: row.stripe_payment_method_id,
         off_session: true, confirm: true,
-        description: `MC Transportation – transport charge for order ${row.id}`,
+        description: `Mcships – vehicle transport, order ${row.id}`,
         metadata: { orderId: row.id, kind: 'pickup_charge' }
       });
       if (pi.status !== 'succeeded')
@@ -1677,7 +1677,7 @@ app.post('/api/orders/:id/charge-fee', requireAdmin, async (req, res) => {
       amount: Math.round(fee * 100), currency: 'usd',
       customer: row.stripe_customer_id, payment_method: row.stripe_payment_method_id,
       off_session: true, confirm: true,
-      description: `MC Transportation – no-show / dry-run fee for order ${row.id}`,
+      description: `Mcships – no-show / dry-run fee, order ${row.id}`,
       metadata: { orderId: row.id, kind: 'no_show_fee' }
     });
     if (pi.status !== 'succeeded')
@@ -2257,7 +2257,7 @@ app.post('/api/create-payment-intent', publicLimiter, async (req, res) => {
       amount: amountCents,
       currency: 'usd',
       automatic_payment_methods: { enabled: true },
-      description: 'MC Transportation – Vehicle Shipping',
+      description: 'Mcships – vehicle shipping (website)',
       metadata: {
         kind: 'web_checkout',
         distance: String(Math.round(distance)),
