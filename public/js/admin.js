@@ -571,15 +571,15 @@ function yearOptions(selected) {
 }
 // One pill per order for the money situation (server computes paymentState)
 const PAY_STATE_LABELS = {
-  unpaid:             ['Unpaid',             'pay-unpaid',   'No card on file yet'],
-  pending:            ['Pending',            'pay-wait',     'Confirmation emailed — waiting for the customer'],
-  holding:            ['Holding',            'pay-hold',     'Card authorized, nothing charged yet'],
-  charged:            ['Charged',            'pay-paid',     'Payment collected'],
-  partially_refunded: ['Partially refunded', 'pay-fee',      'Part of the charge was refunded'],
-  refunded:           ['Refunded',           'pay-released', 'Fully refunded'],
-  fee_charged:        ['No-show fee',        'pay-fee',      'No-show fee collected, transport not charged'],
-  released:           ['Released',           'pay-released', 'Hold cancelled without charging'],
-  expired:            ['Expired',            'pay-unpaid',   'Hold lapsed after 7 days — send a new confirmation']
+  unpaid:             ['No card yet',          'pay-unpaid',   'No confirmation sent — nothing on the customer\'s card'],
+  pending:            ['Awaiting card',        'pay-wait',     'Confirmation emailed — waiting for the customer to authorize'],
+  holding:            ['On hold · not charged','pay-hold',     'Card authorized. Money is reserved, NOT taken. Charge at pickup, or Release for no fee'],
+  charged:            ['Charged',              'pay-paid',     'Money collected'],
+  partially_refunded: ['Partly refunded',      'pay-fee',      'Part of the charge was refunded'],
+  refunded:           ['Refunded',             'pay-released', 'Fully refunded (Stripe fee not returned)'],
+  fee_charged:        ['No-show fee charged',  'pay-fee',      'Only the no-show fee was collected'],
+  released:           ['Released · $0',        'pay-released', 'Hold cancelled. Customer paid nothing, no Stripe fee'],
+  expired:            ['Hold expired',         'pay-unpaid',   'Nobody charged or released within 7 days — send a new confirmation']
 };
 function payStatePill(state) {
   const [label, cls, title] = PAY_STATE_LABELS[state] || [state || '—', 'pay-released', ''];
@@ -1502,8 +1502,12 @@ function confirmationPanelHTML(o) {
     case 'authorized':
       body = `
         <p class="text-sm"><i class="fas fa-credit-card text-cyan-400 mr-1"></i>
-          Card hold of <strong class="text-white">${money(o.holdAmount || o.total)}</strong> placed. The hold and the saved card are kept until <strong class="text-white">${fmtDateTime(o.holdExpiresAt)}</strong> (7 days), then removed automatically — charge or release before then.
+          <strong class="text-white">${money(o.holdAmount || o.total)} is on hold — nothing has been charged.</strong> The hold and the saved card are kept until <strong class="text-white">${fmtDateTime(o.holdExpiresAt)}</strong> (7 days), then released automatically.
         </p>
+        <div class="mt-3 p-3 rounded-lg text-xs leading-relaxed" style="background:rgba(255,255,255,0.03);border:1px solid var(--line)">
+          <div><span class="text-lime-300 font-semibold">Charge</span> = money is collected. Stripe keeps its ~3% fee, even if you refund later.</div>
+          <div class="mt-1"><span class="text-white font-semibold">Release</span> = pickup not happening. Customer pays nothing, the pending line drops off their card, <span class="text-white">no Stripe fee</span>.</div>
+        </div>
         ${agreedRow}
         <div class="flex flex-wrap gap-3 mt-4">
           <button onclick="markPickedUp('${o.id}', ${Number(o.holdAmount || o.total) || 0})" class="btn btn-primary py-3">

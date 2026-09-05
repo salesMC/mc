@@ -66,12 +66,12 @@
 
       <div class="mt-6 text-xs text-muted leading-relaxed">
         <strong class="text-dim">How the statuses work:</strong>
-        <span class="pay-pill pay-wait" style="margin-left:4px">Pending</span> confirmation emailed, waiting for the customer to agree and enter a card ·
-        <span class="pay-pill pay-hold">Holding</span> card authorized, nothing taken yet (holds last 7 days) ·
-        <span class="pay-pill pay-paid">Charged</span> money collected ·
-        <span class="pay-pill pay-fee">No-show fee</span> the agreed fee was charged instead of the transport ·
-        <span class="pay-pill pay-released">Released</span> hold cancelled without charging ·
-        <span class="pay-pill pay-unpaid">Expired</span> the 7 days passed, send a new confirmation.
+        <span class="pay-pill pay-wait" style="margin-left:4px">Awaiting card</span> confirmation emailed, customer hasn't authorized yet ·
+        <span class="pay-pill pay-hold">On hold · not charged</span> money reserved on the card, not taken. <strong class="text-dim">Charge</strong> at pickup, or <strong class="text-dim">Release</strong> if the pickup is off (customer pays nothing, no Stripe fee) ·
+        <span class="pay-pill pay-paid">Charged</span> money collected, Stripe keeps ~3% even if refunded later ·
+        <span class="pay-pill pay-fee">No-show fee charged</span> only the agreed fee was taken ·
+        <span class="pay-pill pay-released">Released · $0</span> hold cancelled, nothing charged ·
+        <span class="pay-pill pay-unpaid">Hold expired</span> 7 days passed with no action, send a new confirmation.
       </div>
     </div>
   </main>
