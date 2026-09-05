@@ -44,6 +44,7 @@ async function initAdminPage() {
   }
   if (page === 'payments')    loadPayments();
   if (page === 'promo-codes') loadPromoCodes();
+  if (page === 'leads')       loadLeads();
   if (page === 'customers') {
     loadCustomers();
     if (open) showCustomerDetail(Number(open)); // /admin/customers?open=<id>
@@ -2010,4 +2011,34 @@ async function editOrderPrice(orderId, current) {
     await showOrderDetail(orderId, { fromHistory: true });
     panelMsg(`Price changed to ${money(d.total)}.`, true);
   } catch (e) { panelMsg(e.message, false); }
+}
+
+// ==================== LEADS ====================
+const leadsView = { page: 1, limit: 50 };
+const leadsSearchChanged = debounce(() => { leadsView.page = 1; loadLeads(); }, 250);
+async function loadLeads() {
+  const tbody = document.getElementById('leadsBody'); if (!tbody) return;
+  const q = document.getElementById('leadsSearch')?.value.trim() || '';
+  const params = new URLSearchParams({ page: leadsView.page, limit: leadsView.limit }); if (q) params.set('q', q);
+  try {
+    const data = await (await fetch('/api/leads?' + params)).json();
+    const rows = data.leads || [];
+    renderPager(document.getElementById('leadsPager'), { page: data.page, pages: data.pages, total: data.total, limit: leadsView.limit },
+      p => { leadsView.page = p; loadLeads(); }, n => { leadsView.limit = n; leadsView.page = 1; loadLeads(); });
+    document.getElementById('noLeadsMessage').classList.toggle('hidden', rows.length > 0);
+    tbody.innerHTML = rows.map(l => `<tr>
+      <td><a href="mailto:${esc(l.email)}" class="text-white hover:text-cyan-400 font-medium">${esc(l.email)}</a></td>
+      <td class="text-sm">${esc(l.source || 'website')}</td>
+      <td class="text-xs">${l.createdAt ? new Date(l.createdAt).toLocaleString() : ''}</td>
+      <td>${l.isCustomer ? '<span class="pay-pill pay-paid" style="margin-left:0">Became a customer</span>' : '<span class="pay-pill pay-wait" style="margin-left:0">New lead</span>'}</td>
+      <td class="text-right whitespace-nowrap">
+        <a href="mailto:${esc(l.email)}?subject=${encodeURIComponent('Your vehicle shipping quote from Mcships')}" class="pay-action" title="Email them"><i class="fas fa-reply"></i> Reply</a>
+        <button onclick="deleteLead(${l.id})" class="pay-action pay-action-danger" title="Delete"><i class="fas fa-trash"></i></button>
+      </td></tr>`).join('');
+  } catch (e) { console.error('loadLeads:', e); }
+}
+async function deleteLead(id) {
+  if (!confirm('Delete this lead?')) return;
+  const r = await fetch('/api/leads/' + id, { method: 'DELETE' });
+  if (r.ok) loadLeads(); else panelMsg('Could not delete the lead', false);
 }

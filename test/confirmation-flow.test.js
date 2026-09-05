@@ -468,6 +468,15 @@ async function sendAndAuthorize(id, fee) {
   check('global search finds the order and its customer', r.data && r.data.orders.some(x => x.id === 'MC-T-PART') && Array.isArray(r.data.customers), r.data && { o: r.data.orders.length, c: r.data.customers.length });
   r = await api('GET', '/api/search?q=MC-T-PART', null, { auth: false });
   check('global search requires login', r.status === 401);
+  r = await api('POST', '/api/leads', { email: 'lead-test@example.test', source: 'test' }, { auth: false });
+  check('lead sign-up stored and team emailed', r.status === 200 && !!lastMailTo('admin@mcships.test') && /New lead/.test(lastMailTo('admin@mcships.test').subject));
+  r = await api('GET', '/api/leads?q=lead-test&page=1&limit=10');
+  const lead = r.data && r.data.leads && r.data.leads.find(l => l.email === 'lead-test@example.test');
+  check('leads list searchable + paged', !!lead && lead.isCustomer === false && r.data.total >= 1, r.data && r.data.total);
+  r = await api('DELETE', '/api/leads/' + (lead ? lead.id : 0));
+  check('lead deleted', r.status === 200);
+  page = await fetch(B + '/admin/leads', { headers: { Cookie: adminCookie } });
+  check('leads page renders', page.status === 200 && (await page.text()).includes('id="leadsBody"'));
 
   // ---------- 6. Vehicle gone → no-show fee ----------
   console.log('\n6) Vehicle gone → charge no-show fee, release hold');

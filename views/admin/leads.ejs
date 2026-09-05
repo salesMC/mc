@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include("_head", { title: "Leads" }) %>
+</head>
+<body data-page="leads">
+  <%- include("_nav", { page: "leads" }) %>
+  <main class="relative max-w-5xl mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10">
+    <div class="tile">
+      <div class="flex flex-wrap justify-between items-center mb-6 gap-4">
+        <div>
+          <h2 class="text-3xl font-bold text-white flex items-center gap-3"><i class="fas fa-envelope-open-text"></i> Leads</h2>
+          <p class="text-dim text-sm mt-2">Email addresses people left on the website. Reply from sales@mcships.com while they're still interested.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="leadsSearch" type="search" placeholder="Search email or source…" class="input-admin w-64" oninput="leadsSearchChanged()">
+          <button onclick="loadLeads()" class="btn btn-cyan flex items-center gap-2"><i class="fas fa-sync-alt"></i> Refresh</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead><tr><th>Email</th><th>Where from</th><th>Date</th><th>Status</th><th class="text-right"></th></tr></thead>
+          <tbody id="leadsBody" class="text-dim"></tbody>
+        </table>
+      </div>
+      <div id="noLeadsMessage" class="hidden text-center py-16 text-muted"><i class="fas fa-envelope-open-text text-6xl mb-6 opacity-40"></i><p>No leads yet</p></div>
+      <div id="leadsPager" class="pager"></div>
+    </div>
+  </main>
+  <%- include("_modals") %>
+  <%- include("_foot") %>
+</body>
+</html>

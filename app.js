@@ -1081,6 +1081,7 @@ app.get('/admin/customers',   requireAdminPage, (req, res) => res.render('admin/
 app.get('/admin/promo-codes', requireAdminPage, (req, res) => res.render('admin/promo-codes'));
 app.get('/admin/calculator',  requireAdminPage, (req, res) => res.render('admin/calculator'));
 app.get('/admin/payments',    requireAdminPage, (req, res) => res.render('admin/payments'));
+app.get('/admin/leads',       requireAdminPage, (req, res) => res.render('admin/leads'));
 // Printable record of the customer's signed pickup agreement (proof for disputes)
 app.get('/admin/orders/:id/agreement', requireAdminPage, async (req, res) => {
   try {
@@ -2492,11 +2493,34 @@ app.post('/api/leads', publicLimiter, async (req, res) => {
 
 app.get('/api/leads', requireAdmin, async (req, res) => {
   try {
-    const [rows] = await pool.execute('SELECT * FROM leads ORDER BY created_at DESC');
-    res.json(rows);
+    const q = str(req.query.q, 100);
+    const [rows] = q
+      ? await pool.execute('SELECT * FROM leads WHERE email LIKE ? OR source LIKE ? ORDER BY created_at DESC', ['%' + q + '%', '%' + q + '%'])
+      : await pool.execute('SELECT * FROM leads ORDER BY created_at DESC');
+    // Mark leads that already became customers
+    const emails = rows.map(r => r.email);
+    let known = new Set();
+    if (emails.length) {
+      const [cs] = await pool.query('SELECT email FROM customers WHERE email IN (?)', [emails]);
+      known = new Set(cs.map(c => (c.email || '').toLowerCase()));
+    }
+    const list = rows.map(r => ({ id: r.id, email: r.email, source: r.source, createdAt: r.created_at, isCustomer: known.has((r.email || '').toLowerCase()) }));
+    const { page, limit, paged } = pageParams(req);
+    if (!paged) return res.json(list);
+    const pg = paginate(list, page, limit);
+    res.json({ leads: pg.slice, total: pg.total, page: pg.page, pages: pg.pages });
   } catch (err) {
+    console.error('GET /api/leads:', err);
     res.json([]);
   }
+});
+
+app.delete('/api/leads/:id', requireAdmin, async (req, res) => {
+  try {
+    const [r] = await pool.execute('DELETE FROM leads WHERE id = ?', [Number(req.params.id) || 0]);
+    if (!r.affectedRows) return res.status(404).json({ success: false, message: 'Not found' });
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ success: false }); }
 });
 
 // ==================== API: EXCHANGE ====================
