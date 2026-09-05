@@ -19,6 +19,7 @@ process.env.MAIL_FROM = 'MC Transportation <mock@mcships.com>';
 process.env.ADMIN_NOTIFY_EMAIL = 'admin@mcships.test';
 process.env.APP_URL = 'https://mcships.test';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
+process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
 
 // ---------- Fake Stripe ----------
 const S = { n: 0, customers: [], intents: {}, detached: [], failNextOffSession: false };
@@ -56,6 +57,9 @@ const fakeStripe = {
   },
   paymentMethods: {
     detach: async (id) => { S.detached.push(id); return { id }; }
+  },
+  webhooks: {
+    constructEvent: (body, sig, secret) => { if (sig !== 'good-sig' || secret !== 'whsec_test') throw new Error('No signatures found matching the expected signature for payload'); return JSON.parse(body.toString()); }
   },
   refunds: {
     create: async (p) => {
@@ -408,13 +412,35 @@ async function sendAndAuthorize(id, fee) {
   check('refunding again → 409', r.status === 409);
   r = await api('POST', '/api/orders/MC-T-SAN/refund', {});
   check('refund on an unpaid order → 409', r.status === 409);
+  // ---------- Stripe webhook keeps orders in sync ----------
+  const hook = async (type, object, sig = 'good-sig') => fetch(B + '/api/stripe/webhook', { method: 'POST', headers: { 'Content-Type': 'application/json', 'stripe-signature': sig }, body: JSON.stringify({ id: 'evt_' + (++S.n), type, data: { object } }) });
+  let wh = await hook('charge.refunded', { payment_intent: 'pi_none', amount_refunded: 100 }, 'bad-sig');
+  check('webhook with a bad signature → 400', wh.status === 400);
+  await newOrder('MC-T-WH');
+  const whA = await sendAndAuthorize('MC-T-WH', 150);
+  wh = await hook('payment_intent.canceled', { id: whA.agree.data.paymentIntentId });
+  o = await order('MC-T-WH');
+  check('hold cancelled in the Stripe dashboard → order released, card removed', wh.status === 200 && o.paymentState === 'released' && o.hasCardOnFile === false, { s: wh.status, st: o.paymentState });
+  wh = await hook('charge.refunded', { payment_intent: 'pi_other', amount_refunded: 5000 });
+  check('refund event for an unknown payment is ignored', wh.status === 200);
+  const piSend = (await order('MC-T-SEND')).stripePaymentIntentId;
+  wh = await hook('charge.refunded', { payment_intent: piSend, amount_refunded: 65000 });
+  o = await order('MC-T-SEND');
+  check('refund made in the Stripe dashboard is mirrored on the order', wh.status === 200 && o.refundedAmount === 650 && o.paymentState === 'refunded', { r: o.refundedAmount, st: o.paymentState });
+  const whMails = MAIL.length;
+  wh = await hook('charge.dispute.created', { id: 'dp_test1', payment_intent: piSend, amount: 65000, reason: 'fraudulent' });
+  o = await order('MC-T-SEND');
+  check('chargeback flags the order and emails the team', wh.status === 200 && o.disputeStatus === 'open' && /CHARGEBACK opened/.test(o.notes || '') && MAIL.length > whMails && /Chargeback opened/.test(MAIL[MAIL.length - 1].subject), { d: o.disputeStatus });
+  wh = await hook('charge.dispute.closed', { id: 'dp_test1', payment_intent: piSend, status: 'won' });
+  o = await order('MC-T-SEND');
+  check('dispute closed → status recorded', o.disputeStatus === 'won');
   check('Stripe got two refunds on the right intent', (S.refunds || []).filter(x => x.payment_intent === part.agree.data.paymentIntentId).map(x => x.amount).join(',') === '10000,20000');
   r = await api('GET', '/api/payments', null, { auth: false });
   check('payments list without login → 401', r.status === 401);
   r = await api('GET', '/api/payments');
   const payPart = r.data && r.data.payments && r.data.payments.find(p => p.id === 'MC-T-PART');
   const paySend = r.data && r.data.payments && r.data.payments.find(p => p.id === 'MC-T-SEND');
-  check('payments list has states + totals', r.status === 200 && payPart && payPart.paymentState === 'refunded' && payPart.refundedAmount === 300 && paySend && paySend.paymentState === 'charged' && typeof r.data.totals.charged === 'number', { part: payPart && payPart.paymentState, send: paySend && paySend.paymentState });
+  check('payments list has states + totals', r.status === 200 && payPart && payPart.paymentState === 'refunded' && payPart.refundedAmount === 300 && paySend && ['charged', 'refunded'].includes(paySend.paymentState) && typeof r.data.totals.charged === 'number', { part: payPart && payPart.paymentState, send: paySend && paySend.paymentState });
   page = await fetch(`${B}/admin/payments`, { redirect: 'manual' });
   check('payments page requires login (redirect)', page.status === 302);
   page = await fetch(`${B}/admin/payments`, { headers: { Cookie: adminCookie } });

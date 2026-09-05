@@ -469,7 +469,7 @@ async function loadOrders() {
             ${esc(order.status || 'New')}
           </span>
         </td>
-        <td>${payStatePill(order.paymentState)}</td>
+        <td>${payStatePill(order.paymentState, order)}</td>
         <td class="text-center whitespace-nowrap">
           <button onclick="event.stopImmediatePropagation(); showOrderDetail('${esc(order.id)}')"
                   class="text-cyan-400 hover:text-white p-2" title="Open">
@@ -715,9 +715,10 @@ const PAY_STATE_LABELS = {
   released:           ['Released · $0',        'pay-released', 'Hold cancelled. Customer paid nothing, no Stripe fee'],
   expired:            ['Hold expired',         'pay-unpaid',   'Nobody charged or released within 7 days — send a new confirmation']
 };
-function payStatePill(state) {
+function payStatePill(state, o) {
   const [label, cls, title] = PAY_STATE_LABELS[state] || [state || '—', 'pay-released', ''];
-  return `<span class="pay-pill ${cls}" style="margin-left:0" title="${esc(title)}">${label}</span>`;
+  const dispute = o && o.disputeStatus === 'open' ? ' <span class="pay-pill pay-unpaid" style="margin-left:4px" title="The customer&#39;s bank opened a chargeback. See the order notes">Chargeback</span>' : '';
+  return `<span class="pay-pill ${cls}" style="margin-left:0" title="${esc(title)}">${label}</span>${dispute}`;
 }
 function paymentPill(o) { return payStatePill(o.paymentState); }
 
@@ -1941,7 +1942,7 @@ function renderPayments() {
       <td><div class="font-mono text-orange-400 font-semibold">${id}</div><div class="text-[11px] text-muted mt-1">${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''} · ${p.source === 'admin' ? 'Phone' : 'Website'}</div></td>
       <td><div class="font-medium text-white">${esc(p.customer || '—')}</div><div class="text-[11px] text-muted mt-1 truncate max-w-[260px]">${esc(p.email || p.phone || '')}</div></td>
       <td class="col-hide-mobile text-sm">${esc(p.vehicle || '—')}</td>
-      <td>${payStatePill(p.paymentState)}</td>
+      <td>${payStatePill(p.paymentState, p)}</td>
       <td class="text-sm">${amountCell}</td>
       <td class="text-right whitespace-nowrap">${primary}${menuHtml}</td>
     </tr>`;

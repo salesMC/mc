@@ -183,6 +183,7 @@ function mapOrderRow(r, withPhotos = false) {
     feePaymentIntentId   : r.fee_payment_intent_id || null,
     paymentState  : paymentStateOf(r),
     agreement     : safeJson(r.agreement_json) || null,   // signed pickup agreement record (proof)
+    disputeStatus : r.dispute_status || null,               // 'open' while a chargeback is being fought
     createdAt     : r.created_at
   };
 }
@@ -361,6 +362,7 @@ async function initDB() {
       ['hold_expires_at', 'DATETIME'],
       ['refunded_amount', 'DECIMAL(10,2)'],
       ['refunded_at', 'DATETIME'],
+      ['dispute_status', 'VARCHAR(30)'],
       ['agreement_json', 'MEDIUMTEXT'],
       ['charged_at', 'DATETIME'],
       ['charged_amount', 'DECIMAL(10,2)'],
@@ -773,6 +775,100 @@ async function serveStoredFile(req, res) {
   fs.createReadStream(file).pipe(res);
 }
 app.get(['/uploads/*', '/documents/*'], serveStoredFile);
+
+// ---------------------------------------------------------------------------
+// Stripe webhook: keeps orders in sync with things done outside the site
+// (refunds/cancellations from the Stripe dashboard, chargebacks). Needs the raw
+// body for signature checking, so it is registered before the JSON parser.
+// Set STRIPE_WEBHOOK_SECRET (whsec_...) from Stripe → Developers → Webhooks.
+// ---------------------------------------------------------------------------
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json', limit: '1mb' }), async (req, res) => {
+  const secret = (process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+  if (!secret) return res.status(503).send('Webhook secret not configured');
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, req.headers['stripe-signature'], secret);
+  } catch (e) {
+    console.error('Stripe webhook signature failed:', e.message);
+    return res.status(400).send(`Webhook Error: ${e.message}`);
+  }
+  try {
+    await handleStripeEvent(event);
+    res.json({ received: true });
+  } catch (e) {
+    console.error(`Stripe webhook ${event.type}:`, e);
+    res.status(500).send('handler error');
+  }
+});
+
+async function orderRowForIntent(piId) {
+  if (!piId) return null;
+  const [rows] = await pool.execute('SELECT * FROM orders WHERE stripe_payment_intent_id = ? OR fee_payment_intent_id = ? LIMIT 1', [piId, piId]);
+  return rows[0] || null;
+}
+async function notifyAdmin(subject, html, text) {
+  if (!process.env.ADMIN_NOTIFY_EMAIL) return;
+  await sendMail({ to: process.env.ADMIN_NOTIFY_EMAIL, subject, html: emailShell(html), text }).catch(e => console.error('admin notify:', e.message));
+}
+async function handleStripeEvent(event) {
+  const obj = event.data.object || {};
+  switch (event.type) {
+    // Refund issued (from the site or the Stripe dashboard) → mirror the running total
+    case 'charge.refunded': {
+      const row = await orderRowForIntent(obj.payment_intent);
+      if (!row) return;
+      const refunded = (obj.amount_refunded || 0) / 100;
+      if (Math.abs((Number(row.refunded_amount) || 0) - refunded) < 0.005) return; // already recorded by the site
+      await pool.execute('UPDATE orders SET refunded_amount = ?, refunded_at = NOW() WHERE id = ?', [refunded, row.id]);
+      console.log(`↩️  Stripe refund synced for ${row.id}: ${money(refunded)}`);
+      return;
+    }
+    // Hold cancelled outside the site (dashboard) → mark released
+    case 'payment_intent.canceled': {
+      const row = await orderRowForIntent(obj.id);
+      if (!row || row.payment_status !== 'authorized') return;
+      await pool.execute("UPDATE orders SET payment_status = 'released', hold_amount = NULL, hold_expires_at = NULL WHERE id = ?", [row.id]);
+      await detachCard(row);
+      console.log(`🔓 Hold on ${row.id} cancelled in Stripe → released`);
+      return;
+    }
+    // Captured outside the site (dashboard) → mark charged
+    case 'payment_intent.succeeded': {
+      const row = await orderRowForIntent(obj.id);
+      if (!row || row.payment_status !== 'authorized') return;
+      const amount = (obj.amount_received || 0) / 100;
+      await pool.execute(
+        `UPDATE orders SET payment_status = 'paid', charged_at = NOW(), charged_amount = ?, picked_up_at = COALESCE(picked_up_at, NOW()),
+                notes = CONCAT(COALESCE(notes, ''), CASE WHEN notes IS NULL OR notes = '' THEN '' ELSE '\n' END, 'Captured from the Stripe dashboard') WHERE id = ?`,
+        [amount, row.id]);
+      await detachCard(row);
+      console.log(`💳 ${row.id} captured in Stripe → charged ${money(amount)}`);
+      return;
+    }
+    // Chargeback opened / closed → flag the order and tell the team
+    case 'charge.dispute.created':
+    case 'charge.dispute.closed': {
+      const row = await orderRowForIntent(obj.payment_intent);
+      if (!row) return;
+      const opened = event.type === 'charge.dispute.created';
+      const amount = (obj.amount || 0) / 100;
+      const line = opened
+        ? `⚠️ CHARGEBACK opened by the customer's bank for ${money(amount)} (reason: ${obj.reason || 'unknown'}, Stripe dispute ${obj.id})`
+        : `Chargeback ${obj.id} closed: ${obj.status}`;
+      await pool.execute(
+        `UPDATE orders SET dispute_status = ?, notes = CONCAT(COALESCE(notes, ''), CASE WHEN notes IS NULL OR notes = '' THEN '' ELSE '\n' END, ?) WHERE id = ?`,
+        [opened ? 'open' : (obj.status || 'closed'), line, row.id]);
+      const c = safeJson(row.contact) || {};
+      await notifyAdmin(
+        `${opened ? '⚠️ Chargeback opened' : 'Chargeback closed'} – order ${row.id}`,
+        `<p>${escHtml(line)}</p><p>Customer: <strong>${escHtml(c.fullName || '')}</strong> · ${escHtml(c.email || '')}</p>${opened ? '<p>Open the order in the admin panel and use <strong>View signed agreement</strong> for the evidence to submit to Stripe. Disputes usually must be answered within 7 days.</p>' : ''}`,
+        `${line}\nCustomer: ${c.fullName || ''} ${c.email || ''}`);
+      return;
+    }
+    default:
+      return; // other events are ignored
+  }
+}
 
 // Bodies carry base64 vehicle photos, so the limit is generous but bounded
 app.use(express.urlencoded({ extended: true, limit: '30mb' }));
@@ -1833,7 +1929,7 @@ app.get('/api/payments', requireAdmin, async (req, res) => {
         holdAmount: o.holdAmount, holdExpiresAt: o.holdExpiresAt, chargedAmount: o.chargedAmount, chargedAt: o.chargedAt,
         refundedAmount: o.refundedAmount, refundedAt: o.refundedAt, noShowFee: o.noShowFee,
         hasCardOnFile: o.hasCardOnFile, confirmSentAt: o.confirmSentAt, agreedAt: o.agreedAt, pickedUpAt: o.pickedUpAt,
-        stripePaymentIntentId: o.stripePaymentIntentId, feePaymentIntentId: o.feePaymentIntentId
+        stripePaymentIntentId: o.stripePaymentIntentId, feePaymentIntentId: o.feePaymentIntentId, disputeStatus: o.disputeStatus
       };
     });
     const totals = list.reduce((t, p) => {
