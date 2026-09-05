@@ -1439,16 +1439,14 @@ function paymentSummaryLine(o) {
     : '';
   const charged = o.chargedAmount != null ? o.chargedAmount : (o.paymentStatus === 'paid' ? o.total : 0);
   const remaining = Math.max(0, Math.round((charged - (o.refundedAmount || 0)) * 100) / 100);
-  const refund = ['charged', 'partially_refunded', 'fee_charged'].includes(o.paymentState) && remaining > 0 && (o.stripePaymentIntentId || o.feePaymentIntentId)
-    ? `<button onclick="refundOrder('${o.id}', ${remaining})" class="ml-2 text-amber-300 hover:text-white underline">Refund…</button>`
-    : '';
+  const refund = ''; // the Refund button lives in the Payment panel below
   const refunded = o.refundedAmount ? ` · <span class="text-amber-300">${money(o.refundedAmount)} refunded</span>` : '';
   return `<p class="text-xs text-muted mt-2">${src} · ${payStatePill(o.paymentState)}${refunded}${toggle}${refund}</p>`;
 }
 
 function confirmationPanelHTML(o) {
-  const relevant = o.source === 'admin' || ['confirmation_sent', 'authorized', 'fee_charged', 'released', 'expired'].includes(o.paymentStatus);
-  if (!relevant) return '';
+  // Shown for every order: phone-in orders get the confirmation/hold controls,
+  // website orders get their charge + refund controls. Same actions as the Payments page.
 
   const email = (o.contact || {}).email;
   const fee   = o.noShowFee != null ? o.noShowFee : DEFAULT_NO_SHOW_FEE;
@@ -1521,29 +1519,39 @@ function confirmationPanelHTML(o) {
       break;
 
     case 'paid':
+    case 'fee_charged': {
+      const charged   = o.chargedAmount != null ? o.chargedAmount : o.total;
+      const refunded  = o.refundedAmount || 0;
+      const remaining = Math.max(0, Math.round((charged - refunded) * 100) / 100);
+      const canRefund = remaining > 0 && (o.stripePaymentIntentId || o.feePaymentIntentId);
+      const isFee = o.paymentStatus === 'fee_charged';
+      const what = isFee
+        ? `Vehicle was not available. No-show fee of <strong class="text-white">${money(charged)}</strong> charged on ${fmtDateTime(o.chargedAt)}. The transport hold was released.`
+        : `Charged <strong class="text-white">${money(charged)}</strong>${o.chargedAt ? ' on ' + fmtDateTime(o.chargedAt) : ''}${o.pickedUpAt ? ` · picked up ${fmtDateTime(o.pickedUpAt)}` : ''}.`;
+      const refundRow = refunded
+        ? `<p class="text-sm mt-1"><i class="fas fa-rotate-left text-amber-300 mr-1"></i> Refunded <strong class="text-white">${money(refunded)}</strong>${o.refundedAt ? ' on ' + fmtDateTime(o.refundedAt) : ''}${remaining > 0 ? ` · <span class="text-white">${money(remaining)}</span> still charged` : ' · fully refunded'}.</p>`
+        : '';
+      const refundBtn = canRefund
+        ? `<div class="flex flex-wrap gap-3 mt-4">
+             <button onclick="refundOrder('${o.id}', ${remaining})" class="btn btn-ghost py-3" style="color:#FBBF24;border-color:rgba(251,191,36,0.4)"><i class="fas fa-rotate-left"></i> Refund up to ${money(remaining)}</button>
+           </div>
+           <p class="text-xs text-muted mt-2">Refunds go back to the same card. Stripe keeps its processing fee on refunded money.</p>`
+        : (!o.stripePaymentIntentId && !isFee ? '<p class="text-xs text-muted mt-2">No Stripe payment is linked to this order, so refunds are handled outside the site.</p>' : '');
       body = `
-        <p class="text-sm"><i class="fas fa-circle-check text-lime-400 mr-1"></i>
-          Charged <strong class="text-white">${money(o.chargedAmount || o.total)}</strong> on ${fmtDateTime(o.chargedAt)}${o.pickedUpAt ? ` · picked up ${fmtDateTime(o.pickedUpAt)}` : ''}.
-        </p>${agreedRow}`;
+        <p class="text-sm"><i class="fas ${isFee ? 'fa-ban text-purple-400' : 'fa-circle-check text-lime-400'} mr-1"></i> ${what}</p>
+        ${refundRow}${agreedRow}${refundBtn}`;
       break;
-
-    case 'fee_charged':
-      body = `
-        <p class="text-sm"><i class="fas fa-ban text-purple-400 mr-1"></i>
-          Vehicle was not available. No-show fee of <strong class="text-white">${money(o.chargedAmount || fee)}</strong> charged on ${fmtDateTime(o.chargedAt)}. The transport hold was released.
-        </p>${agreedRow}`;
-      break;
+    }
 
     default:
       body = `<p class="text-sm text-muted">Payment status: ${esc(o.paymentStatus)}</p>`;
   }
 
-  const [label, cls] = payLabel(o.paymentStatus);
   return `
     <div class="mt-8 bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-5">
       <div class="flex items-center justify-between gap-3 mb-3">
-        <h4 class="font-semibold text-white"><i class="fas fa-file-contract text-[var(--orange)] mr-2"></i>Pickup confirmation &amp; payment</h4>
-        <span class="pay-pill ${cls}" style="margin-left:0">${label}</span>
+        <h4 class="font-semibold text-white"><i class="fas fa-credit-card text-[var(--orange)] mr-2"></i>Payment</h4>
+        ${payStatePill(o.paymentState)}
       </div>
       <div id="confirmPanelMsg" class="hidden"></div>
       ${body}
