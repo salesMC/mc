@@ -475,12 +475,10 @@ async function loadOrders() {
                   class="text-cyan-400 hover:text-white p-2" title="Open">
             <i class="fas fa-eye"></i>
           </button>
-          ${order.status === 'Done' || order.status === 'Canceled' ? `
-            <button onclick="event.stopImmediatePropagation(); deleteOrder('${esc(order.id)}', this)"
-                    class="text-red-400 hover:text-red-500 p-2" title="Delete">
-              <i class="fas fa-trash"></i>
-            </button>
-          ` : ''}
+          <button onclick="event.stopImmediatePropagation(); deleteOrder('${esc(order.id)}', '${esc(order.paymentState)}')"
+                  class="text-red-400 hover:text-red-500 p-2" title="Delete order">
+            <i class="fas fa-trash"></i>
+          </button>
         </td>
       `;
       tr.onclick = (e) => {
@@ -515,13 +513,19 @@ async function changeOrderStatus(orderId, element) {
   }
 }
 
-async function deleteOrder(orderId) {
-  if (!confirm(`Delete order ${orderId} permanently?`)) return;
+async function deleteOrder(orderId, state) {
+  const holdNote = state === 'holding' ? '\n\nThis order has an active card hold. Deleting it releases the hold (customer pays nothing).' : '';
+  if (!confirm(`Delete order ${orderId} permanently? This cannot be undone.${holdNote}`)) return;
   try {
-    const res = await fetch(`/api/orders/${orderId}`, { method: 'DELETE' });
-    if (res.ok) loadOrders();
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, { method: 'DELETE' });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.success) throw new Error(d.message || 'Could not delete the order');
+    closeModal();
+    if (document.getElementById('ordersBody')) loadOrders();
+    if (document.getElementById('paymentsBody')) loadPayments();
+    panelMsg(`Order ${orderId} deleted${d.released ? ' and its card hold released' : ''}.`, true);
   } catch (err) {
-    alert('Error deleting order');
+    panelMsg(err.message, false);
   }
 }
 
@@ -534,6 +538,8 @@ async function showOrderDetail(orderId, { fromHistory = false } = {}) {
     document.getElementById('customerDetailModal')?.classList.add('hidden');
 
     document.getElementById('modalOrderId').textContent = `Order ${order.id}`;
+    const delBtn = document.getElementById('orderDeleteBtn');
+    if (delBtn) delBtn.onclick = () => deleteOrder(order.id, order.paymentState);
     order.status = String(order.status || 'New');
 
     // Support both old (single vehicle) and new (multi-vehicle) format
@@ -1859,6 +1865,7 @@ function renderPayments() {
     if (['unpaid', 'released', 'expired', 'pending'].includes(p.paymentState) && p.source === 'admin')
       actions += btn(p.paymentState === 'pending' ? 'Resend link' : 'Send confirmation', 'pay-action-primary', `sendConfirmationFromPayments('${id}')`, 'Email the customer the pickup confirmation + card link');
     actions += btn('<i class="fas fa-eye"></i>', '', `showOrderDetail('${id}')`, 'Open order');
+    actions += btn('<i class="fas fa-trash"></i>', 'pay-action-danger', `deleteOrder('${id}', '${esc(p.paymentState)}')`, 'Delete order');
 
     return `<tr class="cursor-pointer" onclick="showOrderDetail('${id}')">
       <td><div class="font-mono text-orange-400 font-semibold">${id}</div><div class="text-[11px] text-muted mt-0.5">${p.createdAt ? new Date(p.createdAt).toLocaleDateString() : ''} · ${p.source === 'admin' ? 'Phone' : 'Website'}</div></td>

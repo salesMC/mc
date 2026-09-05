@@ -358,6 +358,15 @@ async function sendAndAuthorize(id, fee) {
   r = await api('POST', '/api/orders/MC-T-SEND/charge-fee', {});
   check('fee after paid → 409', r.status === 409);
 
+  // Deleting an order that still has a hold releases it first
+  await newOrder('MC-T-DEL');
+  const del = await sendAndAuthorize('MC-T-DEL', 150);
+  r = await api('DELETE', '/api/orders/MC-T-DEL');
+  check('deleting a held order releases the hold and removes the card', r.status === 200 && r.data.released === true && S.intents[del.agree.data.paymentIntentId].status === 'canceled' && S.detached.includes(S.intents[del.agree.data.paymentIntentId].payment_method), r.data);
+  created.orders = created.orders.filter(x => x !== 'MC-T-DEL');
+  r = await api('GET', '/api/orders/MC-T-DEL');
+  check('deleted order is gone', r.status === 404 || !r.data || !r.data.id);
+
   // ---------- 5b. Partial charge + refunds + payments page ----------
   console.log('\n5b) Partial charge, refunds and the Payments list');
   await newOrder('MC-T-PART');

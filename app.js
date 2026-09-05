@@ -1216,18 +1216,28 @@ app.patch('/api/orders/:id/status', requireAdmin, async (req, res) => {
 });
 
 // DELETE order
+// Delete an order. If a card hold is still active it is released first (and the
+// saved card removed) so nothing stays reserved on the customer's card.
 app.delete('/api/orders/:id', requireAdmin, async (req, res) => {
   try {
-    const [result] = await pool.execute(
-      'DELETE FROM orders WHERE id = ?',
-      [req.params.id]
-    );
-    if (result.affectedRows === 0)
-      return res.status(404).json({ success: false, message: 'Not found' });
-    res.json({ success: true });
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Not found' });
+    let released = false;
+    if (row.payment_status === 'authorized' && row.stripe_payment_intent_id) {
+      try {
+        const pi = await stripe.paymentIntents.retrieve(row.stripe_payment_intent_id);
+        if (['requires_capture', 'requires_payment_method', 'requires_confirmation', 'requires_action', 'processing'].includes(pi.status)) {
+          await stripe.paymentIntents.cancel(pi.id, { cancellation_reason: 'abandoned' });
+          released = true;
+        }
+      } catch (e) { console.error(`delete order ${row.id}: release hold:`, e.message); }
+    }
+    if (row.stripe_payment_method_id) await detachCard(row).catch(() => {});
+    await pool.execute('DELETE FROM orders WHERE id = ?', [row.id]);
+    res.json({ success: true, released });
   } catch (err) {
     console.error('DELETE order:', err);
-    res.status(500).json({ success: false });
+    res.status(500).json({ success: false, message: err.message || 'Server error' });
   }
 });
 
