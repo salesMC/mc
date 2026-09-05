@@ -1159,6 +1159,18 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
     );
     console.log(`New order: ${id}${isAdmin ? ' (admin intake)' : ` (web, ${money(total)} paid)`}`);
     res.json({ success: true, orderId: id, customerId, total });
+
+    // Website orders: tell the team (phone-in orders were typed by the team already)
+    if (!isAdmin && process.env.ADMIN_NOTIFY_EMAIL) {
+      const [rows] = await pool.execute('SELECT * FROM orders WHERE id = ?', [id]).catch(() => [[]]);
+      const order = rows && rows[0] ? mapOrderRow(rows[0], false) : null;
+      if (order) sendMail({
+        to: process.env.ADMIN_NOTIFY_EMAIL,
+        subject: `🚗 New website order ${id} – ${money(total)} paid – ${contact.fullName}`,
+        html: emailShell(`<p><strong>${escHtml(contact.fullName)}</strong> just booked and paid <strong>${money(total)}</strong> on the website.</p>${summaryTableHtml(order)}<p><a href="${appUrl(req)}/admin/orders?open=${encodeURIComponent(id)}" style="background:#ff6a3d;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block">Open order ${escHtml(id)}</a></p>`),
+        text: `${contact.fullName} booked and paid ${money(total)} on the website.\n\n${summaryText(order)}\n\nOpen: ${appUrl(req)}/admin/orders?open=${encodeURIComponent(id)}`
+      }).catch(e => console.error('new order notify mail:', e.message));
+    }
   } catch (err) {
     console.error('POST /api/orders:', err);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -2308,11 +2320,17 @@ app.post('/api/leads', publicLimiter, async (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))
     return res.status(400).json({ success: false, message: 'Invalid email' });
   try {
-    await pool.execute(
-      'INSERT IGNORE INTO leads (email, source) VALUES (?,?)',
-      [email, str(req.body.source, 100) || 'website']
-    );
+    const source = str(req.body.source, 100) || 'website';
+    const [result] = await pool.execute('INSERT IGNORE INTO leads (email, source) VALUES (?,?)', [email, source]);
     res.json({ success: true });
+    if (result.affectedRows && process.env.ADMIN_NOTIFY_EMAIL) {
+      sendMail({
+        to: process.env.ADMIN_NOTIFY_EMAIL,
+        subject: `✉️ New lead: ${email}`,
+        html: emailShell(`<p>Someone left their email on the website.</p><p><strong>${escHtml(email)}</strong><br><span style="color:#666">Source: ${escHtml(source)}</span></p><p>Reply from sales@mcships.com while they're still interested.</p>`),
+        text: `New lead from the website: ${email} (source: ${source})`
+      }).catch(e => console.error('lead notify mail:', e.message));
+    }
   } catch (err) {
     res.status(500).json({ success: false });
   }

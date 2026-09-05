@@ -1884,3 +1884,27 @@ async function sendConfirmationFromPayments(orderId) {
 
 // ==================== INIT ====================
 initAdminPage();
+
+// ==================== CHANGE PASSWORD (top bar → Account) ====================
+function openPasswordModal() {
+  const m = document.getElementById('passwordModal'); if (!m) return;
+  document.getElementById('pwModalEmail').textContent = sessionStorage.getItem('mcAdminEmail') || '';
+  ['pwCurrent', 'pwNew', 'pwNew2'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('pwMsg').classList.add('hidden');
+  m.classList.remove('hidden');
+  document.getElementById('pwCurrent').focus();
+}
+function closePasswordModal() { document.getElementById('passwordModal')?.classList.add('hidden'); }
+async function submitPasswordChange() {
+  const cur = document.getElementById('pwCurrent').value, a = document.getElementById('pwNew').value, b = document.getElementById('pwNew2').value;
+  const msg = document.getElementById('pwMsg');
+  const say = (t, ok) => { msg.textContent = t; msg.className = 'text-sm ' + (ok ? 'text-lime-400' : 'text-red-400'); };
+  if (a.length < 8) return say('Use at least 8 characters.', false);
+  if (a !== b) return say('The two new passwords do not match.', false);
+  try {
+    const res = await fetch('/api/auth/change-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ currentPassword: cur, newPassword: a }) });
+    const d = await res.json();
+    if (d.success) { say('Password updated.', true); setTimeout(closePasswordModal, 1200); }
+    else say(d.message || 'Could not change the password.', false);
+  } catch (e) { say('Connection error. Try again.', false); }
+}

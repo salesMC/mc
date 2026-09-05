@@ -34,7 +34,9 @@
     </div>
 
     <div class="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-      <span id="adminNavEmail" class="hidden lg:inline text-xs text-muted truncate max-w-[200px]"></span>
+      <button type="button" onclick="openPasswordModal()" class="admin-nav-link" title="Change your password">
+        <i class="fas fa-user-gear mr-1.5"></i><span id="adminNavEmail" class="hidden lg:inline text-xs truncate max-w-[200px]">Account</span>
+      </button>
       <a href="/" target="_blank" class="admin-nav-link" title="Open the public website in a new tab">
         <i class="fas fa-arrow-up-right-from-square mr-1.5"></i><span class="hidden sm:inline">View site</span>
       </a>
