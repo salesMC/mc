@@ -1,0 +1,16 @@
+# MC Transportation — mcships.com
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /api/
+Disallow: /confirm/
+Disallow: /reset-password/
+Disallow: /uploads/
+Disallow: /documents/
+Disallow: /exchange/
+Disallow: /sign-in
+Disallow: /register
+Disallow: /payment
+Disallow: /quote-success
+
+Sitemap: https://mcships.com/sitemap.xml

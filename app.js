@@ -916,6 +916,22 @@ function sanitizeVehicles(list) {
 }
 
 // ==================== PAGE ROUTES ====================
+
+// Sitemap for search engines: every public marketing page (robots.txt in /public points here)
+const SITEMAP_PAGES = [
+  ['/', 'weekly', '1.0'], ['/calculator', 'weekly', '0.9'], ['/dealers', 'monthly', '0.8'], ['/auctions', 'monthly', '0.8'],
+  ['/oems', 'monthly', '0.7'], ['/fleet', 'monthly', '0.7'], ['/individuals', 'monthly', '0.8'], ['/decision', 'monthly', '0.6'],
+  ['/haul-with-mc', 'monthly', '0.7'], ['/payment-tracker', 'monthly', '0.5'], ['/team', 'monthly', '0.5'], ['/careers', 'monthly', '0.5'],
+  ['/blog', 'weekly', '0.6'], ['/contact', 'monthly', '0.7'], ['/extension', 'monthly', '0.4']
+];
+app.get('/sitemap.xml', (req, res) => {
+  const base = (process.env.APP_URL || 'https://mcships.com').replace(/\/$/, '');
+  const today = new Date().toISOString().slice(0, 10);
+  const urls = SITEMAP_PAGES.map(([p, freq, pri]) =>
+    `  <url><loc>${base}${p}</loc><lastmod>${today}</lastmod><changefreq>${freq}</changefreq><priority>${pri}</priority></url>`).join('\n');
+  res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`);
+});
+
 app.get('/',               (req, res) => res.render('index'));
 app.get('/calculator',     (req, res) => res.render('calculator'));
 app.get('/payment',        (req, res) => res.render('payment'));
