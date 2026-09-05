@@ -265,7 +265,12 @@ async function sendAndAuthorize(id, fee) {
     photos: [{ name: 'a', data: 'data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==' }, { name: 'ok.png', data: 'data:image/png;base64,iVBORw0KGgo=' }] }] });
   o = await order('MC-T-SAN');
   const v = o.vehicles[0];
-  check('unknown vehicle type/condition normalised, long strings trimmed', v.type === 'sedan' && v.condition === 'operable' && v.model.length === 60, { type: v.type, cond: v.condition, len: v.model.length });
+  await newOrder('MC-T-QFEE', { total: 1, noShowFee: 75 });
+  o = await order('MC-T-QFEE');
+  check('admin quote saves the adjusted price and the dry-run fee', o.total === 1 && o.noShowFee === 75, { t: o.total, f: o.noShowFee });
+  r = await api('POST', '/api/orders/MC-T-QFEE/send-confirmation', {});
+  check('confirmation uses the saved fee when none is typed', r.status === 200 && (await order('MC-T-QFEE')).noShowFee === 75);
+    check('unknown vehicle type/condition normalised, long strings trimmed', v.type === 'sedan' && v.condition === 'operable' && v.model.length === 60, { type: v.type, cond: v.condition, len: v.model.length });
   check('non-image "photo" dropped, real image stored in uploads/<order>/', v.photos.length === 1 && /^\/uploads\/MC-T-SAN\/v1_\d+_\d+_[0-9a-f]{8}\.png$/.test(v.photos[0].url || '') && !v.photos[0].data, v.photos);
   raw = await fetch(B + v.photos[0].url);
   check('stored photo served as image/png with no-sniff + sandbox', raw.status === 200 && raw.headers.get('content-type') === 'image/png' && raw.headers.get('x-content-type-options') === 'nosniff' && /sandbox/.test(raw.headers.get('content-security-policy') || ''), [raw.status, raw.headers.get('content-type')]);

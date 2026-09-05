@@ -1021,6 +1021,7 @@ function wizCollect() {
   } else if (wiz.step === 3 && g('wizFinalPrice')) {
     wiz.finalPrice = g('wizFinalPrice').value;
     wiz.priceReason = (g('wizPriceReason')?.value || '').trim();
+    wiz.noShowFee = g('wizNoShowFee')?.value ?? wiz.noShowFee;
     wiz.notes = g('wizNotes').value.trim();
   }
 }
@@ -1444,10 +1445,19 @@ function wizVehiclePrice(v) {
   return Math.round(s);
 }
 function wizComputedTotal() { return wiz.vehicles.reduce((sum, v) => sum + wizVehiclePrice(v), 0); }
+// Footer total: the price the customer will be quoted (the admin override when set)
+function wizFinalTotal() {
+  const computed = wizComputedTotal();
+  const f = wiz && wiz.finalPrice != null && wiz.finalPrice !== '' ? Math.round(Number(wiz.finalPrice)) : NaN;
+  return f >= 0 ? f : computed;
+}
 function wizUpdateRunningTotal() {
   if (!wiz) return;
   const t = document.getElementById('wizRunningTotal');
-  if (t) t.textContent = '$' + wizComputedTotal().toLocaleString();
+  const label = t && t.previousElementSibling;
+  const final = wizFinalTotal(), computed = wizComputedTotal();
+  if (t) t.textContent = '$' + final.toLocaleString();
+  if (label) label.textContent = final !== computed ? 'Quoted (adjusted)' : 'Estimated';
 }
 
 // ---- Step 3: Quote ----
@@ -1469,7 +1479,7 @@ function wizQuoteHTML() {
         </div>
         ${v.damages ? `<div class="text-xs text-amber-400 mt-1"><i class="fas fa-triangle-exclamation mr-1"></i>${esc(v.damages)}</div>` : ''}
       </div>
-      <div class="text-[var(--orange)] font-semibold shrink-0">$${wizVehiclePrice(v).toLocaleString()}</div>
+      <div class="text-right shrink-0"><div class="text-dim font-semibold">$${wizVehiclePrice(v).toLocaleString()}</div><div class="text-[10px] text-muted uppercase tracking-wider">calculated</div></div>
     </div>`).join('');
 
   return `
@@ -1512,6 +1522,15 @@ function wizQuoteHTML() {
         </div>
         <label class="label-dark mt-4">Reason for the adjustment <span class="text-muted font-normal">(saved on the order)</span></label>
         <input id="wizPriceReason" class="input-dark" placeholder="e.g. repeat dealer, matched competitor, flexible dates…" value="${esc(wiz.priceReason || '')}" oninput="wiz.priceReason = this.value">
+
+        <div class="mt-5 pt-4 border-t border-[var(--line)]">
+          <label class="label-dark"><i class="fas fa-ban text-amber-400 mr-1"></i> No-show / dry-run fee <span class="text-muted font-normal">(what the customer agrees to if the vehicle is gone)</span></label>
+          <div class="flex items-center gap-2">
+            <span class="text-xl font-bold text-white">$</span>
+            <input id="wizNoShowFee" type="number" min="0" step="1" class="input-dark text-xl font-bold w-40" value="${esc(wiz.noShowFee != null && wiz.noShowFee !== '' ? wiz.noShowFee : DEFAULT_NO_SHOW_FEE)}" oninput="wiz.noShowFee = this.value">
+            <span class="text-xs text-muted">default $${DEFAULT_NO_SHOW_FEE}</span>
+          </div>
+        </div>
       </div>
       <div>
         <label class="label-dark">Internal order notes</label>
@@ -1525,6 +1544,7 @@ function wizQuoteHTML() {
 }
 // Shows "-$50 (7.7% off)" under the price box, and applies the quick buttons
 function wizPriceDiff() {
+  wizUpdateRunningTotal();
   const el = document.getElementById('wizPriceDiff'); if (!el || !wiz) return;
   const computed = wizComputedTotal(), final = Number(document.getElementById('wizFinalPrice')?.value);
   if (!(final >= 0) || final === computed) { el.textContent = 'Same as the calculated price.'; el.className = 'text-xs mt-2 min-h-[18px] text-muted'; return; }
@@ -1571,6 +1591,7 @@ async function wizSave() {
         mustDeliverBy: wiz.mustDeliverBy,
         transportType: wiz.transportType,
         total,
+        noShowFee: wiz.noShowFee != null && wiz.noShowFee !== '' ? Number(wiz.noShowFee) : undefined,
         notes: wiz.notes
       })
     });

@@ -1139,13 +1139,17 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
       console.error('POST /api/orders customer upsert:', e.message);
     }
 
+    // No-show / dry-run fee: admin can set it at quote time; otherwise the default applies
+    const noShowFee = isAdmin && b.noShowFee != null && b.noShowFee !== '' && Number(b.noShowFee) >= 0
+      ? Math.round(Number(b.noShowFee) * 100) / 100 : null;
+
     await pool.execute(
       `INSERT INTO orders
          (id, status, contact, vehicle, vehicles, location,
           pickup_date, must_deliver_by, transport_type, total,
-          customer_id, source, payment_status, distance, notes,
+          customer_id, source, payment_status, distance, notes, no_show_fee,
           stripe_payment_intent_id, charged_at, charged_amount, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [
         id, 'New',
         JSON.stringify(contact),
@@ -1153,7 +1157,7 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
         JSON.stringify(vehicles),
         JSON.stringify(location),
         pickupDate, mustDeliverBy, transportType, total,
-        customerId, source, paymentStatus, distance, notes,
+        customerId, source, paymentStatus, distance, notes, noShowFee,
         stripePiId, stripePiId ? new Date() : null, stripePiId ? total : null
       ]
     );
