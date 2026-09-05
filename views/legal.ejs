@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title %> – MC Transportation</title>
+  <meta name="description" content="<%= description %>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <style>
+    .legal h2 { color: #fff; font-size: 1.25rem; font-weight: 700; margin: 2.25rem 0 0.75rem; }
+    .legal h3 { color: #fff; font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.5rem; }
+    .legal p, .legal li { color: var(--ink-dim); line-height: 1.75; }
+    .legal p { margin-bottom: 0.9rem; }
+    .legal ul { list-style: disc; padding-left: 1.5rem; margin-bottom: 1rem; }
+    .legal li { margin-bottom: 0.35rem; }
+    .legal a { color: var(--cyan); }
+    .legal strong { color: #fff; }
+    .legal .toc a { color: var(--ink-dim); }
+    .legal .toc a:hover { color: #fff; }
+  </style>
+</head>
+<body>
+  <%- include('partials/header') %>
+
+  <main class="relative overflow-hidden py-16 md:py-24">
+    <div class="glow-orange" style="top: -120px; right: -100px;"></div>
+    <div class="relative max-w-3xl mx-auto px-6 lg:px-8 legal">
+      <p class="text-[11px] tracking-[0.22em] uppercase text-[var(--ink-muted)] font-medium mb-3">Legal</p>
+      <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight"><%= title %></h1>
+      <p class="text-muted text-sm mt-3">Last updated <%= updated %></p>
+
+      <div class="mt-8 p-5 rounded-xl text-sm" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <strong>In plain words:</strong> <%= summary %>
+      </div>
+
+      <%- body %>
+
+      <div class="mt-14 pt-8 border-t border-[var(--line)] text-sm text-muted">
+        Questions about this document: <a href="mailto:sales@mcships.com">sales@mcships.com</a> · <%= phone %> ·
+        MC Transportation LLC, 4022 Bardstown Rd, Louisville, KY 40218.
+        See also <a href="/terms">Terms of Service</a> and <a href="/privacy">Privacy Policy</a>.
+      </div>
+    </div>
+  </main>
+
+  <%- include('partials/footer') %>
+</body>
+</html>

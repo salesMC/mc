@@ -924,7 +924,7 @@ const SITEMAP_PAGES = [
   ['/', 'weekly', '1.0'], ['/calculator', 'weekly', '0.9'], ['/dealers', 'monthly', '0.8'], ['/auctions', 'monthly', '0.8'],
   ['/oems', 'monthly', '0.7'], ['/fleet', 'monthly', '0.7'], ['/individuals', 'monthly', '0.8'], ['/decision', 'monthly', '0.6'],
   ['/haul-with-mc', 'monthly', '0.7'], ['/payment-tracker', 'monthly', '0.5'], ['/team', 'monthly', '0.5'], ['/careers', 'monthly', '0.5'],
-  ['/blog', 'weekly', '0.6'], ['/contact', 'monthly', '0.7'], ['/extension', 'monthly', '0.4']
+  ['/blog', 'weekly', '0.6'], ['/contact', 'monthly', '0.7'], ['/extension', 'monthly', '0.4'], ['/terms', 'yearly', '0.3'], ['/privacy', 'yearly', '0.3']
 ];
 app.get('/sitemap.xml', (req, res) => {
   const base = (process.env.APP_URL || 'https://mcships.com').replace(/\/$/, '');
@@ -935,6 +935,26 @@ app.get('/sitemap.xml', (req, res) => {
 });
 
 app.get('/',               (req, res) => res.render('index'));
+
+// Legal pages: content lives in legal/*.html (plain HTML with <%= phone %>), wrapped by views/legal.ejs
+const LEGAL_UPDATED = 'September 5, 2026';
+function legalPage(file, meta) {
+  return (req, res) => {
+    const raw = fs.readFileSync(path.join(__dirname, 'legal', file), 'utf8');
+    const body = require('ejs').render(raw, { phone: COMPANY_PHONE });
+    res.render('legal', { ...meta, body, phone: COMPANY_PHONE, updated: LEGAL_UPDATED });
+  };
+}
+app.get('/terms', legalPage('terms.html', {
+  title: 'Terms of Service',
+  description: 'The terms that apply to quotes, bookings, payments, card holds, cancellations and the MC Exchange on mcships.com.',
+  summary: 'You get a quote, we move your vehicle. Phone-in bookings put a hold on your card and only charge once the vehicle is picked up. If the vehicle is not there when our carrier arrives, a dry-run fee applies. Inspect the vehicle at delivery and note anything on the Bill of Lading.'
+}));
+app.get('/privacy', legalPage('privacy.html', {
+  title: 'Privacy Policy',
+  description: 'What information mcships.com collects, why, who it is shared with, and how long it is kept.',
+  summary: 'We collect what we need to move your vehicle and take payment. Cards are handled by Stripe and removed within 7 days of a pickup confirmation. We never sell your information.'
+}));
 app.get('/calculator',     (req, res) => res.render('calculator'));
 app.get('/payment',        (req, res) => res.render('payment'));
 app.get('/quote-success',  (req, res) => res.render('quote-success'));
