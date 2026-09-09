@@ -2704,14 +2704,12 @@ function quoteEmail(q, bookUrl) {
   ];
   const table = `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:18px 0">${rows.map(([k, val]) =>
     `<tr><td style="padding:8px 10px;border-bottom:1px solid #eee;color:#666;width:120px">${k}</td><td style="padding:8px 10px;border-bottom:1px solid #eee">${val}</td></tr>`).join('')}</table>`;
-  const lines = (q.breakdown || []).map(l => `<tr><td style="padding:4px 10px;color:#666">${escHtml(l.label)}</td><td style="padding:4px 10px;text-align:right">${money(l.amount)}</td></tr>`).join('');
   const html = emailShell(`
     <h1 style="margin:0 0 12px;font-size:22px">Your quote: ${money(q.total)}</h1>
     <p>Hi ${escHtml(q.name || 'there')},</p>
     <p>Thanks for checking prices with Mcships. Here is the quote for the transport you entered:</p>
     ${table}
-    <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fafafa;border-radius:8px">${lines}
-      <tr><td style="padding:10px;font-weight:700">Total</td><td style="padding:10px;text-align:right;font-weight:700;font-size:18px">${money(q.total)}</td></tr></table>
+    <p style="margin:18px 0;padding:14px 16px;background:#fafafa;border-radius:8px;font-size:15px">Total for this transport, all fees included: <strong style="font-size:20px">${money(q.total)}</strong></p>
     <p style="text-align:center;margin:28px 0"><a href="${bookUrl}" style="background:#ff6a3d;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;display:inline-block">Book this transport</a></p>
     <p style="font-size:13px;color:#666">The link opens checkout with everything already filled in — you only choose your dates and pay. This price is based on the details you entered and is valid for 7 days. Questions? Reply to this email or call ${COMPANY_PHONE}.</p>`);
   const text = `Your Mcships quote: ${money(q.total)}\n\nVehicle: ${label}\nPickup: ${q.pickup}\nDelivery: ${q.delivery}\nDistance: ${q.distance} miles\nTransport: ${q.transportType}\n\nBook: ${bookUrl}\n\nValid for 7 days. Questions? Call ${COMPANY_PHONE}.`;

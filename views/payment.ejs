@@ -993,6 +993,11 @@
     // ==================== RENDER STEP ====================
     function renderStep(step) {
       if (step > currentStep && !validateCurrentStep()) return;
+      try { return renderStepInner(step); }
+      catch (e) { console.error('step render:', e); }
+      finally { document.getElementById('stepContent')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
+    }
+    function renderStepInner(step) {
       saveFormData();
       currentStep = step;
 
@@ -1270,6 +1275,7 @@
           invalid: { color: '#F87171', iconColor: '#F87171' }
         };
 
+        [cardNumber, cardExpiry, cardCvc].forEach(el => { try { el && el.unmount && el.unmount(); el && el.destroy && el.destroy(); } catch (e) {} });
         cardNumber = elements.create('cardNumber', { style, showIcon: true });
         cardExpiry = elements.create('cardExpiry', { style });
         cardCvc    = elements.create('cardCvc',    { style });
@@ -1362,7 +1368,7 @@
     }
 
     function prevStep() {
-      saveFormData();
+      try { saveFormData(); } catch (e) { console.warn('save before back:', e); }
       if (currentStep > 0) renderStep(currentStep - 1);
     }
 
