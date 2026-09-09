@@ -477,6 +477,25 @@ async function sendAndAuthorize(id, fee) {
   check('lead deleted', r.status === 200);
   page = await fetch(B + '/admin/leads', { headers: { Cookie: adminCookie } });
   check('leads page renders', page.status === 200 && (await page.text()).includes('id="leadsBody"'));
+  // ---------- Website quotes: email first, then price, then Book link ----------
+  r = await api('POST', '/api/quotes', { email: 'not-an-email', vehicle: { type: 'sedan' }, distance: 300 }, { auth: false });
+  check('quote with a bad email → 400', r.status === 400);
+  r = await api('POST', '/api/quotes', { name: 'Quote Tester', email: 'quote-test@example.test', phone: '555-0199', vehicle: { year: '2021', make: 'Ford', model: 'F-150', type: 'pickup', condition: 'operable' }, distance: 300, pickup: 'Louisville, KY', delivery: 'Nashville, TN', transportType: 'enclosed' }, { auth: false });
+  const cfgQ = (await api('GET', '/api/settings/calculator', null, { auth: false })).data;
+  const expectedQ = quote(cfgQ, [{ type: 'pickup', condition: 'operable' }], 300);
+  check('quote priced on the server and saved', r.status === 200 && r.data.success && r.data.total === expectedQ && /^[a-f0-9]{48}$/.test(r.data.quoteId) && Array.isArray(r.data.breakdown) && r.data.breakdown.length >= 2, r.data && { t: r.data.total, e: expectedQ });
+  const qMail = lastMailTo('quote-test@example.test');
+  check('quote emailed to the customer with a Book link', !!qMail && qMail.subject.includes('Your Mcships quote') && qMail.text.includes('/payment?quote=' + r.data.quoteId), qMail && qMail.subject);
+  check('team notified of the new quote', !!lastMailTo('admin@mcships.test') && /New website quote/.test(lastMailTo('admin@mcships.test').subject));
+  const qTok = r.data.quoteId;
+  r = await api('GET', '/api/quotes/' + qTok, null, { auth: false });
+  check('quote link returns everything checkout needs', r.status === 200 && r.data.email === 'quote-test@example.test' && r.data.vehicle.make === 'Ford' && r.data.distance === 300 && r.data.transportType === 'enclosed' && r.data.total === expectedQ, r.data);
+  r = await api('GET', '/api/quotes/' + 'f'.repeat(48), null, { auth: false });
+  check('unknown quote link → 404', r.status === 404);
+  r = await api('GET', '/api/leads?q=quote-test&page=1');
+  check('quote also recorded as a lead', r.data && r.data.leads && r.data.leads.some(l => l.email === 'quote-test@example.test' && l.source === 'calculator'));
+  for (const l of (r.data.leads || [])) await api('DELETE', '/api/leads/' + l.id);
+  await pool.execute('DELETE FROM quotes WHERE token = ?', [qTok]);
 
   // ---------- 6. Vehicle gone → no-show fee ----------
   console.log('\n6) Vehicle gone → charge no-show fee, release hold');

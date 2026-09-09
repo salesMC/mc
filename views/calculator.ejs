@@ -204,33 +204,54 @@
 
 <!-- PRICE MODAL -->
       <div id="priceModal" class="hidden fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
-        <div class="bg-panel rounded-2xl max-w-2xl w-full p-8 md:p-10 text-center border border-[var(--line)] max-h-[90vh] overflow-y-auto">
-          <div class="w-16 h-16 mx-auto mb-6 rounded-full flex items-center justify-center text-[var(--lime)]" style="background: rgba(190,242,100,0.12); border: 1px solid rgba(190,242,100,0.4);">
-            <i class="fas fa-check text-2xl"></i>
-          </div>
-          <h2 class="text-3xl font-bold text-white mb-2">Your Estimated Price</h2>
-          <p class="text-dim mb-8">This is a live calculation. We'll confirm the exact quote shortly.</p>
+        <div class="bg-panel rounded-2xl max-w-xl w-full p-8 md:p-10 border border-[var(--line)] max-h-[90vh] overflow-y-auto">
 
-          <div id="priceBreakdown" class="bg-deep rounded-xl p-6 mb-8 text-left space-y-3 text-base text-dim border border-[var(--line)]"></div>
-
-          <div class="text-5xl font-bold text-[var(--orange)] mb-8" id="totalPriceBig">$0</div>
-
-          <div class="max-w-md mx-auto mb-8 text-left">
-            <label class="label-dark">Email (for quote delivery)</label>
-            <input type="email" id="email" placeholder="your@email.com" required class="input-dark">
-          </div>
-
-          <div class="flex flex-col sm:flex-row gap-3">
-            <a href="/" class="flex-1 btn btn-ghost justify-center">Back to Home</a>
-            <a href="/payment" onclick="saveTotalToLocalStorage()" class="flex-1 btn btn-primary justify-center">
-              Continue to Payment
-            <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/>
-            </svg>
-            </a>
+          <!-- Step A: who should get the quote -->
+          <div id="quoteStepContact">
+            <div class="w-14 h-14 mx-auto mb-5 rounded-full flex items-center justify-center text-[var(--orange)]" style="background: rgba(255,106,61,0.12); border: 1px solid rgba(255,106,61,0.35);">
+              <i class="fas fa-envelope text-xl"></i>
             </div>
+            <h2 class="text-2xl md:text-3xl font-bold text-white mb-2 text-center">Your quote is ready</h2>
+            <p class="text-dim mb-7 text-center">Tell us where to send it and we'll show it right here too.</p>
+            <form id="quoteContactForm" class="space-y-4" onsubmit="return false">
+              <div>
+                <label class="label-dark">Full name</label>
+                <input id="qName" class="input-dark" placeholder="Your name" autocomplete="name" required>
+              </div>
+              <div>
+                <label class="label-dark">Email</label>
+                <input id="qEmail" type="email" class="input-dark" placeholder="you@example.com" autocomplete="email" required>
+              </div>
+              <div>
+                <label class="label-dark">Phone</label>
+                <input id="qPhone" type="tel" class="input-dark" placeholder="(502) 555-0100" autocomplete="tel" required>
+              </div>
+              <p id="quoteError" class="hidden text-sm text-red-400"></p>
+              <button type="button" id="showQuoteBtn" onclick="submitQuoteContact()" class="btn btn-primary w-full justify-center py-4 text-base">
+                Show my price
+              </button>
+              <p class="text-xs text-muted text-center">No spam. We email you the quote and a link to book. <a href="/privacy" class="underline hover:text-white">Privacy</a></p>
+            </form>
+          </div>
 
-          <button id="closePriceModal" class="mt-6 text-muted hover:text-white transition-colors text-sm">Close</button>
+          <!-- Step B: the price -->
+          <div id="quoteStepPrice" class="hidden text-center">
+            <div class="w-14 h-14 mx-auto mb-5 rounded-full flex items-center justify-center text-[var(--lime)]" style="background: rgba(190,242,100,0.12); border: 1px solid rgba(190,242,100,0.4);">
+              <i class="fas fa-check text-xl"></i>
+            </div>
+            <h2 class="text-2xl md:text-3xl font-bold text-white mb-1">Your quote</h2>
+            <p id="quoteSentNote" class="text-dim text-sm mb-6">A copy is on its way to your inbox.</p>
+            <div class="text-5xl font-bold text-[var(--orange)] mb-6" id="totalPriceBig">$0</div>
+            <div id="priceBreakdown" class="bg-deep rounded-xl p-5 mb-6 text-left space-y-2 text-sm text-dim border border-[var(--line)]"></div>
+            <a id="bookQuoteBtn" href="/payment" class="btn btn-primary w-full justify-center py-4 text-base">
+              Book this transport
+              <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
+            </a>
+            <p class="text-xs text-muted mt-3">Checkout is already filled in with these details. You'll pick your dates and pay. Price valid 7 days.</p>
+            <p class="text-sm text-dim mt-5">Prefer to talk it through? Call <a href="tel:+15024178040" class="text-white hover:underline">(502) 417-8040</a>.</p>
+          </div>
+
+          <button id="closePriceModal" class="mt-6 w-full text-muted hover:text-white transition-colors text-sm">Close</button>
         </div>
       </div>
 
@@ -467,15 +488,83 @@ function getVehicleTypeLabel(type) {
       });
     });
 
+    // Get quote → ask who it's for (step A). The price is only shown after that,
+    // computed on the server, and emailed to the customer with a Book link.
     document.getElementById('getQuoteBtn').addEventListener('click', () => {
       const form = document.getElementById('shippingCalculator');
-      if (!form.checkValidity()) {
-        form.reportValidity();
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      if (!(parseFloat(document.getElementById('distance').value) > 0)) {
+        document.getElementById('distance').reportValidity();
+        alert('Please choose the pickup and delivery addresses from the suggestions so we can measure the distance.');
         return;
       }
-      const total = calculatePrice();
-      showPriceModal(total);
+      document.getElementById('quoteStepContact').classList.remove('hidden');
+      document.getElementById('quoteStepPrice').classList.add('hidden');
+      document.getElementById('quoteError').classList.add('hidden');
+      document.getElementById('priceModal').classList.remove('hidden');
+      setTimeout(() => document.getElementById('qName').focus(), 50);
     });
+
+    // What the calculator knows about the vehicle, in the shape checkout uses
+    function collectVehicle() {
+      const vinText = (document.getElementById('vin-result')?.textContent || '').trim(); // "2020 TOYOTA Camry" when the VIN decoded
+      const m = vinText.match(/^(\d{4})\s+(\S+)\s*(.*)$/);
+      return {
+        year: m ? m[1] : '', make: m ? m[2] : '', model: m ? m[3] : '',
+        vin: (document.getElementById('vin').value || '').trim().toUpperCase(),
+        type: document.getElementById('vehicleType').value,
+        condition: document.querySelector('input[name="condition"]:checked').value,
+        modified: document.getElementById('modifiedCheck').checked,
+        modDescription: (document.getElementById('modDesc')?.value || '').trim(),
+        urgent: document.getElementById('urgentCheck').checked
+      };
+    }
+
+    async function submitQuoteContact() {
+      const name = document.getElementById('qName').value.trim();
+      const email = document.getElementById('qEmail').value.trim();
+      const phone = document.getElementById('qPhone').value.trim();
+      const err = document.getElementById('quoteError');
+      const btn = document.getElementById('showQuoteBtn');
+      err.classList.add('hidden');
+      if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !phone) {
+        err.textContent = 'Please fill in your name, a valid email and a phone number.'; err.classList.remove('hidden'); return;
+      }
+      btn.disabled = true; btn.innerHTML = '<i class="fas fa-circle-notch fa-spin"></i> Getting your price…';
+      try {
+        const res = await fetch('/api/quotes', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name, email, phone,
+            vehicle: collectVehicle(),
+            distance: parseFloat(document.getElementById('distance').value) || 0,
+            pickup: document.getElementById('fromInput').value.trim(),
+            delivery: document.getElementById('toInput').value.trim(),
+            transportType: enclosedBtn.classList.contains('bg-sky-600') ? 'enclosed' : 'open'
+          })
+        });
+        const data = await res.json();
+        if (!data.success) throw new Error(data.message || 'Could not get a price right now. Please call us.');
+        showQuote(data);
+      } catch (e) {
+        err.textContent = e.message; err.classList.remove('hidden');
+      } finally {
+        btn.disabled = false; btn.textContent = 'Show my price';
+      }
+    }
+
+    function showQuote(q) {
+      document.getElementById('totalPriceBig').textContent = '$' + Number(q.total).toLocaleString();
+      document.getElementById('priceBreakdown').innerHTML = (q.breakdown || []).map(l =>
+        `<div class="flex justify-between"><span>${l.label}</span><span class="text-white">$${Number(l.amount).toLocaleString()}</span></div>`).join('');
+      document.getElementById('bookQuoteBtn').href = '/payment?quote=' + encodeURIComponent(q.quoteId);
+      document.getElementById('quoteSentNote').textContent = q.emailSent
+        ? 'A copy is on its way to ' + document.getElementById('qEmail').value.trim() + '.'
+        : 'Save this page or book now — we could not email a copy just now.';
+      document.getElementById('quoteStepContact').classList.add('hidden');
+      document.getElementById('quoteStepPrice').classList.remove('hidden');
+      document.getElementById('priceModal').scrollTop = 0;
+    }
 
     document.getElementById('closePriceModal').addEventListener('click', () => {
       document.getElementById('priceModal').classList.add('hidden');

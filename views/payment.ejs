@@ -1208,6 +1208,7 @@
         promoDiscount: appliedPromo ? appliedPromo.discount : null,
         promoType: appliedPromo ? appliedPromo.type : null,
         stripePaymentIntentId: stripePaymentIntentId || null,
+        quoteToken: window.QUOTE_TOKEN || null,
         createdAt: new Date().toISOString()
       };
       try {
@@ -1362,8 +1363,36 @@
     }
 
     // ==================== INIT ====================
-    window.addEventListener('load', () => {
-      renderStep(0);
+    // Arriving from a quote email / the calculator's Book button: load the quote and
+    // prefill contact, vehicle, route and price, then start at the dates step.
+    async function loadQuoteFromLink() {
+      const token = new URLSearchParams(location.search).get('quote') || '';
+      if (!/^[a-f0-9]{48}$/.test(token)) return false;
+      try {
+        const q = await (await fetch('/api/quotes/' + token)).json();
+        if (!q.success) return false;
+        window.QUOTE_TOKEN = token;
+        formData.contact = { fullName: q.name || '', email: q.email || '', phone: q.phone || '' };
+        const v = Object.assign(freshVehicle(), q.vehicle || {}); v.photos = v.photos || [];
+        formData.vehicles = [v];
+        formData.location = { pickup: q.pickup || '', delivery: q.delivery || '' };
+        formData.distance = Number(q.distance) || 0;
+        formData.transportType = q.transportType || 'open';
+        formData.total = Number(q.total) || 0;
+        const banner = document.createElement('div');
+        banner.className = 'mb-5 p-4 rounded-xl text-sm flex items-start gap-3';
+        banner.style.cssText = 'background: rgba(190,242,100,0.08); border: 1px solid rgba(190,242,100,0.35);';
+        banner.innerHTML = '<i class="fas fa-circle-check text-[var(--lime)] mt-0.5"></i><div><strong class="text-white">Your quote is loaded: $' + Number(q.total).toLocaleString() + '</strong><div class="text-dim mt-1">Contact, vehicle and route are filled in from your quote. Choose your dates below, check the summary, then pay. You can change anything by clicking a step on the left.</div></div>';
+        const content = document.getElementById('stepContent');
+        content.parentNode.insertBefore(banner, content);
+        return true;
+      } catch (e) { console.error('quote prefill:', e); return false; }
+    }
+
+    window.addEventListener('load', async () => {
+      const fromQuote = await loadQuoteFromLink();
+      if (fromQuote && formData.contact.fullName && formData.contact.phone) { currentStep = 2; renderStep(2); }
+      else renderStep(0);
 
       const script  = document.createElement('script');
       script.src    = 'https://maps.googleapis.com/maps/api/js?key=<%= googleMapsKey %>&libraries=places';
