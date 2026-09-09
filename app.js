@@ -41,7 +41,7 @@ async function sendViaResend({ from, to, subject, html, text }) {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST', signal: ctrl.signal,
       headers: { Authorization: `Bearer ${process.env.SMTP_PASS}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to: Array.isArray(to) ? to : [to], subject, html, text })
+      body: JSON.stringify({ from, to: Array.isArray(to) ? to : [to], reply_to: 'sales@mcships.com', subject, html, text })
     });
     if (!r.ok) {
       let msg = `Resend HTTP ${r.status}`;
@@ -1504,16 +1504,18 @@ function clientIp(req) {
 }
 
 // ---- Email templates ----
+// Deliberately plain: Gmail files banner-and-button emails under Promotions.
+// An email that looks like a person wrote it lands in Primary far more often.
 function emailShell(bodyHtml) {
-  return `<!doctype html><html><body style="margin:0;background:#f3f4f6;font-family:Inter,Arial,Helvetica,sans-serif">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;padding:24px 12px"><tr><td align="center">
-<table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#ffffff;border-radius:12px;overflow:hidden">
-  <tr><td style="background:#0D1117;padding:20px 28px;color:#ffffff;font-weight:700;font-size:18px">
-    MC <span style="color:#FF6A3D">&bull;</span> <span style="font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:#8B949E">Transportation</span>
-  </td></tr>
-  <tr><td style="padding:28px;color:#111827;font-size:15px;line-height:1.55">${bodyHtml}</td></tr>
-  <tr><td style="padding:16px 28px;background:#f9fafb;color:#6b7280;font-size:12px">MC Transportation LLC &middot; Louisville, KY &middot; ${COMPANY_PHONE}</td></tr>
-</table></td></tr></table></body></html>`;
+  return `<!doctype html><html><body style="margin:0;padding:0;background:#ffffff">
+<div style="max-width:560px;margin:0 auto;padding:24px 20px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.6;color:#1f2937">
+${bodyHtml}
+<p style="margin:26px 0 0;color:#1f2937">Thanks,<br>The Mcships team<br><span style="color:#6b7280">MC Transportation LLC &middot; ${COMPANY_PHONE} &middot; sales@mcships.com</span></p>
+</div></body></html>`;
+}
+// A plain link, not a button: buttons are a strong "marketing" signal to Gmail
+function emailLink(url, label) {
+  return `<p style="margin:18px 0"><a href="${escHtml(url)}" style="color:#1d4ed8">${escHtml(label)}</a><br><span style="font-size:12px;color:#6b7280;word-break:break-all">${escHtml(url)}</span></p>`;
 }
 
 function orderSummaryRows(order) {
@@ -1533,11 +1535,9 @@ function orderSummaryRows(order) {
   ];
 }
 function summaryTableHtml(order) {
-  return `<table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e5e7eb;border-radius:8px;margin:18px 0">` +
-    orderSummaryRows(order).map(([k, v]) =>
-      `<tr><td style="padding:8px 12px;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f3f4f6">${k}</td>` +
-      `<td style="padding:8px 12px;color:#111827;font-size:14px;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('') +
-    `</table>`;
+  return `<p style="margin:16px 0;padding-left:14px;border-left:3px solid #e5e7eb">` +
+    orderSummaryRows(order).map(([k, v]) => `<span style="color:#6b7280">${k}:</span> ${v}`).join('<br>') +
+    `</p>`;
 }
 function summaryText(order) {
   return orderSummaryRows(order).map(([k, v]) => `${k}: ${v.replace(/<[^>]+>/g, '').replace(/&middot;/g, '·').replace(/&amp;/g, '&')}`).join('\n');
@@ -1547,30 +1547,25 @@ function confirmationEmail(order, link) {
   const name = (order.contact || {}).fullName || 'there';
   const total = money(order.total);
   const html = emailShell(`
-    <h1 style="margin:0 0 12px;font-size:22px">Please confirm your vehicle pickup</h1>
     <p>Hi ${escHtml(name)},</p>
-    <p>Thanks for calling MC Transportation. Here is the transport we discussed. Please review the details, read the pickup agreement, and enter a card to authorize a hold of <strong>${total}</strong>. <strong>You will not be charged until your vehicle is picked up.</strong></p>
+    <p>Thanks for calling. Here is the transport we talked about. Please look it over, read the short pickup agreement, and enter a card to place a hold of <strong>${total}</strong>. Your card is not charged until the vehicle is picked up.</p>
     ${summaryTableHtml(order)}
-    <p style="text-align:center;margin:26px 0">
-      <a href="${escHtml(link)}" style="display:inline-block;background:#FF6A3D;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:8px">Review &amp; Confirm Pickup</a>
-    </p>
-    <p style="font-size:13px;color:#6b7280">Or copy this link into your browser:<br><a href="${escHtml(link)}" style="color:#2563eb;word-break:break-all">${escHtml(link)}</a></p>
-    <p style="font-size:13px;color:#6b7280">Questions? Reply to this email or call ${COMPANY_PHONE}.</p>`);
+    ${emailLink(link, 'Review and confirm your pickup')}
+    <p>If anything looks wrong, just reply to this email or call ${COMPANY_PHONE}.</p>`);
   const text = `Hi ${name},\n\nThanks for calling MC Transportation. Please review the transport below, read the pickup agreement, and authorize a card hold of ${total}. You will not be charged until your vehicle is picked up.\n\n${summaryText(order)}\n\nReview & confirm here:\n${link}\n\nQuestions? Call ${COMPANY_PHONE}.`;
-  return { subject: `Please confirm your vehicle pickup – order ${order.id}`, html, text };
+  return { subject: `Confirm your vehicle pickup (order ${order.id})`, html, text };
 }
 
 function receiptEmail(order, holdAmount) {
   const name = (order.contact || {}).fullName || 'there';
   const html = emailShell(`
-    <h1 style="margin:0 0 12px;font-size:22px">You're confirmed</h1>
     <p>Hi ${escHtml(name)},</p>
-    <p>Thank you — your pickup is confirmed. A temporary hold of <strong>${money(holdAmount)}</strong> has been placed on your card. <strong>You will only be charged once the vehicle is picked up.</strong></p>
+    <p>You're all set. A temporary hold of <strong>${money(holdAmount)}</strong> is on your card and nothing is charged until the vehicle is picked up. Your bank may show the hold as "pending" in the meantime.</p>
     ${summaryTableHtml(order)}
-    <p style="font-size:13px;color:#6b7280">Reminder: if the vehicle is not available when our carrier arrives, or the pickup is cancelled with less than 24 hours' notice, the no-show fee of ${money(orderFee(order))} applies as agreed.</p>
-    <p style="font-size:13px;color:#6b7280">Need to change anything? Call ${COMPANY_PHONE}.</p>`);
+    <p>One reminder from the agreement: if the vehicle isn't available when our carrier arrives, or the pickup is cancelled with less than 24 hours' notice, the no-show fee of ${money(orderFee(order))} applies.</p>
+    <p>Need to change anything? Reply here or call ${COMPANY_PHONE}.</p>`);
   const text = `Hi ${name},\n\nYour pickup is confirmed. A temporary hold of ${money(holdAmount)} has been placed on your card. You will only be charged once the vehicle is picked up.\n\n${summaryText(order)}\n\nQuestions? Call ${COMPANY_PHONE}.`;
-  return { subject: `Pickup confirmed – order ${order.id}`, html, text };
+  return { subject: `Pickup confirmed (order ${order.id})`, html, text };
 }
 
 // ---- Public: confirmation page ----
@@ -2572,20 +2567,17 @@ function quoteEmail(q, bookUrl) {
     ['Pickup', escHtml(q.pickup || '—')], ['Delivery', escHtml(q.delivery || '—')],
     ['Distance', `${Number(q.distance || 0).toLocaleString()} miles`], ['Transport', escHtml(q.transportType || 'open')]
   ];
-  const table = `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:18px 0">${rows.map(([k, val]) =>
-    `<tr><td style="padding:8px 10px;border-bottom:1px solid #eee;color:#666;width:120px">${k}</td><td style="padding:8px 10px;border-bottom:1px solid #eee">${val}</td></tr>`).join('')}</table>`;
-  const lines = (q.breakdown || []).map(l => `<tr><td style="padding:4px 10px;color:#666">${escHtml(l.label)}</td><td style="padding:4px 10px;text-align:right">${money(l.amount)}</td></tr>`).join('');
+  const table = `<p style="margin:16px 0;padding-left:14px;border-left:3px solid #e5e7eb">${rows.map(([k, val]) => `<span style="color:#6b7280">${k}:</span> ${val}`).join('<br>')}</p>`;
+  const lines = (q.breakdown || []).map(l => `<span style="color:#6b7280">${escHtml(l.label)}:</span> ${money(l.amount)}`).join('<br>');
   const html = emailShell(`
-    <h1 style="margin:0 0 12px;font-size:22px">Your quote: ${money(q.total)}</h1>
     <p>Hi ${escHtml(q.name || 'there')},</p>
-    <p>Thanks for checking prices with Mcships. Here is the quote for the transport you entered:</p>
+    <p>Thanks for checking prices with us. Here is your quote for the transport you entered:</p>
     ${table}
-    <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fafafa;border-radius:8px">${lines}
-      <tr><td style="padding:10px;font-weight:700">Total</td><td style="padding:10px;text-align:right;font-weight:700;font-size:18px">${money(q.total)}</td></tr></table>
-    <p style="text-align:center;margin:28px 0"><a href="${bookUrl}" style="background:#ff6a3d;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;display:inline-block">Book this transport</a></p>
-    <p style="font-size:13px;color:#666">The link opens checkout with everything already filled in — you only choose your dates and pay. This price is based on the details you entered and is valid for 7 days. Questions? Reply to this email or call ${COMPANY_PHONE}.</p>`);
+    <p style="margin:16px 0;padding-left:14px;border-left:3px solid #e5e7eb">${lines}<br><strong>Total: ${money(q.total)}</strong></p>
+    ${emailLink(bookUrl, 'Book this transport')}
+    <p>That link opens checkout with everything already filled in, so you only choose your dates and pay. The price is based on the details you entered and is good for 7 days. Questions? Reply to this email or call ${COMPANY_PHONE}.</p>`);
   const text = `Your Mcships quote: ${money(q.total)}\n\nVehicle: ${label}\nPickup: ${q.pickup}\nDelivery: ${q.delivery}\nDistance: ${q.distance} miles\nTransport: ${q.transportType}\n\nBook: ${bookUrl}\n\nValid for 7 days. Questions? Call ${COMPANY_PHONE}.`;
-  return { subject: `Your Mcships quote: ${money(q.total)}`, html, text };
+  return { subject: `Your vehicle shipping quote from Mcships`, html, text };
 }
 
 app.post('/api/quotes', publicLimiter, async (req, res) => {
