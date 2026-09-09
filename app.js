@@ -2622,11 +2622,25 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
 
     if (process.env.ADMIN_NOTIFY_EMAIL) {
       const vl = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.type;
+      const flags = [vehicle.condition === 'inoperable' ? 'inoperable' : '', vehicle.modified ? 'modified' : '', vehicle.urgent ? 'urgent' : ''].filter(Boolean).join(', ');
+      const alertRows = [
+        ['Customer', escHtml(name || '—')], ['Email', `<a href="mailto:${escHtml(email)}">${escHtml(email)}</a>`], ['Phone', phone ? `<a href="tel:${escHtml(phone)}">${escHtml(phone)}</a>` : '—'],
+        ['Vehicle', escHtml(vl) + (flags ? ' · ' + escHtml(flags) : '') + (vehicle.vin ? ' · VIN ' + escHtml(vehicle.vin) : '')],
+        ['Pickup', escHtml(pickup || '—')], ['Delivery', escHtml(delivery || '—')],
+        ['Distance', `${distance.toLocaleString()} miles`], ['Transport', escHtml(transportType)],
+        ['Quoted price', `<strong>${money(total)}</strong>`]
+      ];
+      const alertTable = `<table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e5e7eb;border-radius:8px;margin:18px 0">` +
+        alertRows.map(([k, v]) => `<tr><td style="padding:8px 12px;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f3f4f6">${k}</td><td style="padding:8px 12px;color:#111827;font-size:14px;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('') + `</table>`;
       sendMail({
         to: process.env.ADMIN_NOTIFY_EMAIL,
-        subject: `💬 New website quote ${money(total)} – ${name || email}`,
-        html: emailShell(`<p><strong>${escHtml(name || email)}</strong> got a quote of <strong>${money(total)}</strong> on the website.</p><p>${escHtml(email)}${phone ? ' · ' + escHtml(phone) : ''}<br>${escHtml(vl)} · ${escHtml(pickup || '?')} → ${escHtml(delivery || '?')} · ${distance} mi · ${transportType}</p><p>They have a "Book" link in their inbox. A quick call often closes it.</p>`),
-        text: `${name || email} got a quote of ${money(total)}: ${vl}, ${pickup} → ${delivery}, ${distance} mi, ${transportType}. ${email} ${phone || ''}`
+        subject: `New website quote ${money(total)} – ${name || email}`,
+        html: emailShell(`<h1 style="margin:0 0 12px;font-size:20px">New website quote</h1>
+          <p>Someone just priced a transport on mcships.com. They received the quote by email with a Book link.</p>
+          ${alertTable}
+          <p style="text-align:center;margin:26px 0"><a href="${appUrl(req)}/admin/leads" style="display:inline-block;background:#FF6A3D;color:#ffffff;text-decoration:none;font-weight:700;padding:12px 24px;border-radius:8px">Open Leads in admin</a></p>
+          <p style="font-size:13px;color:#6b7280">A quick call while they're still looking often closes it.</p>`),
+        text: `New website quote ${money(total)}\n\nCustomer: ${name || '—'}\nEmail: ${email}\nPhone: ${phone || '—'}\nVehicle: ${vl}${flags ? ' (' + flags + ')' : ''}\nPickup: ${pickup}\nDelivery: ${delivery}\nDistance: ${distance} mi\nTransport: ${transportType}\n\nLeads: ${appUrl(req)}/admin/leads`
       }).catch(e => console.error('quote notify mail:', e.message));
     }
     res.json({ success: true, quoteId: token, total, breakdown, bookUrl, emailSent: !!mail.sent });

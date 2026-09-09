@@ -1032,16 +1032,14 @@
       }
 
       if (step === 2) {
-        setTimeout(() => {
-          initGoogleAutocomplete();
-          distanceService = new google.maps.DistanceMatrixService();
-          document.getElementById('pickupAddr').value    = formData.location.pickup;
-          document.getElementById('deliveryAddr').value  = formData.location.delivery;
-          if (formData.distance) document.getElementById('distance').value = formData.distance;
-          document.getElementById('pickupDate').value    = formData.pickupDate;
-          document.getElementById('mustDeliverBy').value = formData.mustDeliverBy;
-          selectTransportStep(formData.transportType);
-        }, 100);
+        // Fill the fields first (works with or without Google Maps), then wire Maps up if it's ready
+        document.getElementById('pickupAddr').value    = formData.location.pickup;
+        document.getElementById('deliveryAddr').value  = formData.location.delivery;
+        if (formData.distance) document.getElementById('distance').value = formData.distance;
+        document.getElementById('pickupDate').value    = formData.pickupDate;
+        document.getElementById('mustDeliverBy').value = formData.mustDeliverBy;
+        selectTransportStep(formData.transportType);
+        setTimeout(wireMapsOnRouteStep, 50);
         calculateAndUpdateTotal();
       }
 
@@ -1344,6 +1342,17 @@
       }
     }
 
+    // Address suggestions + auto-mileage on the Route step, once Google Maps is loaded
+    function wireMapsOnRouteStep() {
+      if (typeof google === 'undefined' || !google.maps || !google.maps.places) return; // not loaded yet — onMapsReady will call us
+      if (!document.getElementById('pickupAddr')) return;                             // not on the Route step
+      try {
+        initGoogleAutocomplete();
+        distanceService = new google.maps.DistanceMatrixService();
+      } catch (e) { console.warn('maps init:', e); }
+    }
+    window.onMapsReady = function () { wireMapsOnRouteStep(); };
+
     // ==================== NAV ====================
     function nextStep() {
       if (validateCurrentStep()) {
@@ -1395,7 +1404,7 @@
       else renderStep(0);
 
       const script  = document.createElement('script');
-      script.src    = 'https://maps.googleapis.com/maps/api/js?key=<%= googleMapsKey %>&libraries=places';
+      script.src    = 'https://maps.googleapis.com/maps/api/js?key=<%= googleMapsKey %>&libraries=places&callback=onMapsReady';
       script.async  = true;
       script.defer  = true;
       document.head.appendChild(script);
