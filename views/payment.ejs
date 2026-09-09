@@ -719,6 +719,13 @@
             </div>
             <div id="photoPreview-${i}" class="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
           </div>
+
+          <!-- Notes -->
+          <div>
+            <label class="label-dark">Notes about this vehicle <span class="text-muted font-normal">(optional)</span></label>
+            <textarea id="vehicleNotes-${i}" class="input-dark" rows="3" maxlength="1000"
+                      placeholder="Existing damage, missing parts, oversized tires, gate codes, anything the driver should know…">${v.damages || ''}</textarea>
+          </div>
         </div>`;
     }
 
@@ -763,6 +770,7 @@
         urgent:       document.getElementById('urgentCheck-'   + i)?.checked || false,
         runsAndDrives: document.getElementById('runsAndDrives-'+ i)?.value !== 'no',
         hasKeys:       document.getElementById('hasKeys-'      + i)?.value !== 'no',
+        damages:       document.getElementById('vehicleNotes-' + i)?.value.trim() || '',
       };
     }
 

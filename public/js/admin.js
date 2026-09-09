@@ -1232,10 +1232,6 @@ function wizVehicleHTML(i, v) {
         </label>
       </div>
 
-      <div>
-        <label class="label-dark">Damages / Condition Notes</label>
-        <textarea id="wv-damages-${i}" class="input-dark" placeholder="Dents, scratches, missing parts, leaks, flat tires, broken glass…">${esc(v.damages)}</textarea>
-      </div>
 
       <div>
         <label class="label-dark">Vehicle Photos <span class="text-muted font-normal">(optional, up to 8)</span></label>
@@ -1247,6 +1243,10 @@ function wizVehicleHTML(i, v) {
           </label>
         </div>
         <div id="wv-photoPreview-${i}" class="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-3"></div>
+      </div>
+      <div>
+        <label class="label-dark">Notes about this vehicle <span class="text-muted font-normal">(damage, missing parts, special instructions)</span></label>
+        <textarea id="wv-damages-${i}" class="input-dark" maxlength="1000" placeholder="Dents, scratches, missing parts, leaks, flat tires, gate codes, anything the driver should know…">${esc(v.damages)}</textarea>
       </div>
     </div>`;
 }
