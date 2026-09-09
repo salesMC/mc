@@ -485,7 +485,7 @@ async function sendAndAuthorize(id, fee) {
   const expectedQ = quote(cfgQ, [{ type: 'pickup', condition: 'operable' }], 300);
   check('quote priced on the server and saved', r.status === 200 && r.data.success && r.data.total === expectedQ && /^[a-f0-9]{48}$/.test(r.data.quoteId) && Array.isArray(r.data.breakdown) && r.data.breakdown.length >= 2, r.data && { t: r.data.total, e: expectedQ });
   const qMail = lastMailTo('quote-test@example.test');
-  check('quote emailed to the customer with a Book link', !!qMail && qMail.subject.includes('quote from Mcships') && qMail.text.includes('/payment?quote=' + r.data.quoteId), qMail && qMail.subject);
+  check('quote emailed to the customer with a Book link', !!qMail && qMail.subject.includes('Your Mcships quote') && qMail.text.includes('/payment?quote=' + r.data.quoteId), qMail && qMail.subject);
   check('team notified of the new quote', !!lastMailTo('admin@mcships.test') && /New website quote/.test(lastMailTo('admin@mcships.test').subject));
   const qTok = r.data.quoteId;
   r = await api('GET', '/api/quotes/' + qTok, null, { auth: false });
