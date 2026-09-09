@@ -51,15 +51,80 @@ async function sendViaResend({ from, to, subject, html, text }) {
   } finally { clearTimeout(timer); }
 }
 
+// ---- Gmail API sending (customer email leaves from a real Gmail account → Primary tab) ----
+// Connected once from /admin/email; the refresh token lives in the settings table.
+// Needs GMAIL_CLIENT_ID + GMAIL_CLIENT_SECRET (Google Cloud OAuth client, Web application).
+const GMAIL_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
+let gmailCache = { checkedAt: 0, conn: null, accessToken: null, accessExp: 0 };
+function gmailConfigured() { return !!(process.env.GMAIL_CLIENT_ID && process.env.GMAIL_CLIENT_SECRET); }
+async function gmailConnection(force = false) {
+  if (!force && Date.now() - gmailCache.checkedAt < 60000) return gmailCache.conn;
+  try {
+    const [rows] = await pool.execute("SELECT value FROM settings WHERE name = 'gmail_oauth'");
+    gmailCache.conn = rows.length ? safeJson(rows[0].value) : null;
+  } catch (e) { gmailCache.conn = null; }
+  gmailCache.checkedAt = Date.now();
+  return gmailCache.conn;
+}
+async function gmailAccessToken() {
+  const conn = await gmailConnection();
+  if (!conn || !conn.refreshToken || !gmailConfigured()) return null;
+  if (gmailCache.accessToken && Date.now() < gmailCache.accessExp - 60000) return gmailCache.accessToken;
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ client_id: process.env.GMAIL_CLIENT_ID, client_secret: process.env.GMAIL_CLIENT_SECRET, refresh_token: conn.refreshToken, grant_type: 'refresh_token' })
+  });
+  const j = await r.json();
+  if (!r.ok || !j.access_token) throw new Error('Gmail token refresh failed: ' + (j.error_description || j.error || r.status));
+  gmailCache.accessToken = j.access_token; gmailCache.accessExp = Date.now() + (j.expires_in || 3600) * 1000;
+  return j.access_token;
+}
+// RFC 2822 message with text + HTML parts, base64url-encoded the way Gmail wants it
+function buildMimeMessage({ from, to, replyTo, subject, html, text }) {
+  const boundary = 'mc_' + crypto.randomBytes(8).toString('hex');
+  const encSubject = '=?UTF-8?B?' + Buffer.from(String(subject), 'utf8').toString('base64') + '?=';
+  const lines = [
+    `From: ${from}`, `To: ${Array.isArray(to) ? to.join(', ') : to}`,
+    replyTo ? `Reply-To: ${replyTo}` : null, `Subject: ${encSubject}`,
+    'MIME-Version: 1.0', `Content-Type: multipart/alternative; boundary="${boundary}"`, '',
+    `--${boundary}`, 'Content-Type: text/plain; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '',
+    Buffer.from(String(text || html.replace(/<[^>]+>/g, ' ')), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n'), '',
+    `--${boundary}`, 'Content-Type: text/html; charset="UTF-8"', 'Content-Transfer-Encoding: base64', '',
+    Buffer.from(String(html), 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n'), '',
+    `--${boundary}--`
+  ].filter(l => l !== null);
+  return Buffer.from(lines.join('\r\n'), 'utf8').toString('base64url');
+}
+async function sendViaGmail({ from, to, subject, html, text }) {
+  const token = await gmailAccessToken();
+  if (!token) throw new Error('Gmail is not connected');
+  const r = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+    method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ raw: buildMimeMessage({ from, to, replyTo: 'sales@mcships.com', subject, html, text }) })
+  });
+  if (!r.ok) {
+    let msg = `Gmail HTTP ${r.status}`;
+    try { const j = await r.json(); if (j.error && j.error.message) msg = j.error.message; } catch {}
+    throw new Error(msg);
+  }
+}
+
+// Customer-facing mail: Gmail when connected (falls back to Resend/SMTP on error).
+// Internal alerts (to ADMIN_NOTIFY_EMAIL) always use Resend/SMTP so the Gmail quota is kept for customers.
 async function sendMail({ to, subject, html, text }) {
+  const from = process.env.MAIL_FROM || process.env.SMTP_USER || 'sales@mcships.com';
+  const internal = process.env.ADMIN_NOTIFY_EMAIL && String(to).toLowerCase() === process.env.ADMIN_NOTIFY_EMAIL.toLowerCase();
+  if (!internal && (await gmailConnection())) {
+    try { await sendViaGmail({ from, to, subject, html, text }); return { sent: true, via: 'gmail' }; }
+    catch (e) { console.error('Gmail send failed, falling back:', e.message); }
+  }
   if (!mailer && !useResendApi) {
     console.log(`📧 [mail not configured] would send "${subject}" to ${to}`);
     return { sent: false, reason: 'Email is not set up yet (add SMTP_HOST, SMTP_USER, SMTP_PASS to .env)' };
   }
-  const from = process.env.MAIL_FROM || process.env.SMTP_USER;
   if (useResendApi) await sendViaResend({ from, to, subject, html, text });
   else await mailer.sendMail({ from, to, subject, html, text });
-  return { sent: true };
+  return { sent: true, via: useResendApi ? 'resend' : 'smtp' };
 }
 
 // Public base URL for links in emails (APP_URL in .env, else the request host)
@@ -1122,6 +1187,61 @@ app.get('/admin/promo-codes', requireAdminPage, (req, res) => res.render('admin/
 app.get('/admin/calculator',  requireAdminPage, (req, res) => res.render('admin/calculator'));
 app.get('/admin/payments',    requireAdminPage, (req, res) => res.render('admin/payments'));
 app.get('/admin/leads',       requireAdminPage, (req, res) => res.render('admin/leads'));
+app.get('/admin/email',       requireAdminPage, (req, res) => res.render('admin/email'));
+
+// ---- Gmail connection (admin) ----
+const gmailRedirect = (req) => `${appUrl(req)}/admin/gmail/callback`;
+app.get('/admin/gmail/connect', requireAdminPage, (req, res) => {
+  if (!gmailConfigured()) return res.status(400).send('Add GMAIL_CLIENT_ID and GMAIL_CLIENT_SECRET first.');
+  const state = crypto.randomBytes(16).toString('hex');
+  res.setHeader('Set-Cookie', `mc_gmail_state=${state}; Path=/admin/gmail; HttpOnly; SameSite=Lax; Max-Age=600${req.secure ? '; Secure' : ''}`);
+  const url = 'https://accounts.google.com/o/oauth2/v2/auth?' + new URLSearchParams({
+    client_id: process.env.GMAIL_CLIENT_ID, redirect_uri: gmailRedirect(req), response_type: 'code',
+    scope: GMAIL_SCOPE + ' https://www.googleapis.com/auth/userinfo.email', access_type: 'offline', prompt: 'consent', state
+  });
+  res.redirect(url);
+});
+app.get('/admin/gmail/callback', requireAdminPage, async (req, res) => {
+  try {
+    const cookieState = ((req.headers.cookie || '').match(/mc_gmail_state=([a-f0-9]+)/) || [])[1];
+    if (!req.query.code || !req.query.state || req.query.state !== cookieState) return res.status(400).send('Sign-in did not complete. Go back and try Connect again.');
+    const r = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code: String(req.query.code), client_id: process.env.GMAIL_CLIENT_ID, client_secret: process.env.GMAIL_CLIENT_SECRET, redirect_uri: gmailRedirect(req), grant_type: 'authorization_code' })
+    });
+    const j = await r.json();
+    if (!r.ok || !j.refresh_token) return res.status(400).send('Google did not return a refresh token: ' + (j.error_description || j.error || 'unknown') + '. Remove mcships from your Google account permissions and connect again.');
+    let email = null;
+    try { const u = await (await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: 'Bearer ' + j.access_token } })).json(); email = u.email || null; } catch {}
+    await pool.execute("INSERT INTO settings (name, value) VALUES ('gmail_oauth', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)",
+      [JSON.stringify({ refreshToken: j.refresh_token, email, connectedAt: new Date().toISOString(), by: req.session.email })]);
+    gmailCache = { checkedAt: 0, conn: null, accessToken: null, accessExp: 0 };
+    res.redirect('/admin/email?connected=1');
+  } catch (err) {
+    console.error('gmail callback:', err);
+    res.status(500).send('Could not finish connecting Gmail: ' + err.message);
+  }
+});
+app.get('/api/email/status', requireAdmin, async (req, res) => {
+  const conn = await gmailConnection(true);
+  res.json({
+    gmailConfigured: gmailConfigured(), gmailConnected: !!(conn && conn.refreshToken), gmailEmail: conn ? conn.email : null, gmailConnectedAt: conn ? conn.connectedAt : null,
+    fallback: useResendApi ? 'Resend' : (mailer ? 'SMTP' : 'none'), from: process.env.MAIL_FROM || process.env.SMTP_USER || '', redirectUri: gmailRedirect(req)
+  });
+});
+app.post('/api/email/disconnect', requireAdmin, async (req, res) => {
+  await pool.execute("DELETE FROM settings WHERE name = 'gmail_oauth'");
+  gmailCache = { checkedAt: 0, conn: null, accessToken: null, accessExp: 0 };
+  res.json({ success: true });
+});
+app.post('/api/email/test', requireAdmin, async (req, res) => {
+  const to = str(req.body.to, 254).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return res.status(400).json({ success: false, message: 'Enter a valid email' });
+  try {
+    const r = await sendMail({ to, subject: 'Test email from mcships.com', html: emailShell('<p>This is a test email from the mcships.com admin. If you can read this, sending works.</p>'), text: 'This is a test email from the mcships.com admin. If you can read this, sending works.' });
+    res.json({ success: !!r.sent, via: r.via || null, message: r.sent ? `Sent via ${r.via}` : r.reason });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
 // Printable record of the customer's signed pickup agreement (proof for disputes)
 app.get('/admin/orders/:id/agreement', requireAdminPage, async (req, res) => {
   try {

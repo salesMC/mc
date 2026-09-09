@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include("_head", { title: "Email" }) %>
+</head>
+<body data-page="email">
+  <%- include("_nav", { page: "email" }) %>
+  <main class="relative max-w-3xl mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10">
+    <div class="tile">
+      <h2 class="text-3xl font-bold text-white flex items-center gap-3 mb-2"><i class="fas fa-envelope"></i> Email sending</h2>
+      <p class="text-dim text-sm mb-8">How the site sends quotes, confirmations and receipts to customers.</p>
+
+      <div id="emailStatus" class="space-y-6">
+        <p class="text-muted text-sm"><i class="fas fa-circle-notch fa-spin mr-1"></i> Checking…</p>
+      </div>
+
+      <div class="mt-10 pt-8 border-t border-[var(--line)]">
+        <h3 class="font-semibold text-white mb-2">Send a test email</h3>
+        <p class="text-dim text-sm mb-3">Use an address that has never received mail from mcships.com to see which Gmail tab it lands in.</p>
+        <div class="flex flex-wrap gap-2">
+          <input id="testEmailTo" type="email" placeholder="someone@gmail.com" class="input-admin flex-1 min-w-[240px]">
+          <button onclick="sendTestEmail()" class="btn btn-primary px-5"><i class="fas fa-paper-plane"></i> Send test</button>
+        </div>
+        <p id="testEmailMsg" class="hidden text-sm mt-3"></p>
+      </div>
+    </div>
+  </main>
+  <%- include("_modals") %>
+  <%- include("_foot") %>
+</body>
+</html>

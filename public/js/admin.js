@@ -45,6 +45,7 @@ async function initAdminPage() {
   if (page === 'payments')    loadPayments();
   if (page === 'promo-codes') loadPromoCodes();
   if (page === 'leads')       loadLeads();
+  if (page === 'email')       loadEmailStatus();
   if (page === 'customers') {
     loadCustomers();
     if (open) showCustomerDetail(Number(open)); // /admin/customers?open=<id>
@@ -2041,4 +2042,65 @@ async function deleteLead(id) {
   if (!confirm('Delete this lead?')) return;
   const r = await fetch('/api/leads/' + id, { method: 'DELETE' });
   if (r.ok) loadLeads(); else panelMsg('Could not delete the lead', false);
+}
+
+
+// ==================== EMAIL SENDING PAGE ====================
+async function loadEmailStatus() {
+  const box = document.getElementById('emailStatus'); if (!box) return;
+  try {
+    const st = await (await fetch('/api/email/status')).json();
+    const justConnected = new URLSearchParams(location.search).get('connected') === '1';
+    let gmailCard;
+    if (st.gmailConnected) {
+      gmailCard = `
+      <div class="p-5 rounded-xl" style="background: rgba(190,242,100,0.06); border: 1px solid rgba(190,242,100,0.35);">
+        <div class="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <div class="font-semibold text-white"><i class="fas fa-circle-check text-lime-400 mr-1"></i> Gmail connected</div>
+            <div class="text-sm text-dim mt-1">Customer emails are sent through <strong class="text-white">${esc(st.gmailEmail || 'Gmail')}</strong> and show up in that account's Sent folder. Sender shown to customers: <strong class="text-white">${esc(st.from)}</strong>.</div>
+            <div class="text-xs text-muted mt-2">Connected ${st.gmailConnectedAt ? new Date(st.gmailConnectedAt).toLocaleString() : ''} · Google allows about 500 emails a day from a Gmail account.</div>
+          </div>
+          <button onclick="disconnectGmail()" class="pay-action pay-action-danger" style="margin-left:0"><i class="fas fa-link-slash"></i> Disconnect</button>
+        </div>
+      </div>`;
+    } else if (st.gmailConfigured) {
+      gmailCard = `
+      <div class="p-5 rounded-xl" style="background: rgba(255,106,61,0.06); border: 1px solid rgba(255,106,61,0.35);">
+        <div class="font-semibold text-white"><i class="fas fa-envelope text-[var(--orange)] mr-1"></i> Gmail not connected yet</div>
+        <div class="text-sm text-dim mt-1 mb-4">Connect the mcships1988@gmail.com account once. Google asks you to sign in and allow "Send email on your behalf". On the "Google hasn't verified this app" screen click <em>Advanced</em>, then <em>Go to mcships</em>.</div>
+        <a href="/admin/gmail/connect" class="btn btn-primary px-5 py-3"><i class="fab fa-google"></i> Connect Gmail</a>
+      </div>`;
+    } else {
+      gmailCard = `
+      <div class="p-5 rounded-xl" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <div class="font-semibold text-white"><i class="fas fa-triangle-exclamation text-amber-400 mr-1"></i> Gmail sending is not set up</div>
+        <div class="text-sm text-dim mt-1">Add <code class="text-white">GMAIL_CLIENT_ID</code> and <code class="text-white">GMAIL_CLIENT_SECRET</code> in Railway (from a Google Cloud OAuth client, redirect URI <code class="text-white">${esc(st.redirectUri)}</code>), then reload this page.</div>
+      </div>`;
+    }
+    box.innerHTML = `
+      ${justConnected ? '<p class="text-lime-400 text-sm"><i class="fas fa-check mr-1"></i> Gmail connected. Send a test below.</p>' : ''}
+      ${gmailCard}
+      <div class="p-5 rounded-xl" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <div class="font-semibold text-white"><i class="fas fa-shield-halved text-cyan-400 mr-1"></i> Fallback: ${esc(st.fallback)}</div>
+        <div class="text-sm text-dim mt-1">Used for internal alerts to you, and for customer emails if Gmail is not connected or fails.</div>
+      </div>`;
+  } catch (e) { box.innerHTML = '<p class="text-red-400 text-sm">Could not load email status.</p>'; }
+}
+async function disconnectGmail() {
+  if (!confirm('Disconnect Gmail? Customer emails will go through the fallback until you connect again.')) return;
+  await fetch('/api/email/disconnect', { method: 'POST' });
+  history.replaceState(null, '', '/admin/email');
+  loadEmailStatus();
+}
+async function sendTestEmail() {
+  const to = document.getElementById('testEmailTo').value.trim();
+  const msg = document.getElementById('testEmailMsg');
+  msg.className = 'text-sm mt-3 text-muted'; msg.textContent = 'Sending…';
+  try {
+    const r = await fetch('/api/email/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
+    const d = await r.json();
+    msg.className = 'text-sm mt-3 ' + (d.success ? 'text-lime-400' : 'text-red-400');
+    msg.textContent = d.success ? 'Sent via ' + d.via + '. Check which tab it landed in.' : (d.message || 'Failed');
+  } catch (e) { msg.className = 'text-sm mt-3 text-red-400'; msg.textContent = 'Connection error'; }
 }
