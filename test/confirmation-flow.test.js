@@ -20,6 +20,7 @@ process.env.ADMIN_NOTIFY_EMAIL = 'admin@mcships.test';
 process.env.APP_URL = 'https://mcships.test';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
+process.env.MAIL_DISABLE_GMAIL = '1';               // never send real mail through the connected Gmail during tests
 
 // ---------- Fake Stripe ----------
 const S = { n: 0, customers: [], intents: {}, detached: [], failNextOffSession: false };

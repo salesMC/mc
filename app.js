@@ -114,7 +114,7 @@ async function sendViaGmail({ from, to, subject, html, text }) {
 async function sendMail({ to, subject, html, text }) {
   const from = process.env.MAIL_FROM || process.env.SMTP_USER || 'sales@mcships.com';
   const internal = process.env.ADMIN_NOTIFY_EMAIL && String(to).toLowerCase() === process.env.ADMIN_NOTIFY_EMAIL.toLowerCase();
-  if (!internal && (await gmailConnection())) {
+  if (!internal && process.env.MAIL_DISABLE_GMAIL !== '1' && (await gmailConnection())) {
     try { await sendViaGmail({ from, to, subject, html, text }); return { sent: true, via: 'gmail' }; }
     catch (e) { console.error('Gmail send failed, falling back:', e.message); }
   }
@@ -1188,6 +1188,7 @@ app.get('/admin/calculator',  requireAdminPage, (req, res) => res.render('admin/
 app.get('/admin/payments',    requireAdminPage, (req, res) => res.render('admin/payments'));
 app.get('/admin/leads',       requireAdminPage, (req, res) => res.render('admin/leads'));
 app.get('/admin/email',       requireAdminPage, (req, res) => res.render('admin/email'));
+app.get('/admin/search',      requireAdminPage, (req, res) => res.render('admin/search', { searchQuery: str(req.query.q, 100) }));
 
 // ---- Gmail connection (admin) ----
 const gmailRedirect = (req) => `${appUrl(req)}/admin/gmail/callback`;
@@ -1308,25 +1309,34 @@ app.get('/api/orders', requireAdmin, async (req, res) => {
 });
 
 // Global admin search box: a few best matches from orders and customers
+// ?full=1 → up to 50 of each plus leads (results page); otherwise the top 6 for the dropdown
 app.get('/api/search', requireAdmin, async (req, res) => {
   const q = str(req.query.q, 100);
-  if (!q) return res.json({ orders: [], customers: [] });
+  if (!q) return res.json({ orders: [], customers: [], leads: [] });
+  const full = req.query.full === '1';
+  const lim = full ? 50 : 6;
   try {
     const { where, params } = orderSearchWhere(q, '');
-    const [orders] = await pool.execute(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT 6`, params);
+    const [orders] = await pool.execute(`SELECT * FROM orders ${where} ORDER BY created_at DESC LIMIT ${lim}`, params);
     const like = `%${q}%`;
     const [customers] = await pool.execute(
       `SELECT c.*, COUNT(o.id) AS order_count, COALESCE(SUM(o.total),0) AS total_spent, MAX(o.created_at) AS last_order_at
          FROM customers c LEFT JOIN orders o ON o.customer_id = c.id
         WHERE c.name LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.company LIKE ?
-        GROUP BY c.id ORDER BY last_order_at DESC LIMIT 6`, [like, like, like, like]);
+        GROUP BY c.id ORDER BY last_order_at DESC LIMIT ${lim}`, [like, like, like, like]);
+    let leads = [];
+    if (full) {
+      const [ls] = await pool.execute('SELECT * FROM leads WHERE email LIKE ? OR source LIKE ? ORDER BY created_at DESC LIMIT 50', [like, like]);
+      leads = ls.map(l => ({ id: l.id, email: l.email, source: l.source, createdAt: l.created_at }));
+    }
     res.json({
-      orders: orders.map(r => { const o = mapOrderRow(r); return { id: o.id, customer: (o.contact || {}).fullName || '', email: (o.contact || {}).email || '', vehicle: o.vehicle ? [o.vehicle.year, o.vehicle.make, o.vehicle.model].filter(Boolean).join(' ') : '', total: o.total, status: o.status, paymentState: o.paymentState, createdAt: o.createdAt }; }),
-      customers: customers.map(mapCustomerRow)
+      orders: orders.map(r => { const o = mapOrderRow(r); const loc = o.location || {}; return { id: o.id, customer: (o.contact || {}).fullName || '', email: (o.contact || {}).email || '', phone: (o.contact || {}).phone || '', vehicle: o.vehicle ? [o.vehicle.year, o.vehicle.make, o.vehicle.model].filter(Boolean).join(' ') : '', vin: o.vehicle && o.vehicle.vin || '', pickup: loc.pickup || '', delivery: loc.delivery || '', total: o.total, status: o.status, paymentState: o.paymentState, source: o.source, createdAt: o.createdAt }; }),
+      customers: customers.map(mapCustomerRow),
+      leads
     });
   } catch (err) {
     console.error('GET /api/search:', err);
-    res.json({ orders: [], customers: [] });
+    res.json({ orders: [], customers: [], leads: [] });
   }
 });
 

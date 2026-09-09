@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include("_head", { title: "Search" }) %>
+</head>
+<body data-page="search" data-query="<%= searchQuery %>">
+  <%- include("_nav", { page: "search", searchQuery: searchQuery }) %>
+  <main class="relative max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-8 md:py-10">
+    <div class="tile">
+      <h2 class="text-2xl md:text-3xl font-bold text-white flex items-center gap-3 mb-1"><i class="fas fa-magnifying-glass"></i> Results for “<span id="searchTerm" class="text-[var(--orange)]"><%= searchQuery %></span>”</h2>
+      <p id="searchSummary" class="text-dim text-sm mb-8">Searching…</p>
+      <div id="searchResults" class="space-y-10"></div>
+    </div>
+  </main>
+  <%- include("_modals") %>
+  <%- include("_foot") %>
+</body>
+</html>

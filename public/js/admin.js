@@ -46,6 +46,7 @@ async function initAdminPage() {
   if (page === 'promo-codes') loadPromoCodes();
   if (page === 'leads')       loadLeads();
   if (page === 'email')       loadEmailStatus();
+  if (page === 'search')      loadSearchResults();
   if (page === 'customers') {
     loadCustomers();
     if (open) showCustomerDetail(Number(open)); // /admin/customers?open=<id>
@@ -149,7 +150,9 @@ function globalSearchKey(e) {
     items[gsActive]?.scrollIntoView({ block: 'nearest' });
   } else if (e.key === 'Enter') {
     e.preventDefault();
-    globalSearchOpen(gsActive >= 0 ? gsActive : 0);
+    if (gsActive >= 0) return globalSearchOpen(gsActive);
+    const q = document.getElementById('globalSearch').value.trim();
+    if (q) location.href = '/admin/search?q=' + encodeURIComponent(q);   // full results page
   }
 }
 function globalSearchClose() { const box = document.getElementById('globalSearchResults'); if (box) box.classList.add('hidden'); }
@@ -2103,4 +2106,50 @@ async function sendTestEmail() {
     msg.className = 'text-sm mt-3 ' + (d.success ? 'text-lime-400' : 'text-red-400');
     msg.textContent = d.success ? 'Sent via ' + d.via + '. Check which tab it landed in.' : (d.message || 'Failed');
   } catch (e) { msg.className = 'text-sm mt-3 text-red-400'; msg.textContent = 'Connection error'; }
+}
+
+
+// ==================== SEARCH RESULTS PAGE ====================
+async function loadSearchResults() {
+  const q = document.body.dataset.query || '';
+  const box = document.getElementById('searchResults'), sum = document.getElementById('searchSummary');
+  if (!box) return;
+  if (!q) { sum.textContent = 'Type something in the search bar above.'; return; }
+  try {
+    const d = await (await fetch('/api/search?full=1&q=' + encodeURIComponent(q))).json();
+    const n = d.orders.length + d.customers.length + d.leads.length;
+    sum.textContent = n ? `${d.orders.length} order${d.orders.length === 1 ? '' : 's'}, ${d.customers.length} customer${d.customers.length === 1 ? '' : 's'}, ${d.leads.length} lead${d.leads.length === 1 ? '' : 's'}. Click any row to open it here.` : 'Nothing matched. Try part of a name, the order number, a phone number or a VIN.';
+    const statusCls = { 'New': 'bg-blue-500/10 text-blue-400', 'In Work': 'bg-amber-500/10 text-amber-400', 'Done': 'bg-lime-500/10 text-lime-400', 'Canceled': 'bg-red-500/10 text-red-400' };
+    let html = '';
+    if (d.orders.length) html += `
+      <section>
+        <h3 class="text-lg font-semibold text-white mb-3"><i class="fas fa-clipboard-list text-[var(--orange)] mr-2"></i>Orders <span class="text-muted text-sm font-normal">(${d.orders.length}${d.orders.length === 50 ? '+, narrow the search to see more' : ''})</span></h3>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Order</th><th>Customer</th><th class="col-hide-mobile">Vehicle</th><th class="col-hide-mobile">Route</th><th class="text-right">Total</th><th>Status</th><th>Payment</th></tr></thead>
+        <tbody class="text-dim">${d.orders.map(o => `<tr class="cursor-pointer" onclick="showOrderDetail('${esc(o.id)}')">
+          <td><div class="font-mono text-orange-400 font-semibold">${esc(o.id)}</div><div class="text-[11px] text-muted mt-0.5">${o.createdAt ? new Date(o.createdAt).toLocaleDateString() : ''} · ${o.source === 'admin' ? 'Phone' : 'Website'}</div></td>
+          <td><div class="font-medium text-white">${esc(o.customer || '—')}</div><div class="text-[11px] text-muted mt-0.5">${esc(o.email || o.phone || '')}</div></td>
+          <td class="col-hide-mobile">${esc(o.vehicle || '—')}${o.vin ? `<div class="text-[11px] text-muted font-mono">${esc(o.vin)}</div>` : ''}</td>
+          <td class="col-hide-mobile text-xs">${esc((o.pickup || '').split(',')[0])} → ${esc((o.delivery || '').split(',')[0])}</td>
+          <td class="text-right text-white font-semibold whitespace-nowrap">${money(o.total)}</td>
+          <td><span class="status-badge ${statusCls[o.status] || statusCls['New']}">${esc(o.status || 'New')}</span></td>
+          <td>${payStatePill(o.paymentState, o)}</td></tr>`).join('')}</tbody></table></div>
+      </section>`;
+    if (d.customers.length) html += `
+      <section>
+        <h3 class="text-lg font-semibold text-white mb-3"><i class="fas fa-users text-[var(--orange)] mr-2"></i>Customers <span class="text-muted text-sm font-normal">(${d.customers.length})</span></h3>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Customer</th><th class="col-hide-mobile">Contact</th><th>Type</th><th class="text-center">Orders</th><th class="text-right">Total</th><th class="col-hide-mobile">Last order</th></tr></thead>
+        <tbody class="text-dim">${d.customers.map(c => `<tr class="cursor-pointer" onclick="showCustomerDetail(${c.id})">
+          <td class="font-medium text-white">${esc(c.name)}${c.company ? `<div class="text-xs text-muted font-normal">${esc(c.company)}</div>` : ''}</td>
+          <td class="col-hide-mobile text-sm">${esc(c.email || '—')}${c.phone ? `<div class="text-xs text-muted">${esc(c.phone)}</div>` : ''}</td>
+          <td>${typeBadge(c.type)}</td><td class="text-center">${c.orderCount}</td>
+          <td class="text-right text-white font-semibold">${money(c.totalSpent)}</td><td class="col-hide-mobile text-xs">${fmtDate(c.lastOrderAt)}</td></tr>`).join('')}</tbody></table></div>
+      </section>`;
+    if (d.leads.length) html += `
+      <section>
+        <h3 class="text-lg font-semibold text-white mb-3"><i class="fas fa-envelope-open-text text-[var(--orange)] mr-2"></i>Leads <span class="text-muted text-sm font-normal">(${d.leads.length})</span></h3>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Email</th><th>Where from</th><th>Date</th></tr></thead>
+        <tbody class="text-dim">${d.leads.map(l => `<tr><td><a href="mailto:${esc(l.email)}" class="text-white hover:text-cyan-400">${esc(l.email)}</a></td><td>${esc(l.source || 'website')}</td><td class="text-xs">${l.createdAt ? new Date(l.createdAt).toLocaleString() : ''}</td></tr>`).join('')}</tbody></table></div>
+      </section>`;
+    box.innerHTML = html;
+  } catch (e) { sum.textContent = 'Search failed. Try again.'; console.error(e); }
 }
