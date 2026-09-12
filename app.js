@@ -2671,7 +2671,7 @@ app.get('/api/dashboard', requireAdmin, async (req, res) => {
       counts: { pickups: pickups.length, holdsExpiring: holdsExpiring.length, awaitingCard: awaitingCard.length, inTransit: inTransit.length, unbookedQuotes: quotes.length, newOrders7, leads7: leads7.n },
       money: { holding, charged7, refunded7 },
       pickups: pickups.slice(0, 15).map(brief), holdsExpiring: holdsExpiring.map(brief), awaitingCard: awaitingCard.slice(0, 15).map(brief), inTransit: inTransit.slice(0, 15).map(brief),
-      quotes: quotes.map(q => { const v = safeJson(q.vehicle_json) || {}; return { token: q.token, email: q.email, name: q.name, phone: q.phone, vehicle: [v.year, v.make, v.model].filter(Boolean).join(' ') || v.type, pickup: q.pickup, delivery: q.delivery, distance: q.distance, total: Number(q.total), createdAt: q.created_at, followups: (q.followup1_at ? 1 : 0) + (q.followup2_at ? 1 : 0) }; }),
+      quotes: quotes.map(q => { return { token: q.token, email: q.email, name: q.name, phone: q.phone, vehicle: quoteVehiclesLabel(quoteVehicles(q.vehicle_json)), pickup: q.pickup, delivery: q.delivery, distance: q.distance, total: Number(q.total), createdAt: q.created_at, followups: (q.followup1_at ? 1 : 0) + (q.followup2_at ? 1 : 0) }; }),
       recent: all.slice(0, 8).map(brief)
     });
   } catch (err) { console.error('GET /api/dashboard:', err); res.status(500).json({ success: false }); }
@@ -2679,8 +2679,7 @@ app.get('/api/dashboard', requireAdmin, async (req, res) => {
 
 // ---- Quote follow-ups: day 2 "still thinking?", day 6 "expires tomorrow" (only unbooked quotes that were emailed) ----
 function followupEmail(q, bookUrl, second) {
-  const v = q.vehicle || {};
-  const label = [v.year, v.make, v.model].filter(Boolean).join(' ') || 'your vehicle';
+  const label = quoteVehiclesLabel(q.vehicles);
   const html = emailShell(second ? `
     <h1 style="margin:0 0 12px;font-size:22px">Your quote expires tomorrow</h1>
     <p>Hi ${escHtml(q.name || 'there')},</p>
@@ -2706,7 +2705,7 @@ async function sendQuoteFollowups() {
       AND created_at <= DATE_SUB(NOW(), INTERVAL 6 DAY) AND created_at >= DATE_SUB(NOW(), INTERVAL 8 DAY) LIMIT 50`);
     for (const [rows, second] of [[due1, false], [due2, true]]) {
       for (const r of rows) {
-        const q = { name: r.name, total: Number(r.total), pickup: r.pickup, delivery: r.delivery, vehicle: safeJson(r.vehicle_json) || {} };
+        const q = { name: r.name, total: Number(r.total), pickup: r.pickup, delivery: r.delivery, vehicles: quoteVehicles(r.vehicle_json) };
         const bookUrl = `${base}/payment?quote=${r.token}`;
         const m = await sendMail({ to: r.email, ...followupEmail(q, bookUrl, second) }).catch(e => ({ sent: false, reason: e.message }));
         await pool.execute(`UPDATE quotes SET ${second ? 'followup2_at' : 'followup1_at'} = NOW() WHERE token = ?`, [r.token]); // mark even on failure: never spam retries
@@ -3374,11 +3373,22 @@ app.get('/api/leads', requireAdmin, async (req, res) => {
 // The calculator asks for contact details BEFORE showing a price. This saves the
 // quote, prices it on the server, emails the customer a copy with a "Book" link,
 // records the lead, and tells the team.
+function quoteVehicles(json) { const v = safeJson(json); return Array.isArray(v) ? v : (v && typeof v === 'object' ? [v] : []); }
+function quoteVehicleLabel(v) { v = v || {}; return [v.year, v.make, v.model].filter(Boolean).join(' ') || (v.type ? v.type.replace('-', ' ') : 'vehicle'); }
+function quoteVehicleFlags(v) { return [v.condition === 'inoperable' ? 'inoperable' : '', v.modified ? 'modified' : '', v.urgent ? 'urgent' : ''].filter(Boolean).join(', '); }
+// "2021 Ford F-150" or "2 vehicles: 2021 Ford F-150, sedan"
+function quoteVehiclesLabel(list) {
+  list = (list || []).filter(Boolean);
+  if (!list.length) return 'your vehicle';
+  if (list.length === 1) return quoteVehicleLabel(list[0]);
+  return `${list.length} vehicles: ${list.map(quoteVehicleLabel).join(', ')}`;
+}
 function quoteEmail(q, bookUrl) {
-  const v = q.vehicle || {};
-  const label = [v.year, v.make, v.model].filter(Boolean).join(' ') || (v.type ? v.type.replace('-', ' ') : 'your vehicle');
+  const list = Array.isArray(q.vehicles) && q.vehicles.length ? q.vehicles : [q.vehicle || {}];
+  const label = quoteVehiclesLabel(list);
+  const vehicleCell = list.map(v => { const f = quoteVehicleFlags(v); return escHtml(quoteVehicleLabel(v)) + (f ? ' · ' + escHtml(f) : ''); }).join('<br>');
   const rows = [
-    ['Vehicle', `${escHtml(label)}${v.condition === 'inoperable' ? ' · inoperable' : ''}${v.modified ? ' · modified' : ''}${v.urgent ? ' · urgent' : ''}`],
+    [list.length > 1 ? `Vehicles (${list.length})` : 'Vehicle', vehicleCell],
     ['Pickup', escHtml(q.pickup || '—')], ['Delivery', escHtml(q.delivery || '—')],
     ['Distance', `${Number(q.distance || 0).toLocaleString()} miles`], ['Transport', escHtml(q.transportType || 'open')]
   ];
@@ -3389,10 +3399,10 @@ function quoteEmail(q, bookUrl) {
     <p>Hi ${escHtml(q.name || 'there')},</p>
     <p>Thanks for checking prices with Mcships. Here is the quote for the transport you entered:</p>
     ${table}
-    <p style="margin:18px 0;padding:14px 16px;background:#fafafa;border-radius:8px;font-size:15px">Total for this transport, all fees included: <strong style="font-size:20px">${money(q.total)}</strong></p>
+    <p style="margin:18px 0;padding:14px 16px;background:#fafafa;border-radius:8px;font-size:15px">Total for this transport${list.length > 1 ? ` (${list.length} vehicles, multi-vehicle discount included)` : ''}, all fees included: <strong style="font-size:20px">${money(q.total)}</strong></p>
     <p style="text-align:center;margin:28px 0"><a href="${bookUrl}" style="background:#ff6a3d;color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;display:inline-block">Book this transport</a></p>
     <p style="font-size:13px;color:#666">The link opens checkout with everything already filled in — you only choose your dates and pay. This price is based on the details you entered and is valid for 7 days. Questions? Reply to this email or call ${COMPANY_PHONE}.</p>`);
-  const text = `Your Mcships quote: ${money(q.total)}\n\nVehicle: ${label}\nPickup: ${q.pickup}\nDelivery: ${q.delivery}\nDistance: ${q.distance} miles\nTransport: ${q.transportType}\n\nBook: ${bookUrl}\n\nValid for 7 days. Questions? Call ${COMPANY_PHONE}.`;
+  const text = `Your Mcships quote: ${money(q.total)}\n\n${list.length > 1 ? 'Vehicles' : 'Vehicle'}: ${label}\nPickup: ${q.pickup}\nDelivery: ${q.delivery}\nDistance: ${q.distance} miles\nTransport: ${q.transportType}\n\nBook: ${bookUrl}\n\nValid for 7 days. Questions? Call ${COMPANY_PHONE}.`;
   return { subject: `Your Mcships quote: ${money(q.total)}`, html, text };
 }
 
@@ -3402,16 +3412,16 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
     const email = str(b.email, 254).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ success: false, message: 'Enter a valid email address' });
     const name = str(b.name, 120), phone = str(b.phone, 40);
-    const vehicles = sanitizeVehicles([b.vehicle || {}]);
+    const vehicles = sanitizeVehicles(Array.isArray(b.vehicles) && b.vehicles.length ? b.vehicles : [b.vehicle || {}]);
     const vehicle = vehicles && vehicles[0];
     if (!vehicle) return res.status(400).json({ success: false, message: 'Vehicle details are missing' });
-    delete vehicle.photos; // photos are added at checkout, not here
+    vehicles.forEach(v => { delete v.photos; }); // photos are added at checkout, not here
     const distance = Math.round(Number(b.distance));
     if (!(distance >= 1 && distance <= 6000)) return res.status(400).json({ success: false, message: 'Enter the pickup and delivery addresses so we can measure the distance' });
     const pickup = str(b.pickup, 500), delivery = str(b.delivery, 500);
     const transportType = b.transportType === 'enclosed' ? 'enclosed' : 'open';
 
-    const priced = await computeQuoteLive([vehicle], distance, { transportType, ...locationOpts(b) });
+    const priced = await computeQuoteLive(vehicles, distance, { transportType, ...locationOpts(b) });
     const total = priced.total;
     const breakdown = priced.lines;
     const token = crypto.randomBytes(24).toString('hex');
@@ -3419,22 +3429,22 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
     await pool.execute(
       `INSERT INTO quotes (token, email, name, phone, vehicle_json, distance, pickup, delivery, transport_type, total, breakdown_json, pickup_lat, pickup_lng, delivery_lat, delivery_lng)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [token, email, name || null, phone || null, JSON.stringify(vehicle), distance, pickup || null, delivery || null, transportType, total, JSON.stringify(breakdown), lo.pickupLat ?? null, lo.pickupLng ?? null, lo.deliveryLat ?? null, lo.deliveryLng ?? null]
+      [token, email, name || null, phone || null, JSON.stringify(vehicles), distance, pickup || null, delivery || null, transportType, total, JSON.stringify(breakdown), lo.pickupLat ?? null, lo.pickupLng ?? null, lo.deliveryLat ?? null, lo.deliveryLng ?? null]
     );
     pool.execute('INSERT IGNORE INTO leads (email, source) VALUES (?, ?)', [email, 'calculator']).catch(() => {});
 
     const bookUrl = `${appUrl(req)}/payment?quote=${token}`;
-    const q = { email, name, phone, vehicle, distance, pickup, delivery, transportType, total, breakdown };
+    const q = { email, name, phone, vehicle, vehicles, distance, pickup, delivery, transportType, total, breakdown };
     const mail = await sendMail({ to: email, ...quoteEmail(q, bookUrl) }).catch(e => ({ sent: false, reason: e.message }));
     if (mail.sent) pool.execute('UPDATE quotes SET emailed_at = NOW() WHERE token = ?', [token]).catch(() => {});
     else console.error('quote email not sent:', mail.reason);
 
     if (process.env.ADMIN_NOTIFY_EMAIL) {
-      const vl = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.type;
-      const flags = [vehicle.condition === 'inoperable' ? 'inoperable' : '', vehicle.modified ? 'modified' : '', vehicle.urgent ? 'urgent' : ''].filter(Boolean).join(', ');
+      const vl = quoteVehiclesLabel(vehicles);
+      const flags = vehicles.length === 1 ? quoteVehicleFlags(vehicle) : '';
       const alertRows = [
         ['Customer', escHtml(name || '—')], ['Email', `<a href="mailto:${escHtml(email)}">${escHtml(email)}</a>`], ['Phone', phone ? `<a href="tel:${escHtml(phone)}">${escHtml(phone)}</a>` : '—'],
-        ['Vehicle', escHtml(vl) + (flags ? ' · ' + escHtml(flags) : '') + (vehicle.vin ? ' · VIN ' + escHtml(vehicle.vin) : '')],
+        [vehicles.length > 1 ? 'Vehicles' : 'Vehicle', escHtml(vl) + (flags ? ' · ' + escHtml(flags) : '') + (vehicles.length === 1 && vehicle.vin ? ' · VIN ' + escHtml(vehicle.vin) : '')],
         ['Pickup', escHtml(pickup || '—')], ['Delivery', escHtml(delivery || '—')],
         ['Distance', `${distance.toLocaleString()} miles`], ['Transport', escHtml(transportType)],
         ['Quoted price', `<strong>${money(total)}</strong>`]
@@ -3469,7 +3479,7 @@ app.get('/api/quotes/:token', publicLimiter, async (req, res) => {
     const q = rows[0];
     res.json({
       success: true, quoteId: q.token, email: q.email, name: q.name || '', phone: q.phone || '',
-      vehicle: safeJson(q.vehicle_json) || {}, distance: q.distance, pickup: q.pickup || '', delivery: q.delivery || '',
+      vehicle: quoteVehicles(q.vehicle_json)[0] || {}, vehicles: quoteVehicles(q.vehicle_json), distance: q.distance, pickup: q.pickup || '', delivery: q.delivery || '',
       transportType: q.transport_type || 'open', total: Number(q.total), breakdown: safeJson(q.breakdown_json) || [],
       pickupLat: q.pickup_lat != null ? Number(q.pickup_lat) : null, pickupLng: q.pickup_lng != null ? Number(q.pickup_lng) : null,
       deliveryLat: q.delivery_lat != null ? Number(q.delivery_lat) : null, deliveryLng: q.delivery_lng != null ? Number(q.delivery_lng) : null,

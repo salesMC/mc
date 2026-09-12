@@ -1438,8 +1438,8 @@
         if (!q.success) return false;
         window.QUOTE_TOKEN = token;
         formData.contact = { fullName: q.name || '', email: q.email || '', phone: q.phone || '' };
-        const v = Object.assign(freshVehicle(), q.vehicle || {}); v.photos = v.photos || [];
-        formData.vehicles = [v];
+        const list = Array.isArray(q.vehicles) && q.vehicles.length ? q.vehicles : [q.vehicle || {}];
+        formData.vehicles = list.map(qv => { const v = Object.assign(freshVehicle(), qv || {}); v.photos = []; return v; });
         formData.location = { pickup: q.pickup || '', delivery: q.delivery || '', pickupLat: q.pickupLat ?? undefined, pickupLng: q.pickupLng ?? undefined, deliveryLat: q.deliveryLat ?? undefined, deliveryLng: q.deliveryLng ?? undefined };
         formData.distance = Number(q.distance) || 0;
         formData.transportType = q.transportType || 'open';
@@ -1447,7 +1447,7 @@
         const banner = document.createElement('div');
         banner.className = 'mb-5 p-4 rounded-xl text-sm flex items-start gap-3';
         banner.style.cssText = 'background: rgba(190,242,100,0.08); border: 1px solid rgba(190,242,100,0.35);';
-        banner.innerHTML = '<i class="fas fa-circle-check text-[var(--lime)] mt-0.5"></i><div><strong class="text-white">Your quote is loaded: $' + Number(q.total).toLocaleString() + '</strong><div class="text-dim mt-1">Contact, vehicle and route are filled in from your quote. Choose your dates below, check the summary, then pay. You can change anything by clicking a step on the left.</div></div>';
+        banner.innerHTML = '<i class="fas fa-circle-check text-[var(--lime)] mt-0.5"></i><div><strong class="text-white">Your quote is loaded: $' + Number(q.total).toLocaleString() + (formData.vehicles.length > 1 ? ' for ' + formData.vehicles.length + ' vehicles' : '') + '</strong><div class="text-dim mt-1">Contact, vehicle' + (formData.vehicles.length > 1 ? 's' : '') + ' and route are filled in from your quote. Choose your dates below, check the summary, then pay. You can change anything by clicking a step on the left.</div></div>';
         const content = document.getElementById('stepContent');
         content.parentNode.insertBefore(banner, content);
         return true;

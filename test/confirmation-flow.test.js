@@ -543,6 +543,19 @@ async function sendAndAuthorize(id, fee) {
   check('quote link returns everything checkout needs', r.status === 200 && r.data.email === 'quote-test@example.test' && r.data.vehicle.make === 'Ford' && r.data.distance === 300 && r.data.transportType === 'enclosed' && r.data.total === expectedQ, r.data);
   r = await api('GET', '/api/quotes/' + 'f'.repeat(48), null, { auth: false });
   check('unknown quote link → 404', r.status === 404);
+  // Several vehicles in one quote
+  const twoVeh = [{ year: '2021', make: 'Ford', model: 'F-150', type: 'pickup', condition: 'operable' }, { year: '2019', make: 'Toyota', model: 'Camry', type: 'sedan', condition: 'inoperable' }];
+  r = await api('POST', '/api/quotes', { name: 'Two Cars', email: 'quote-two@example.test', phone: '555-0198', vehicles: twoVeh, distance: 300, pickup: 'Louisville, KY', delivery: 'Nashville, TN', transportType: 'open' }, { auth: false });
+  const expected2 = await priceVia(twoVeh, 300, { transportType: 'open' });
+  const single1 = await priceVia([twoVeh[0]], 300), single2 = await priceVia([twoVeh[1]], 300);
+  check('two-vehicle quote priced together with the discount', r.status === 200 && r.data.total === expected2 && expected2 < single1 + single2, { total: r.data && r.data.total, e: expected2, s: single1 + single2 });
+  const q2Mail = lastMailTo('quote-two@example.test');
+  check('quote email lists both vehicles', q2Mail && /2 vehicles/.test(q2Mail.text) && /F-150/.test(q2Mail.text) && /Camry/.test(q2Mail.text), q2Mail && q2Mail.text.slice(0, 200));
+  const q2 = (await api('GET', '/api/quotes/' + r.data.quoteId, null, { auth: false })).data;
+  check('quote link carries both vehicles for checkout', q2.vehicles.length === 2 && q2.vehicles[1].make === 'Toyota' && q2.vehicles[1].condition === 'inoperable' && q2.vehicle.make === 'Ford', q2.vehicles);
+  await pool.execute('DELETE FROM quotes WHERE token = ?', [r.data.quoteId]);
+  r = await api('GET', '/api/leads?q=quote-two&page=1');
+  for (const l of ((r.data && r.data.leads) || [])) await api('DELETE', '/api/leads/' + l.id);
   r = await api('GET', '/api/leads?q=quote-test&page=1');
   check('quote also recorded as a lead', r.data && r.data.leads && r.data.leads.some(l => l.email === 'quote-test@example.test' && l.source === 'calculator'));
   for (const l of (r.data.leads || [])) await api('DELETE', '/api/leads/' + l.id);
