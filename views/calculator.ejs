@@ -284,6 +284,9 @@
     let toPlace = null;
 
     function initGoogleAutocomplete() {
+      document.querySelectorAll('.pac-container').forEach(el => el.remove());
+      if (document.getElementById('fromInput').dataset.acBound) return;
+      document.getElementById('fromInput').dataset.acBound = '1';
       const options = {
         types: ['address'],
         componentRestrictions: { country: 'us' }
@@ -502,6 +505,7 @@ function getVehicleTypeLabel(type) {
       document.getElementById('quoteStepContact').classList.remove('hidden');
       document.getElementById('quoteStepPrice').classList.add('hidden');
       document.getElementById('quoteError').classList.add('hidden');
+      document.querySelectorAll('.pac-container').forEach(el => el.classList.add('mc-stale'));
       document.getElementById('priceModal').classList.remove('hidden');
       setTimeout(() => document.getElementById('qName').focus(), 50);
     });
@@ -571,6 +575,7 @@ function getVehicleTypeLabel(type) {
 
     document.getElementById('closePriceModal').addEventListener('click', () => {
       document.getElementById('priceModal').classList.add('hidden');
+      document.querySelectorAll('.pac-container').forEach(el => el.classList.remove('mc-stale'));
     });
 
     // ==================== INIT GOOGLE MAPS ====================

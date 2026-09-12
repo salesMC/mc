@@ -1134,6 +1134,7 @@ async function openCustomerWizard(customerId) {
 }
 
 function closeCustomerWizard() {
+  document.querySelectorAll('.pac-container').forEach(el => el.remove());
   if (wiz) {
     wizCollect();
     const dirty = wiz.step > 0 || wiz.customer.name || wiz.customer.phone;
@@ -1155,6 +1156,7 @@ function wizRenderSteps() {
 }
 
 function wizRender(step) {
+  document.querySelectorAll('.pac-container').forEach(el => el.remove());
   wiz.step = step;
   const el = document.getElementById('wizContent');
   if (step === 0) {
@@ -1568,7 +1570,9 @@ function wizInitMaps() {
     if (!window.google?.maps?.places) return;
     const p = document.getElementById('wr-pickup');
     const d = document.getElementById('wr-delivery');
-    if (!p || !d) return;
+    if (!p || !d || p.dataset.acBound) return;
+    document.querySelectorAll('.pac-container').forEach(el => el.remove());
+    p.dataset.acBound = d.dataset.acBound = '1';
     const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
     const acP = new google.maps.places.Autocomplete(p, opts), acD = new google.maps.places.Autocomplete(d, opts);
     acP.addListener('place_changed', () => { const g = acP.getPlace()?.geometry?.location; wiz.location.pickupLat = g ? g.lat() : undefined; wiz.location.pickupLng = g ? g.lng() : undefined; wizCalcDistance(); });

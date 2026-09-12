@@ -370,10 +370,16 @@
     }
 
     // ==================== GOOGLE MAPS ====================
+    // Remove suggestion boxes Google left on the page (they otherwise float over other steps)
+    function clearPacBoxes() { document.querySelectorAll('.pac-container').forEach(el => el.remove()); }
     function initGoogleAutocomplete() {
+      const pick = document.getElementById('pickupAddr'), del = document.getElementById('deliveryAddr');
+      if (!pick || !del || pick.dataset.acBound) return;   // already wired for these inputs
+      clearPacBoxes();
+      pick.dataset.acBound = del.dataset.acBound = '1';
       const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
-      fromAutocomplete = new google.maps.places.Autocomplete(document.getElementById('pickupAddr'),   opts);
-      toAutocomplete   = new google.maps.places.Autocomplete(document.getElementById('deliveryAddr'), opts);
+      fromAutocomplete = new google.maps.places.Autocomplete(pick, opts);
+      toAutocomplete   = new google.maps.places.Autocomplete(del,  opts);
       fromAutocomplete.addListener('place_changed', () => { const g = fromAutocomplete.getPlace()?.geometry?.location; formData.location.pickupLat = g ? g.lat() : undefined; formData.location.pickupLng = g ? g.lng() : undefined; calculateDistance(); });
       toAutocomplete.addListener('place_changed',   () => { const g = toAutocomplete.getPlace()?.geometry?.location; formData.location.deliveryLat = g ? g.lat() : undefined; formData.location.deliveryLng = g ? g.lng() : undefined; calculateDistance(); });
     }
@@ -1025,6 +1031,7 @@
       finally { document.getElementById('stepContent')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }
     }
     function renderStepInner(step) {
+      clearPacBoxes();   // leaving/entering a step: no leftover suggestion boxes
       saveFormData();
       currentStep = step;
 
