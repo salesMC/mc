@@ -703,7 +703,7 @@
     function initPostMapsAutocomplete() {
       if (typeof google === 'undefined' || !google.maps?.places) return;
       mapsReady = true;
-      const options = { types: ['address'], componentRestrictions: { country: 'us' } };
+      const options = { fields: ['formatted_address', 'geometry', 'name', 'types'], componentRestrictions: { country: 'us' } };
 
       const originAddr = document.getElementById('originAddress');
       const destAddr = document.getElementById('destAddress');

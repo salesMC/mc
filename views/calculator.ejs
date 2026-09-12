@@ -283,28 +283,32 @@
     let fromPlace = null;
     let toPlace = null;
 
+
+    // "Manheim Nashville, 8400 Eastgate Blvd, Mt. Juliet, TN 37122, USA" for businesses; plain address otherwise
+    function placeLabel(place) {
+      if (!place) return '';
+      const addr = place.formatted_address || '';
+      const name = place.name || '';
+      const isBiz = Array.isArray(place.types) && place.types.includes('establishment');
+      if (isBiz && name && !addr.toLowerCase().startsWith(name.toLowerCase())) return name + ', ' + addr;
+      return addr || name;
+    }
     function initGoogleAutocomplete() {
       document.querySelectorAll('.pac-container').forEach(el => el.remove());
-      if (document.getElementById('fromInput').dataset.acBound) return;
-      document.getElementById('fromInput').dataset.acBound = '1';
-      const options = {
-        types: ['address'],
-        componentRestrictions: { country: 'us' }
-      };
-
-      fromAutocomplete = new google.maps.places.Autocomplete(
-        document.getElementById('fromInput'), options
-      );
+      const fromEl = document.getElementById('fromInput'), toEl = document.getElementById('toInput');
+      if (fromEl.dataset.acBound) return;
+      fromEl.dataset.acBound = '1';
+      const options = { componentRestrictions: { country: 'us' }, fields: ['formatted_address', 'geometry', 'name', 'types'] };
+      fromAutocomplete = new google.maps.places.Autocomplete(fromEl, options);
+      toAutocomplete   = new google.maps.places.Autocomplete(toEl, options);
       fromAutocomplete.addListener('place_changed', () => {
         fromPlace = fromAutocomplete.getPlace();
+        if (fromPlace && fromPlace.formatted_address) fromEl.value = placeLabel(fromPlace);
         calculateDistance();
       });
-
-      toAutocomplete = new google.maps.places.Autocomplete(
-        document.getElementById('toInput'), options
-      );
       toAutocomplete.addListener('place_changed', () => {
         toPlace = toAutocomplete.getPlace();
+        if (toPlace && toPlace.formatted_address) toEl.value = placeLabel(toPlace);
         calculateDistance();
       });
     }

@@ -1573,10 +1573,11 @@ function wizInitMaps() {
     if (!p || !d || p.dataset.acBound) return;
     document.querySelectorAll('.pac-container').forEach(el => el.remove());
     p.dataset.acBound = d.dataset.acBound = '1';
-    const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
+    const opts = { componentRestrictions: { country: 'us' }, fields: ['formatted_address', 'geometry', 'name', 'types'] };
+    const label = (pl) => { if (!pl) return ''; const addr = pl.formatted_address || '', name = pl.name || ''; const biz = Array.isArray(pl.types) && pl.types.includes('establishment'); return biz && name && !addr.toLowerCase().startsWith(name.toLowerCase()) ? name + ', ' + addr : (addr || name); };
     const acP = new google.maps.places.Autocomplete(p, opts), acD = new google.maps.places.Autocomplete(d, opts);
-    acP.addListener('place_changed', () => { const g = acP.getPlace()?.geometry?.location; wiz.location.pickupLat = g ? g.lat() : undefined; wiz.location.pickupLng = g ? g.lng() : undefined; wizCalcDistance(); });
-    acD.addListener('place_changed', () => { const g = acD.getPlace()?.geometry?.location; wiz.location.deliveryLat = g ? g.lat() : undefined; wiz.location.deliveryLng = g ? g.lng() : undefined; wizCalcDistance(); });
+    acP.addListener('place_changed', () => { const pl = acP.getPlace(); const g = pl?.geometry?.location; if (pl && pl.formatted_address) p.value = label(pl); wiz.location.pickup = p.value; wiz.location.pickupLat = g ? g.lat() : undefined; wiz.location.pickupLng = g ? g.lng() : undefined; wizCalcDistance(); });
+    acD.addListener('place_changed', () => { const pl = acD.getPlace(); const g = pl?.geometry?.location; if (pl && pl.formatted_address) d.value = label(pl); wiz.location.delivery = d.value; wiz.location.deliveryLat = g ? g.lat() : undefined; wiz.location.deliveryLng = g ? g.lng() : undefined; wizCalcDistance(); });
     wizDistanceService = new google.maps.DistanceMatrixService();
   };
   if (window.google?.maps?.places) return bind();

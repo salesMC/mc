@@ -372,16 +372,26 @@
     // ==================== GOOGLE MAPS ====================
     // Remove suggestion boxes Google left on the page (they otherwise float over other steps)
     function clearPacBoxes() { document.querySelectorAll('.pac-container').forEach(el => el.remove()); }
+
+    // "Manheim Nashville, 8400 Eastgate Blvd, Mt. Juliet, TN 37122, USA" for businesses; plain address otherwise
+    function placeLabel(place) {
+      if (!place) return '';
+      const addr = place.formatted_address || '';
+      const name = place.name || '';
+      const isBiz = Array.isArray(place.types) && place.types.includes('establishment');
+      if (isBiz && name && !addr.toLowerCase().startsWith(name.toLowerCase())) return name + ', ' + addr;
+      return addr || name;
+    }
     function initGoogleAutocomplete() {
       const pick = document.getElementById('pickupAddr'), del = document.getElementById('deliveryAddr');
       if (!pick || !del || pick.dataset.acBound) return;   // already wired for these inputs
       clearPacBoxes();
       pick.dataset.acBound = del.dataset.acBound = '1';
-      const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
+      const opts = { componentRestrictions: { country: 'us' }, fields: ['formatted_address', 'geometry', 'name', 'types'] };
       fromAutocomplete = new google.maps.places.Autocomplete(pick, opts);
       toAutocomplete   = new google.maps.places.Autocomplete(del,  opts);
-      fromAutocomplete.addListener('place_changed', () => { const g = fromAutocomplete.getPlace()?.geometry?.location; formData.location.pickupLat = g ? g.lat() : undefined; formData.location.pickupLng = g ? g.lng() : undefined; calculateDistance(); });
-      toAutocomplete.addListener('place_changed',   () => { const g = toAutocomplete.getPlace()?.geometry?.location; formData.location.deliveryLat = g ? g.lat() : undefined; formData.location.deliveryLng = g ? g.lng() : undefined; calculateDistance(); });
+      fromAutocomplete.addListener('place_changed', () => { const pl = fromAutocomplete.getPlace(); const g = pl?.geometry?.location; if (pl && pl.formatted_address) pick.value = placeLabel(pl); formData.location.pickup = pick.value; formData.location.pickupLat = g ? g.lat() : undefined; formData.location.pickupLng = g ? g.lng() : undefined; calculateDistance(); });
+      toAutocomplete.addListener('place_changed',   () => { const pl = toAutocomplete.getPlace();   const g = pl?.geometry?.location; if (pl && pl.formatted_address) del.value  = placeLabel(pl); formData.location.delivery = del.value; formData.location.deliveryLat = g ? g.lat() : undefined; formData.location.deliveryLng = g ? g.lng() : undefined; calculateDistance(); });
     }
 
     function calculateDistance() {
