@@ -248,6 +248,7 @@
               <svg class="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path d="M10.293 3.293a1 1 0 011.414 0l6 6a1 1 0 010 1.414l-6 6a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-4.293-4.293a1 1 0 010-1.414z"/></svg>
             </a>
             <p class="text-xs text-muted mt-3">Checkout is already filled in with these details. You'll pick your dates and pay. Price valid 7 days.</p>
+            <p id="quoteCallNote" class="hidden text-sm text-amber-300 mt-3"><i class="fas fa-triangle-exclamation mr-1"></i> One of these addresses looks hard to reach by truck (island, ferry or no road access). We'll confirm this price with you by phone before pickup.</p>
             <p class="text-sm text-dim mt-5">Prefer to talk it through? Call <a href="tel:+15024178040" class="text-white hover:underline">(502) 417-8040</a>.</p>
           </div>
 
@@ -540,6 +541,8 @@ function getVehicleTypeLabel(type) {
             distance: parseFloat(document.getElementById('distance').value) || 0,
             pickup: document.getElementById('fromInput').value.trim(),
             delivery: document.getElementById('toInput').value.trim(),
+            pickupLat: fromPlace?.geometry?.location?.lat(), pickupLng: fromPlace?.geometry?.location?.lng(),
+            deliveryLat: toPlace?.geometry?.location?.lat(), deliveryLng: toPlace?.geometry?.location?.lng(),
             transportType: enclosedBtn.classList.contains('bg-sky-600') ? 'enclosed' : 'open'
           })
         });
@@ -556,6 +559,8 @@ function getVehicleTypeLabel(type) {
     function showQuote(q) {
       document.getElementById('totalPriceBig').textContent = '$' + Number(q.total).toLocaleString();
       document.getElementById('bookQuoteBtn').href = '/payment?quote=' + encodeURIComponent(q.quoteId);
+      const callNote = document.getElementById('quoteCallNote');
+      if (callNote) callNote.classList.toggle('hidden', !q.requiresCall);
       document.getElementById('quoteSentNote').textContent = q.emailSent
         ? 'A copy is on its way to ' + document.getElementById('qEmail').value.trim() + '.'
         : 'Save this page or book now — we could not email a copy just now.';

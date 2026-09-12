@@ -374,8 +374,8 @@
       const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
       fromAutocomplete = new google.maps.places.Autocomplete(document.getElementById('pickupAddr'),   opts);
       toAutocomplete   = new google.maps.places.Autocomplete(document.getElementById('deliveryAddr'), opts);
-      fromAutocomplete.addListener('place_changed', calculateDistance);
-      toAutocomplete.addListener('place_changed',   calculateDistance);
+      fromAutocomplete.addListener('place_changed', () => { const g = fromAutocomplete.getPlace()?.geometry?.location; formData.location.pickupLat = g ? g.lat() : undefined; formData.location.pickupLng = g ? g.lng() : undefined; calculateDistance(); });
+      toAutocomplete.addListener('place_changed',   () => { const g = toAutocomplete.getPlace()?.geometry?.location; formData.location.deliveryLat = g ? g.lat() : undefined; formData.location.deliveryLng = g ? g.lng() : undefined; calculateDistance(); });
     }
 
     function calculateDistance() {
@@ -420,7 +420,9 @@
       try {
         const r = await fetch('/api/price', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
           vehicles: formData.vehicles.map(({ photos, ...v }) => v), distance: formData.distance || 0,
-          transportType: formData.transportType, pickupDate: formData.pickupDate, mustDeliverBy: formData.mustDeliverBy }) });
+          transportType: formData.transportType, pickupDate: formData.pickupDate, mustDeliverBy: formData.mustDeliverBy,
+          pickup: formData.location.pickup, delivery: formData.location.delivery,
+          pickupLat: formData.location.pickupLat, pickupLng: formData.location.pickupLng, deliveryLat: formData.location.deliveryLat, deliveryLng: formData.location.deliveryLng }) });
         const d = await r.json();
         if (seq !== priceReq || !d.success) return;
         serverTotal = d.total;
@@ -1098,6 +1100,7 @@
         saveCurrentVehicleData();
       } else if (currentStep === 2) {
         formData.location = {
+          ...formData.location,
           pickup:   document.getElementById('pickupAddr')?.value.trim()   || '',
           delivery: document.getElementById('deliveryAddr')?.value.trim() || ''
         };
@@ -1343,6 +1346,8 @@
             transportType: formData.transportType,
             pickupDate: formData.pickupDate,
             mustDeliverBy: formData.mustDeliverBy,
+            pickup: formData.location.pickup, delivery: formData.location.delivery,
+            pickupLat: formData.location.pickupLat, pickupLng: formData.location.pickupLng, deliveryLat: formData.location.deliveryLat, deliveryLng: formData.location.deliveryLng,
             promoCode: appliedPromo ? appliedPromo.code : null
           })
         });
@@ -1418,7 +1423,7 @@
         formData.contact = { fullName: q.name || '', email: q.email || '', phone: q.phone || '' };
         const v = Object.assign(freshVehicle(), q.vehicle || {}); v.photos = v.photos || [];
         formData.vehicles = [v];
-        formData.location = { pickup: q.pickup || '', delivery: q.delivery || '' };
+        formData.location = { pickup: q.pickup || '', delivery: q.delivery || '', pickupLat: q.pickupLat ?? undefined, pickupLng: q.pickupLng ?? undefined, deliveryLat: q.deliveryLat ?? undefined, deliveryLng: q.deliveryLng ?? undefined };
         formData.distance = Number(q.distance) || 0;
         formData.transportType = q.transportType || 'open';
         formData.total = Number(q.total) || 0;

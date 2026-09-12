@@ -114,6 +114,18 @@
       </div>
       <div id="pricingSection"><p class="text-muted text-sm"><i class="fas fa-circle-notch fa-spin mr-1"></i> Loading…</p></div>
     </div>
+
+    <!-- ==================== LOCATION RATINGS ==================== -->
+    <div class="tile mt-8" id="sec-locations">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div>
+          <h2 class="text-2xl font-bold text-white flex items-center gap-3"><i class="fas fa-location-dot"></i> Location ratings</h2>
+          <p class="text-dim text-sm mt-1">Every address that has been quoted, with the tier the engine gave it. Override one if it's wrong, and every future quote for that address uses your tier.</p>
+        </div>
+        <input id="locSearch" type="search" placeholder="Search address…" class="input-admin w-64" oninput="loadLocationRatings()">
+      </div>
+      <div id="locationRatings"><p class="text-muted text-sm">Loading…</p></div>
+    </div>
   </main>
 
   <%- include("_modals") %>

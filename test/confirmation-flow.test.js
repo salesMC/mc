@@ -20,7 +20,9 @@ process.env.ADMIN_NOTIFY_EMAIL = 'admin@mcships.test';
 process.env.APP_URL = 'https://mcships.test';
 process.env.SESSION_SECRET = process.env.SESSION_SECRET || 'test-secret';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
-process.env.MAIL_DISABLE_GMAIL = '1';               // never send real mail through the connected Gmail during tests
+process.env.MAIL_DISABLE_GMAIL = '1';
+process.env.ANTHROPIC_API_KEY = '';                  // never call the AI during tests (metro-distance rule only)
+process.env.EIA_API_KEY = '';               // never send real mail through the connected Gmail during tests
 
 // ---------- Fake Stripe ----------
 const S = { n: 0, customers: [], intents: {}, detached: [], failNextOffSession: false };
@@ -259,6 +261,28 @@ async function sendAndAuthorize(id, fee) {
   const inTwoDays = new Date(Date.now() + 86400000).toISOString().slice(0, 10), inTenDays = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10), inTwentyDays = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
   const pRush = await priceVia(sedan, 470, { pickupDate: inTwoDays }), pFlex = await priceVia(sedan, 470, { pickupDate: inTenDays, mustDeliverBy: inTwentyDays });
   check('short-notice pickup costs more, flexible window costs less', pRush > pMid && pFlex < pMid, { normal: pMid, rush: pRush, flex: pFlex });
+  // ---- location difficulty (metro distance) + lanes ----
+  const pCity = await priceVia(sedan, 470, { pickup: '100 Main St, Louisville, KY 40202, USA', pickupLat: 38.2527, pickupLng: -85.7585, delivery: '200 Broadway, Nashville, TN 37201, USA', deliveryLat: 36.1627, deliveryLng: -86.7816 });
+  check('city-to-city: no location fee', pCity === pMid, { city: pCity, plain: pMid });
+  const pRemote = await priceVia(sedan, 470, { pickup: '100 Main St, Louisville, KY 40202, USA', pickupLat: 38.2527, pickupLng: -85.7585, delivery: 'Ranch Rd, Eureka, NV 89316, USA', deliveryLat: 39.5, deliveryLng: -116.5 });
+  check('remote delivery (far from any metro) adds a tier fee', pRemote > pCity, { city: pCity, remote: pRemote });
+  r = await api('POST', '/api/price', { vehicles: sedan, distance: 470, pickup: '100 Main St, Louisville, KY 40202, USA', pickupLat: 38.2527, pickupLng: -85.7585, delivery: 'Ranch Rd, Eureka, NV 89316, USA', deliveryLat: 39.5, deliveryLng: -116.5 });
+  check('admin breakdown names the hard-to-reach delivery with its tier', r.data.lines.some(l => /Hard-to-reach delivery \(tier [23]/.test(l.label)) && r.data.factors.deliveryDifficulty && r.data.factors.deliveryDifficulty.tier >= 2, r.data.lines.map(l => l.label));
+  const pRemote2 = await priceVia(sedan, 470, { pickup: '100 Main St, Louisville, KY 40202, USA', pickupLat: 38.2527, pickupLng: -85.7585, delivery: 'Ranch Rd, Eureka, NV 89316, USA', deliveryLat: 39.5, deliveryLng: -116.5 });
+  check('same address → same price (rating cached)', pRemote2 === pRemote);
+  r = await api('GET', '/api/locations?q=Eureka');
+  const rated = r.data.find(x => /Eureka/.test(x.address));
+  check('rated address listed in admin', !!rated && rated.metroMiles > 120, rated && { m: rated.metro, mi: rated.metroMiles });
+  r = await api('PATCH', '/api/locations/' + rated.id, { overrideTier: 0 });
+  const pOverride = await priceVia(sedan, 470, { pickup: '100 Main St, Louisville, KY 40202, USA', pickupLat: 38.2527, pickupLng: -85.7585, delivery: 'Ranch Rd, Eureka, NV 89316, USA', deliveryLat: 39.5, deliveryLng: -116.5 });
+  check('admin override to tier 0 removes the fee', r.status === 200 && pOverride === pCity, { o: pOverride, city: pCity });
+  await pool.execute('DELETE FROM location_ratings WHERE address LIKE ?', ['%Eureka, NV%']);
+  const pFLNE = await priceVia(sedan, 1300, { pickup: '1 Biscayne Blvd, Miami, FL 33132, USA', delivery: '1 Main St, Hartford, CT 06103, USA' });
+  const pNEFL = await priceVia(sedan, 1300, { pickup: '1 Main St, Hartford, CT 06103, USA', delivery: '1 Biscayne Blvd, Miami, FL 33132, USA' });
+  const pPlain1300 = await priceVia(sedan, 1300);
+  check('lane table: out of Florida costs more than into Florida', pFLNE > pPlain1300 && pNEFL < pPlain1300 && pFLNE > pNEFL, { out: pFLNE, into: pNEFL, plain: pPlain1300 });
+  r = await api('POST', '/api/price', { vehicles: sedan, distance: 1300, pickup: '1 Biscayne Blvd, Miami, FL 33132, USA', delivery: '1 Main St, Hartford, CT 06103, USA' });
+  check('lane line shows the regions', r.data.lines.some(l => /Lane Florida → Northeast/.test(l.label)), r.data.lines.map(l => l.label));
 
   const webVehicles = [{ year: '2020', make: 'Kia', model: 'K5', type: 'pickup', condition: 'inoperable', modified: false, urgent: true }];
   const expected = await priceVia(webVehicles, 400);
@@ -280,6 +304,7 @@ async function sendAndAuthorize(id, fee) {
   created.orders.push('MC-T-WEB'); if (r.data && r.data.customerId) created.customers.push(r.data.customerId);
   check('web order created once paid', r.data && r.data.success, r.data);
   let o = await order('MC-T-WEB');
+  check('web order stores the engine breakdown for admin', o.pricing && Array.isArray(o.pricing.lines) && o.pricing.lines.length >= 1 && typeof o.pricing.cpm === 'number', o.pricing);
   check('total = amount Stripe collected, not the client\'s $1; source web; paid; distance from intent',
     o.total === expected && o.source === 'web' && o.paymentStatus === 'paid' && o.distance === 400 && !!o.chargedAt, o);
   r = await api('POST', '/api/orders', { ...webOrder, id: 'MC-T-WEB2', stripePaymentIntentId: webPi }, { auth: false });

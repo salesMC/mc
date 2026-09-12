@@ -249,6 +249,7 @@ function mapOrderRow(r, withPhotos = false) {
     paymentState  : paymentStateOf(r),
     agreement     : safeJson(r.agreement_json) || null,   // signed pickup agreement record (proof)
     disputeStatus : r.dispute_status || null,               // 'open' while a chargeback is being fought
+    pricing       : safeJson(r.pricing_json) || null,         // engine breakdown at the time of the quote (admin)
     createdAt     : r.created_at
   };
 }
@@ -296,13 +297,13 @@ function mapCustomerRow(r) {
 const DEFAULT_CALCULATOR_CONFIG = {
   baseFee: 95,
   tiers: [
-    { max: 100,  rate: 2.20 },
-    { max: 300,  rate: 1.45 },
-    { max: 600,  rate: 1.05 },
-    { max: 1000, rate: 0.82 },
-    { max: 1500, rate: 0.70 },
-    { max: 2200, rate: 0.63 },
-    { max: null, rate: 0.58 }   // null = everything beyond the last point
+    { max: 100,  rate: 2.35 },
+    { max: 300,  rate: 1.55 },
+    { max: 600,  rate: 1.12 },
+    { max: 1000, rate: 0.88 },
+    { max: 1500, rate: 0.76 },
+    { max: 2200, rate: 0.69 },
+    { max: null, rate: 0.65 }   // null = everything beyond the last point
   ],
   multipliers: { 'sedan': 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.15, 'cargo-van': 1.25, 'passenger-van': 1.25, 'mini-van': 1.00, 'other': 1.20 },
   addons: { inoperable: 75, modified: 100, urgent: 100 }
@@ -366,8 +367,115 @@ const DEFAULT_PRICING = {
   fuel: { enabled: true, baselineDiesel: 3.60, pctPerQuarter: 3, minPct: -10, maxPct: 25 },   // % per $0.25 of diesel vs baseline
   season: { 1: 1.06, 2: 1.04, 3: 1.02, 4: 1.00, 5: 1.03, 6: 1.06, 7: 1.06, 8: 1.04, 9: 1.00, 10: 1.02, 11: 1.04, 12: 1.06 },
   timing: { shortNoticeDays: 2, shortNoticePct: 8, flexibleDays: 5, flexiblePct: -3 },
-  marketPct: 0                  // your hand on the wheel: +/- % on everything
+  marketPct: 0,                 // your hand on the wheel: +/- % on everything
+  // Hard-to-reach pickup/delivery: tier from distance to the nearest metro and/or the AI check
+  difficulty: { enabled: true, aiEnabled: true, fees: { 1: 75, 2: 150, 3: 300 }, metroMiles: { 1: 60, 2: 120, 3: 220 } },
+  // Region-to-region multipliers ("FROM>TO"); anything not listed is 1.00
+  lanes: { 'FL>NE': 1.08, 'FL>MW': 1.06, 'FL>MA': 1.06, 'NE>FL': 0.96, 'MW>FL': 0.96, 'MA>FL': 0.97, 'MT>PW': 1.04, 'PW>MT': 1.04, 'CE>NE': 1.05, 'NE>CE': 1.05, 'CE>PW': 1.04, 'PW>CE': 1.04, 'TX>PW': 0.98, 'PW>TX': 0.98 }
 };
+// Regions used by the lane table (by state)
+const REGION_OF_STATE = {
+  CT:'NE', MA:'NE', ME:'NE', NH:'NE', RI:'NE', VT:'NE', NY:'NE', NJ:'NE', PA:'NE',
+  DE:'MA', MD:'MA', DC:'MA', VA:'MA', WV:'MA',
+  NC:'SE', SC:'SE', GA:'SE', AL:'SE', MS:'SE', TN:'SE', KY:'SE',
+  FL:'FL',
+  OH:'MW', IN:'MW', IL:'MW', MI:'MW', WI:'MW', MN:'MW', IA:'MW', MO:'MW',
+  ND:'CE', SD:'CE', NE:'CE', KS:'CE', OK:'CE', AR:'CE',
+  TX:'TX', LA:'TX',
+  MT:'MT', ID:'MT', WY:'MT', CO:'MT', UT:'MT', NV:'MT', AZ:'MT', NM:'MT',
+  WA:'PW', OR:'PW', CA:'PW',
+  AK:'AK', HI:'HI'
+};
+const REGION_NAMES = { NE: 'Northeast', MA: 'Mid-Atlantic', SE: 'Southeast', FL: 'Florida', MW: 'Midwest', CE: 'Central Plains', TX: 'Texas / Louisiana', MT: 'Mountain West', PW: 'Pacific', AK: 'Alaska', HI: 'Hawaii' };
+const STATE_NAMES = { alabama:'AL', alaska:'AK', arizona:'AZ', arkansas:'AR', california:'CA', colorado:'CO', connecticut:'CT', delaware:'DE', florida:'FL', georgia:'GA', hawaii:'HI', idaho:'ID', illinois:'IL', indiana:'IN', iowa:'IA', kansas:'KS', kentucky:'KY', louisiana:'LA', maine:'ME', maryland:'MD', massachusetts:'MA', michigan:'MI', minnesota:'MN', mississippi:'MS', missouri:'MO', montana:'MT', nebraska:'NE', nevada:'NV', 'new hampshire':'NH', 'new jersey':'NJ', 'new mexico':'NM', 'new york':'NY', 'north carolina':'NC', 'north dakota':'ND', ohio:'OH', oklahoma:'OK', oregon:'OR', pennsylvania:'PA', 'rhode island':'RI', 'south carolina':'SC', 'south dakota':'SD', tennessee:'TN', texas:'TX', utah:'UT', vermont:'VT', virginia:'VA', washington:'WA', 'west virginia':'WV', wisconsin:'WI', wyoming:'WY' };
+function stateFromAddress(addr) {
+  const a = String(addr || '');
+  const m = a.match(/\b([A-Z]{2})\b(?:\s+\d{5})?(?:,\s*(?:USA|United States))?\s*$/) || a.match(/,\s*([A-Z]{2})\s+\d{5}/) || a.match(/,\s*([A-Z]{2})\b/);
+  if (m && REGION_OF_STATE[m[1]]) return m[1];
+  const low = a.toLowerCase();
+  for (const [name, abbr] of Object.entries(STATE_NAMES)) if (low.includes(name)) return abbr;
+  return null;
+}
+function regionOf(addr) { const st = stateFromAddress(addr); return st ? REGION_OF_STATE[st] || null : null; }
+
+// ---- Metro distance ----
+const METROS = require('./data/metros.json');
+function haversineMiles(lat1, lng1, lat2, lng2) {
+  const R = 3958.8, toR = d => d * Math.PI / 180;
+  const dLat = toR(lat2 - lat1), dLng = toR(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos(toR(lat1)) * Math.cos(toR(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+function nearestMetro(lat, lng) {
+  let best = null;
+  for (const m of METROS) { const d = haversineMiles(lat, lng, m.lat, m.lng); if (!best || d < best.miles) best = { name: m.name, miles: Math.round(d) }; }
+  return best;
+}
+
+// ---- AI difficulty check (Claude) — answers a fixed JSON shape; cached per address ----
+async function aiAssessLocation(address, lat, lng, metro) {
+  const key = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!key) return null;
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL || 'claude-sonnet-5', max_tokens: 300,
+        system: 'You rate how hard a U.S. address is for an open car-hauler truck (75 ft, needs paved access and room to turn) to reach. Reply with JSON only, no prose: {"tier":0|1|2|3,"reasons":["..."],"flags":{"island":bool,"noRoad":bool,"ferry":bool,"mountain":bool,"unpaved":bool,"gated":bool}}. Tier 0 = normal city/suburb/highway-adjacent. Tier 1 = small town or outer suburb, some detour. Tier 2 = rural, unpaved or narrow roads, far from interstates, or difficult terrain. Tier 3 = island, ferry-only, no road access, extreme remoteness (rural Alaska), or a place a car hauler realistically cannot reach. Base the answer on the place itself, not the customer. Keep reasons to 2 short phrases.',
+        messages: [{ role: 'user', content: `Address: ${address}${lat != null ? ` (lat ${lat}, lng ${lng})` : ''}${metro ? `. Nearest major metro: ${metro.name}, ${metro.miles} miles away.` : ''}` }]
+      })
+    });
+    const j = await r.json();
+    const text = j && j.content && j.content[0] && j.content[0].text || '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('no JSON in AI reply');
+    const out = JSON.parse(m[0]);
+    const tier = Math.max(0, Math.min(3, parseInt(out.tier, 10) || 0));
+    return { tier, reasons: Array.isArray(out.reasons) ? out.reasons.slice(0, 3).map(x => String(x).slice(0, 120)) : [], flags: out.flags && typeof out.flags === 'object' ? out.flags : {} };
+  } catch (e) { console.error('aiAssessLocation:', e.message); return null; }
+  finally { clearTimeout(timer); }
+}
+
+// One assessment per address, cached in location_ratings. Tier = max(metro-distance tier, AI tier), unless an admin override is set.
+async function assessLocation(P, address, lat, lng) {
+  address = str(address, 500);
+  if (!address) return null;
+  const hasCoords = Number.isFinite(Number(lat)) && Number.isFinite(Number(lng));
+  const keyStr = hasCoords ? `${(+lat).toFixed(3)},${(+lng).toFixed(3)}` : address.toLowerCase().replace(/\s+/g, ' ').trim();
+  const key = crypto.createHash('sha256').update(keyStr).digest('hex');
+  let row = null;
+  try { const [rows] = await pool.execute('SELECT * FROM location_ratings WHERE rating_key = ?', [key]); row = rows[0] || null; } catch (e) {}
+  const metro = hasCoords ? nearestMetro(+lat, +lng) : null;
+  let ai = row ? { tier: row.ai_tier, reasons: safeJson(row.ai_reasons) || [], flags: safeJson(row.ai_flags) || {} } : null;
+  if (!row) {
+    ai = P.difficulty.aiEnabled ? await aiAssessLocation(address, hasCoords ? +lat : null, hasCoords ? +lng : null, metro) : null;
+    try {
+      await pool.execute(
+        'INSERT IGNORE INTO location_ratings (rating_key, address, lat, lng, metro_name, metro_miles, ai_tier, ai_reasons, ai_flags) VALUES (?,?,?,?,?,?,?,?,?)',
+        [key, address, hasCoords ? +lat : null, hasCoords ? +lng : null, metro ? metro.name : null, metro ? metro.miles : null, ai ? ai.tier : null, JSON.stringify(ai ? ai.reasons : []), JSON.stringify(ai ? ai.flags : {})]);
+    } catch (e) { console.error('location_ratings insert:', e.message); }
+  }
+  let metroTier = 0;
+  if (metro) { const mm = P.difficulty.metroMiles; metroTier = metro.miles >= mm[3] ? 3 : metro.miles >= mm[2] ? 2 : metro.miles >= mm[1] ? 1 : 0; }
+  const aiTier = ai && ai.tier != null ? ai.tier : 0;
+  let tier = Math.max(metroTier, aiTier);
+  const override = row && row.override_tier != null ? Number(row.override_tier) : null;
+  if (override != null) tier = override;
+  const reasons = [];
+  if (metro) reasons.push(`${metro.miles} mi from ${metro.name}`);
+  if (ai && ai.reasons && ai.reasons.length) reasons.push(...ai.reasons);
+  const flags = (ai && ai.flags) || {};
+  return { key, address, tier, metroTier, aiTier, override, metro, reasons, flags, noRoad: !!(flags.island || flags.noRoad || flags.ferry) };
+}
+// Region/lane helper used by the engine
+function laneMultiplier(P, pickup, delivery) {
+  const a = regionOf(pickup), b = regionOf(delivery);
+  if (!a || !b) return { mult: 1, from: a, to: b };
+  const mult = Number(P.lanes && P.lanes[`${a}>${b}`]) || 1;
+  return { mult, from: a, to: b };
+}
 function sanitizePricing(v) {
   if (!v || typeof v !== 'object') return null;
   const num = (x, min, max, d) => { const n = Number(x); return Number.isFinite(n) && n >= min && n <= max ? n : d; };
@@ -381,7 +489,14 @@ function sanitizePricing(v) {
     fuel: { enabled: f.enabled !== false && f.enabled !== 'false', baselineDiesel: num(f.baselineDiesel, 1, 10, D.fuel.baselineDiesel), pctPerQuarter: num(f.pctPerQuarter, 0, 20, D.fuel.pctPerQuarter), minPct: num(f.minPct, -50, 0, D.fuel.minPct), maxPct: num(f.maxPct, 0, 100, D.fuel.maxPct) },
     season,
     timing: { shortNoticeDays: num(t.shortNoticeDays, 0, 30, D.timing.shortNoticeDays), shortNoticePct: num(t.shortNoticePct, 0, 50, D.timing.shortNoticePct), flexibleDays: num(t.flexibleDays, 0, 60, D.timing.flexibleDays), flexiblePct: num(t.flexiblePct, -30, 0, D.timing.flexiblePct) },
-    marketPct: num(v.marketPct, -50, 100, D.marketPct)
+    marketPct: num(v.marketPct, -50, 100, D.marketPct),
+    difficulty: {
+      enabled: !(v.difficulty && (v.difficulty.enabled === false || v.difficulty.enabled === 'false')),
+      aiEnabled: !(v.difficulty && (v.difficulty.aiEnabled === false || v.difficulty.aiEnabled === 'false')),
+      fees: { 1: num(v.difficulty && v.difficulty.fees && v.difficulty.fees[1], 0, 5000, D.difficulty.fees[1]), 2: num(v.difficulty && v.difficulty.fees && v.difficulty.fees[2], 0, 5000, D.difficulty.fees[2]), 3: num(v.difficulty && v.difficulty.fees && v.difficulty.fees[3], 0, 10000, D.difficulty.fees[3]) },
+      metroMiles: { 1: num(v.difficulty && v.difficulty.metroMiles && v.difficulty.metroMiles[1], 1, 2000, D.difficulty.metroMiles[1]), 2: num(v.difficulty && v.difficulty.metroMiles && v.difficulty.metroMiles[2], 1, 2000, D.difficulty.metroMiles[2]), 3: num(v.difficulty && v.difficulty.metroMiles && v.difficulty.metroMiles[3], 1, 3000, D.difficulty.metroMiles[3]) }
+    },
+    lanes: (() => { const out = {}; const src = v.lanes && typeof v.lanes === 'object' ? v.lanes : D.lanes; for (const [k, val] of Object.entries(src)) { if (/^[A-Z]{2}>[A-Z]{2}$/.test(k)) { const n = num(val, 0.5, 2, null); if (n != null && n !== 1) out[k] = n; } } return out; })()
   };
 }
 async function getPricing() {
@@ -473,8 +588,19 @@ function priceQuote(ctx, input) {
     }
   }
   if (P.marketPct) factors.market = { pct: P.marketPct };
+  const lane = laneMultiplier(P, input.pickup, input.delivery);
+  if (lane.mult !== 1) factors.lane = { pct: Math.round((lane.mult - 1) * 1000) / 10, from: lane.from, to: lane.to };
 
   let total = subtotal;
+  // Hard-to-reach locations: flat fee per end, by tier (assessed before pricing)
+  for (const [end, loc] of [['pickup', input.pickupLoc], ['delivery', input.deliveryLoc]]) {
+    if (!P.difficulty.enabled || !loc || !loc.tier) continue;
+    const fee = P.difficulty.fees[loc.tier] || 0;
+    if (!fee) continue;
+    lines.push({ label: `Hard-to-reach ${end} (tier ${loc.tier}${loc.reasons.length ? ': ' + loc.reasons.slice(0, 2).join('; ') : ''})`, amount: fee });
+    total += fee;
+    factors[end + 'Difficulty'] = { tier: loc.tier, fee, reasons: loc.reasons };
+  }
   const apply = (key, label) => {
     const f = factors[key]; if (!f || !f.pct) return;
     const amt = Math.round(total * f.pct / 100);
@@ -485,16 +611,31 @@ function priceQuote(ctx, input) {
   apply('season', `Season (month ${month}, ${factors.season.pct > 0 ? '+' : ''}${factors.season.pct}%)`);
   apply('shortNotice', `Short notice (pickup within ${P.timing.shortNoticeDays} days, +${P.timing.shortNoticePct}%)`);
   apply('flexible', `Flexible dates (${factors.flexible ? factors.flexible.windowDays : ''}-day window, ${P.timing.flexiblePct}%)`);
+  apply('lane', `Lane ${factors.lane ? (REGION_NAMES[factors.lane.from] || factors.lane.from) + ' → ' + (REGION_NAMES[factors.lane.to] || factors.lane.to) : ''} (${factors.lane && factors.lane.pct > 0 ? '+' : ''}${factors.lane ? factors.lane.pct : 0}%)`);
   apply('market', `Market adjustment (${P.marketPct > 0 ? '+' : ''}${P.marketPct}%)`);
   if (total < P.minimumPrice && (input.vehicles || []).length) { lines.push({ label: `Minimum order price`, amount: Math.round(P.minimumPrice - total) }); total = P.minimumPrice; }
   total = Math.max(0, Math.round(total));
-  return { total, subtotal: Math.round(subtotal), cpm: Math.round(cpm * 100) / 100, lines, factors };
+  const requiresCall = !!((input.pickupLoc && input.pickupLoc.noRoad) || (input.deliveryLoc && input.deliveryLoc.noRoad));
+  return { total, subtotal: Math.round(subtotal), cpm: Math.round(cpm * 100) / 100, lines, factors, requiresCall };
 }
 
 // Back-compat: price with market layers loaded from settings
 async function computeQuoteLive(vehicles, distance, opts = {}) {
   const ctx = await getPricingContext();
-  return priceQuote(ctx, { vehicles, distance, ...opts });
+  const input = { vehicles, distance, ...opts };
+  if (ctx.pricing.difficulty.enabled && opts.assessLocations !== false) {
+    const [pl, dl] = await Promise.all([
+      opts.pickup ? assessLocation(ctx.pricing, opts.pickup, opts.pickupLat, opts.pickupLng) : null,
+      opts.delivery ? assessLocation(ctx.pricing, opts.delivery, opts.deliveryLat, opts.deliveryLng) : null
+    ]);
+    input.pickupLoc = pl; input.deliveryLoc = dl;
+  }
+  return priceQuote(ctx, input);
+}
+// Address/coordinate fields from a request body, sanitized
+function locationOpts(b) {
+  const n = (x) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
+  return { pickup: str(b.pickup, 500), delivery: str(b.delivery, 500), pickupLat: n(b.pickupLat), pickupLng: n(b.pickupLng), deliveryLat: n(b.deliveryLat), deliveryLng: n(b.deliveryLng) };
 }
 
 async function findActivePromo(code) {
@@ -571,6 +712,7 @@ async function initDB() {
       ['refunded_amount', 'DECIMAL(10,2)'],
       ['refunded_at', 'DATETIME'],
       ['dispute_status', 'VARCHAR(30)'],
+      ['pricing_json', 'JSON'],
       ['agreement_json', 'MEDIUMTEXT'],
       ['charged_at', 'DATETIME'],
       ['charged_amount', 'DECIMAL(10,2)'],
@@ -618,6 +760,24 @@ async function initDB() {
       )
     `);
 
+    // Location difficulty ratings (metro distance + AI), one row per address
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS location_ratings (
+        id            INT AUTO_INCREMENT PRIMARY KEY,
+        rating_key    VARCHAR(64) UNIQUE NOT NULL,
+        address       VARCHAR(500),
+        lat           DECIMAL(9,6),
+        lng           DECIMAL(9,6),
+        metro_name    VARCHAR(100),
+        metro_miles   INT,
+        ai_tier       TINYINT,
+        ai_reasons    JSON,
+        ai_flags      JSON,
+        override_tier TINYINT,
+        created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
     // Website quotes: saved when a visitor gives their email on the calculator.
     // The token goes in the quote email's "Book" link and prefills checkout.
     await conn.execute(`
@@ -639,6 +799,9 @@ async function initDB() {
         created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    for (const [col, def] of [['pickup_lat', 'DECIMAL(9,6)'], ['pickup_lng', 'DECIMAL(9,6)'], ['delivery_lat', 'DECIMAL(9,6)'], ['delivery_lng', 'DECIMAL(9,6)']]) {
+      try { await conn.execute(`ALTER TABLE quotes ADD COLUMN ${col} ${def}`); } catch (e) { /* exists */ }
+    }
 
     // Таблица клиентов (CRM) — orders link to a customer by contact.email
     await conn.execute(`
@@ -1551,6 +1714,16 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
       console.error('POST /api/orders customer upsert:', e.message);
     }
 
+    // Pricing record: the engine's breakdown for this order (web: recomputed from the same inputs; admin: sent by the wizard)
+    let pricingJson = null;
+    try {
+      if (isAdmin && b.pricing && typeof b.pricing === 'object') pricingJson = JSON.stringify({ lines: Array.isArray(b.pricing.lines) ? b.pricing.lines.slice(0, 30) : [], factors: b.pricing.factors || {}, cpm: b.pricing.cpm, quotedTotal: total });
+      else if (!isAdmin) {
+        const rec = await computeQuoteLive(vehicles, distance || 0, { transportType, pickupDate, mustDeliverBy, pickup: location.pickup, delivery: location.delivery, pickupLat: Number(loc.pickupLat), pickupLng: Number(loc.pickupLng), deliveryLat: Number(loc.deliveryLat), deliveryLng: Number(loc.deliveryLng) });
+        pricingJson = JSON.stringify({ lines: rec.lines, factors: rec.factors, cpm: rec.cpm, quotedTotal: total });
+      }
+    } catch (e) { console.error('pricing record:', e.message); }
+
     // No-show / dry-run fee: admin can set it at quote time; otherwise the default applies
     const noShowFee = isAdmin && b.noShowFee != null && b.noShowFee !== '' && Number(b.noShowFee) >= 0
       ? Math.round(Number(b.noShowFee) * 100) / 100 : null;
@@ -1559,9 +1732,9 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
       `INSERT INTO orders
          (id, status, contact, vehicle, vehicles, location,
           pickup_date, must_deliver_by, transport_type, total,
-          customer_id, source, payment_status, distance, notes, no_show_fee,
+          customer_id, source, payment_status, distance, notes, no_show_fee, pricing_json,
           stripe_payment_intent_id, charged_at, charged_amount, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [
         id, 'New',
         JSON.stringify(contact),
@@ -1569,7 +1742,7 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
         JSON.stringify(vehicles),
         JSON.stringify(location),
         pickupDate, mustDeliverBy, transportType, total,
-        customerId, source, paymentStatus, distance, notes, noShowFee,
+        customerId, source, paymentStatus, distance, notes, noShowFee, pricingJson,
         stripePiId, stripePiId ? new Date() : null, stripePiId ? total : null
       ]
     );
@@ -2627,16 +2800,32 @@ app.post('/api/price', publicLimiter, async (req, res) => {
     if (!(distance >= 0 && distance <= 6000)) return res.status(400).json({ success: false, message: 'Invalid distance' });
     const priced = await computeQuoteLive(vehicles, distance, {
       transportType: req.body.transportType === 'enclosed' ? 'enclosed' : 'open',
-      pickupDate: str(req.body.pickupDate, 10), mustDeliverBy: str(req.body.mustDeliverBy, 10)
+      pickupDate: str(req.body.pickupDate, 10), mustDeliverBy: str(req.body.mustDeliverBy, 10), ...locationOpts(req.body)
     });
     const isAdmin = !!(req.session && req.session.role === 'admin');
-    res.json({ success: true, total: priced.total, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors } : {}) });
+    res.json({ success: true, total: priced.total, requiresCall: priced.requiresCall, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors } : {}) });
   } catch (err) { console.error('POST /api/price:', err); res.status(500).json({ success: false }); }
 });
 
 app.get('/api/settings/pricing', requireAdmin, async (req, res) => {
   const [pricing, fuel] = await Promise.all([getPricing(), getFuelIndex()]);
-  res.json({ pricing, fuel, defaults: DEFAULT_PRICING, fuelConfigured: !!(process.env.EIA_API_KEY || '').trim() });
+  res.json({ pricing, fuel, defaults: DEFAULT_PRICING, fuelConfigured: !!(process.env.EIA_API_KEY || '').trim(), aiConfigured: !!(process.env.ANTHROPIC_API_KEY || '').trim(), regions: REGION_NAMES });
+});
+// Recent location ratings, and an override so a wrong AI/metro tier can be corrected once for good
+app.get('/api/locations', requireAdmin, async (req, res) => {
+  try {
+    const q = str(req.query.q, 100);
+    const [rows] = q
+      ? await pool.execute('SELECT * FROM location_ratings WHERE address LIKE ? ORDER BY created_at DESC LIMIT 100', ['%' + q + '%'])
+      : await pool.execute('SELECT * FROM location_ratings ORDER BY created_at DESC LIMIT 100');
+    res.json(rows.map(r => ({ id: r.id, address: r.address, metro: r.metro_name, metroMiles: r.metro_miles, aiTier: r.ai_tier, reasons: safeJson(r.ai_reasons) || [], flags: safeJson(r.ai_flags) || {}, overrideTier: r.override_tier, createdAt: r.created_at })));
+  } catch (err) { res.json([]); }
+});
+app.patch('/api/locations/:id', requireAdmin, async (req, res) => {
+  const t = req.body.overrideTier === null || req.body.overrideTier === '' ? null : Math.max(0, Math.min(3, parseInt(req.body.overrideTier, 10)));
+  if (t !== null && !Number.isFinite(t)) return res.status(400).json({ success: false });
+  await pool.execute('UPDATE location_ratings SET override_tier = ? WHERE id = ?', [t, Number(req.params.id) || 0]);
+  res.json({ success: true, overrideTier: t });
 });
 app.put('/api/settings/pricing', requireAdmin, async (req, res) => {
   const p = sanitizePricing(req.body);
@@ -2700,7 +2889,7 @@ app.post('/api/create-payment-intent', publicLimiter, async (req, res) => {
 
     const transportType = req.body.transportType === 'enclosed' ? 'enclosed' : 'open';
     const pickupDate = str(req.body.pickupDate, 10), mustDeliverBy = str(req.body.mustDeliverBy, 10);
-    const priced = await computeQuoteLive(vehicles, distance, { transportType, pickupDate, mustDeliverBy });
+    const priced = await computeQuoteLive(vehicles, distance, { transportType, pickupDate, mustDeliverBy, ...locationOpts(req.body) });
     const subtotal = priced.total;
     const promo = req.body.promoCode ? await findActivePromo(req.body.promoCode) : null;
     const discount = promoDiscount(promo, subtotal);
@@ -2895,14 +3084,15 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
     const pickup = str(b.pickup, 500), delivery = str(b.delivery, 500);
     const transportType = b.transportType === 'enclosed' ? 'enclosed' : 'open';
 
-    const priced = await computeQuoteLive([vehicle], distance, { transportType });
+    const priced = await computeQuoteLive([vehicle], distance, { transportType, ...locationOpts(b) });
     const total = priced.total;
     const breakdown = priced.lines;
     const token = crypto.randomBytes(24).toString('hex');
+    const lo = locationOpts(b);
     await pool.execute(
-      `INSERT INTO quotes (token, email, name, phone, vehicle_json, distance, pickup, delivery, transport_type, total, breakdown_json)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [token, email, name || null, phone || null, JSON.stringify(vehicle), distance, pickup || null, delivery || null, transportType, total, JSON.stringify(breakdown)]
+      `INSERT INTO quotes (token, email, name, phone, vehicle_json, distance, pickup, delivery, transport_type, total, breakdown_json, pickup_lat, pickup_lng, delivery_lat, delivery_lng)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [token, email, name || null, phone || null, JSON.stringify(vehicle), distance, pickup || null, delivery || null, transportType, total, JSON.stringify(breakdown), lo.pickupLat ?? null, lo.pickupLng ?? null, lo.deliveryLat ?? null, lo.deliveryLng ?? null]
     );
     pool.execute('INSERT IGNORE INTO leads (email, source) VALUES (?, ?)', [email, 'calculator']).catch(() => {});
 
@@ -2935,7 +3125,7 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
         text: `New website quote ${money(total)}\n\nCustomer: ${name || '—'}\nEmail: ${email}\nPhone: ${phone || '—'}\nVehicle: ${vl}${flags ? ' (' + flags + ')' : ''}\nPickup: ${pickup}\nDelivery: ${delivery}\nDistance: ${distance} mi\nTransport: ${transportType}\n\nLeads: ${appUrl(req)}/admin/leads`
       }).catch(e => console.error('quote notify mail:', e.message));
     }
-    res.json({ success: true, quoteId: token, total, breakdown, bookUrl, emailSent: !!mail.sent });
+    res.json({ success: true, quoteId: token, total, breakdown, bookUrl, emailSent: !!mail.sent, requiresCall: !!priced.requiresCall });
   } catch (err) {
     console.error('POST /api/quotes:', err);
     res.status(500).json({ success: false, message: 'Could not create the quote right now' });
@@ -2954,6 +3144,8 @@ app.get('/api/quotes/:token', publicLimiter, async (req, res) => {
       success: true, quoteId: q.token, email: q.email, name: q.name || '', phone: q.phone || '',
       vehicle: safeJson(q.vehicle_json) || {}, distance: q.distance, pickup: q.pickup || '', delivery: q.delivery || '',
       transportType: q.transport_type || 'open', total: Number(q.total), breakdown: safeJson(q.breakdown_json) || [],
+      pickupLat: q.pickup_lat != null ? Number(q.pickup_lat) : null, pickupLng: q.pickup_lng != null ? Number(q.pickup_lng) : null,
+      deliveryLat: q.delivery_lat != null ? Number(q.delivery_lat) : null, deliveryLng: q.delivery_lng != null ? Number(q.delivery_lng) : null,
       createdAt: q.created_at, orderId: q.order_id || null
     });
   } catch (err) {

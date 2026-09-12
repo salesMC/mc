@@ -47,7 +47,7 @@ async function initAdminPage() {
   if (page === 'leads')       loadLeads();
   if (page === 'email')       loadEmailStatus();
   if (page === 'search')      loadSearchResults();
-  if (page === 'calculator')  loadPricingSettings();
+  if (page === 'calculator')  { loadPricingSettings(); loadLocationRatings(); }
   if (page === 'customers') {
     loadCustomers();
     if (open) showCustomerDetail(Number(open)); // /admin/customers?open=<id>
@@ -470,6 +470,27 @@ async function loadPricingSettings() {
         </div>
       </div>
 
+      <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <h4 class="font-semibold text-white mb-1"><i class="fas fa-location-dot text-[var(--orange)] mr-2"></i>Hard-to-reach locations <span class="text-muted text-sm font-normal">— extra fee when a pickup or delivery is far from any metro, or the AI check says the place is difficult</span></h4>
+        <p class="text-xs text-muted mb-4">Tier = the higher of the two checks. Same address always gets the same tier; you can override any address in the list below. ${d.aiConfigured ? '<span class="text-lime-300">AI check is on.</span>' : '<span class="text-amber-300">AI check needs ANTHROPIC_API_KEY in Railway — until then only the metro-distance rule runs.</span>'}</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div><label class="label-dark">Location fees on</label><select id="pDiffOn" class="input-admin"><option value="true" ${P.difficulty.enabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.difficulty.enabled ? 'selected' : ''}>No</option></select></div>
+          <div><label class="label-dark">Use AI check</label><select id="pDiffAi" class="input-admin"><option value="true" ${P.difficulty.aiEnabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.difficulty.aiEnabled ? 'selected' : ''}>No</option></select></div>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          ${[1, 2, 3].map(t => `<div class="p-3 rounded-lg" style="border:1px solid var(--line)"><div class="text-xs text-muted uppercase tracking-wider mb-2">Tier ${t}${t === 1 ? ' · small town' : t === 2 ? ' · rural / unpaved' : ' · island / very remote'}</div>
+            <label class="label-dark">Fee ($)</label><input id="pDiffFee${t}" type="number" value="${P.difficulty.fees[t]}" class="input-admin mb-2">
+            <label class="label-dark">…or ≥ miles from a metro</label><input id="pDiffMiles${t}" type="number" value="${P.difficulty.metroMiles[t]}" class="input-admin"></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <h4 class="font-semibold text-white mb-1"><i class="fas fa-route text-[var(--orange)] mr-2"></i>Lane multipliers <span class="text-muted text-sm font-normal">— from region (rows) to region (columns). 1.00 = no change, 1.08 = +8%, 0.96 = −4%</span></h4>
+        <p class="text-xs text-muted mb-4">Direction matters: out of Florida costs more than into Florida because trucks are already heading south. Leave a box at 1 to ignore it.</p>
+        <div class="overflow-x-auto"><table class="text-xs" id="laneGrid"><thead><tr><th class="p-1 text-muted">from \\ to</th>${Object.keys(d.regions).map(r => `<th class="p-1 text-center text-muted" title="${esc(d.regions[r])}">${r}</th>`).join('')}</tr></thead>
+          <tbody>${Object.keys(d.regions).map(fr => `<tr><th class="p-1 text-left text-dim whitespace-nowrap" title="${esc(d.regions[fr])}">${fr} <span class="text-muted font-normal">${esc(d.regions[fr])}</span></th>${Object.keys(d.regions).map(to => { const v = P.lanes[fr + '>' + to] || 1; return `<td class="p-0.5"><input data-lane="${fr}>${to}" type="number" step="0.01" value="${v}" class="input-admin text-center px-0.5 py-1 ${v !== 1 ? 'text-[var(--orange)] font-semibold' : 'text-muted'}" style="width:58px;font-size:11px" ${fr === to ? 'disabled' : ''}></td>`; }).join('')}</tr>`).join('')}</tbody></table></div>
+      </div>
+
       <div class="flex gap-3 mb-10">
         <button onclick="savePricingSettings()" class="flex-1 btn btn-primary py-4"><i class="fas fa-save"></i> Save market settings</button>
         <button onclick="resetPricingSettings()" class="btn btn-ghost py-4 px-6"><i class="fas fa-rotate-left"></i> Reset market settings</button>
@@ -483,6 +504,8 @@ async function loadPricingSettings() {
           <div><label class="label-dark">Transport</label><select id="tTransport" class="input-admin"><option value="open">Open</option><option value="enclosed">Enclosed</option></select></div>
           <div><label class="label-dark">Pickup date</label><input id="tPickup" type="date" class="input-admin"></div>
           <button onclick="testPrice()" class="btn btn-cyan py-3"><i class="fas fa-calculator"></i> Price it</button>
+          <div class="col-span-2 md:col-span-2"><label class="label-dark">Pickup address (optional, for lane + location checks)</label><input id="tPickupAddr" class="input-admin" placeholder="Los Angeles, CA"></div>
+          <div class="col-span-2 md:col-span-3"><label class="label-dark">Delivery address (optional)</label><input id="tDeliveryAddr" class="input-admin" placeholder="Southbury, CT"></div>
         </div>
         <div id="tResult" class="mt-4 text-sm"></div>
       </div>`;
@@ -495,8 +518,31 @@ function readPricingForm() {
     minimumPrice: parseFloat(g('pMin')), enclosedMultiplier: parseFloat(g('pEnclosed')), multiVehicleDiscountPct: parseFloat(g('pMulti')),
     fuel: { enabled: g('pFuelOn') === 'true', baselineDiesel: parseFloat(g('pFuelBase')), pctPerQuarter: parseFloat(g('pFuelPct')), minPct: parseFloat(g('pFuelMin')), maxPct: parseFloat(g('pFuelMax')) },
     season, timing: { shortNoticeDays: parseFloat(g('pShortDays')), shortNoticePct: parseFloat(g('pShortPct')), flexibleDays: parseFloat(g('pFlexDays')), flexiblePct: parseFloat(g('pFlexPct')) },
-    marketPct: parseFloat(g('pMarket'))
+    marketPct: parseFloat(g('pMarket')),
+    difficulty: { enabled: g('pDiffOn') === 'true', aiEnabled: g('pDiffAi') === 'true',
+      fees: { 1: parseFloat(g('pDiffFee1')), 2: parseFloat(g('pDiffFee2')), 3: parseFloat(g('pDiffFee3')) },
+      metroMiles: { 1: parseFloat(g('pDiffMiles1')), 2: parseFloat(g('pDiffMiles2')), 3: parseFloat(g('pDiffMiles3')) } },
+    lanes: (() => { const out = {}; document.querySelectorAll('#laneGrid input[data-lane]').forEach(i => { const v = parseFloat(i.value); if (v && v !== 1) out[i.dataset.lane] = v; }); return out; })()
   };
+}
+// Location ratings list (address → tier) with a manual override
+async function loadLocationRatings() {
+  const box = document.getElementById('locationRatings'); if (!box) return;
+  const q = document.getElementById('locSearch')?.value.trim() || '';
+  try {
+    const rows = await (await fetch('/api/locations' + (q ? '?q=' + encodeURIComponent(q) : ''))).json();
+    if (!rows.length) { box.innerHTML = '<p class="text-muted text-sm">No addresses rated yet. Ratings appear as customers get quotes.</p>'; return; }
+    box.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Address</th><th>Nearest metro</th><th>AI says</th><th>Override</th></tr></thead><tbody class="text-dim">
+      ${rows.map(r => `<tr><td class="max-w-[320px] truncate" title="${esc(r.address)}">${esc(r.address)}</td>
+        <td class="text-xs">${r.metro ? esc(r.metro) + ' · ' + r.metroMiles + ' mi' : '—'}</td>
+        <td class="text-xs">${r.aiTier != null ? 'Tier ' + r.aiTier : '—'}${r.reasons && r.reasons.length ? '<div class="text-muted">' + esc(r.reasons.join('; ')) + '</div>' : ''}</td>
+        <td><select onchange="overrideLocation(${r.id}, this.value)" class="input-admin py-1 text-xs w-32"><option value="" ${r.overrideTier == null ? 'selected' : ''}>auto</option>${[0,1,2,3].map(t => `<option value="${t}" ${r.overrideTier === t ? 'selected' : ''}>Tier ${t}</option>`).join('')}</select></td></tr>`).join('')}
+    </tbody></table></div>`;
+  } catch (e) { box.innerHTML = '<p class="text-red-400 text-sm">Could not load.</p>'; }
+}
+async function overrideLocation(id, v) {
+  await fetch('/api/locations/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrideTier: v === '' ? null : Number(v) }) });
+  panelMsg('Location tier updated. New quotes for this address use it.', true);
 }
 async function savePricingSettings() {
   try {
@@ -517,7 +563,8 @@ async function testPrice() {
   const out = document.getElementById('tResult'); out.innerHTML = '<span class="text-muted">Pricing…</span>';
   const r = await fetch('/api/price', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
     vehicles: [{ type: document.getElementById('tType').value, condition: 'operable' }], distance: Number(document.getElementById('tMiles').value) || 0,
-    transportType: document.getElementById('tTransport').value, pickupDate: document.getElementById('tPickup').value }) });
+    transportType: document.getElementById('tTransport').value, pickupDate: document.getElementById('tPickup').value,
+    pickup: document.getElementById('tPickupAddr').value.trim(), delivery: document.getElementById('tDeliveryAddr').value.trim() }) });
   const d = await r.json();
   if (!d.success) { out.innerHTML = '<span class="text-red-400">Could not price.</span>'; return; }
   out.innerHTML = `<div class="text-3xl font-bold text-[var(--orange)] mb-2">${money(d.total)}</div>
@@ -744,6 +791,13 @@ async function showOrderDetail(orderId, { fromHistory = false } = {}) {
           <span class="whitespace-pre-line">${esc(order.notes)}</span>
         </div>` : ''}
 
+      ${order.pricing && order.pricing.lines && order.pricing.lines.length ? `
+      <div class="mt-8 bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-5">
+        <h4 class="font-semibold text-white mb-1"><i class="fas fa-chart-line text-[var(--orange)] mr-2"></i>How this price was built <span class="text-muted text-xs font-normal">(admin only)</span></h4>
+        <p class="text-xs text-muted mb-3">Rate used: $${order.pricing.cpm}/mile. Every layer that touched this quote:</p>
+        <div class="space-y-1 text-sm">${order.pricing.lines.map(l => `<div class="flex justify-between gap-4"><span class="text-dim">${esc(l.label)}</span><span class="${l.amount < 0 ? 'text-lime-300' : 'text-white'} whitespace-nowrap">${l.amount < 0 ? '−' : ''}${money(Math.abs(l.amount))}</span></div>`).join('')}</div>
+        ${order.pricing.quotedTotal != null && order.pricing.quotedTotal !== order.total ? `<p class="text-xs text-amber-300 mt-3">Engine total was ${money(order.pricing.quotedTotal)}; the order total is ${money(order.total)} (adjusted by admin).</p>` : ''}
+      </div>` : ''}
       ${confirmationPanelHTML(order)}
 
       <div class="mt-10 pt-6 border-t border-[var(--line)] flex justify-between items-center">
@@ -1134,7 +1188,7 @@ function wizCollect() {
   } else if (wiz.step === 1) {
     wizSaveVehicle(wizVehicleTab);
   } else if (wiz.step === 2 && g('wr-pickup')) {
-    wiz.location = { pickup: g('wr-pickup').value.trim(), delivery: g('wr-delivery').value.trim() };
+    wiz.location = { ...wiz.location, pickup: g('wr-pickup').value.trim(), delivery: g('wr-delivery').value.trim() };
     wiz.distance = g('wr-distance').value;
     wiz.pickupDate = g('wr-pickupDate').value;
     wiz.mustDeliverBy = g('wr-deliverBy').value;
@@ -1516,8 +1570,9 @@ function wizInitMaps() {
     const d = document.getElementById('wr-delivery');
     if (!p || !d) return;
     const opts = { types: ['address'], componentRestrictions: { country: 'us' } };
-    new google.maps.places.Autocomplete(p, opts).addListener('place_changed', wizCalcDistance);
-    new google.maps.places.Autocomplete(d, opts).addListener('place_changed', wizCalcDistance);
+    const acP = new google.maps.places.Autocomplete(p, opts), acD = new google.maps.places.Autocomplete(d, opts);
+    acP.addListener('place_changed', () => { const g = acP.getPlace()?.geometry?.location; wiz.location.pickupLat = g ? g.lat() : undefined; wiz.location.pickupLng = g ? g.lng() : undefined; wizCalcDistance(); });
+    acD.addListener('place_changed', () => { const g = acD.getPlace()?.geometry?.location; wiz.location.deliveryLat = g ? g.lat() : undefined; wiz.location.deliveryLng = g ? g.lng() : undefined; wizCalcDistance(); });
     wizDistanceService = new google.maps.DistanceMatrixService();
   };
   if (window.google?.maps?.places) return bind();
@@ -1570,7 +1625,9 @@ async function wizFetchServerPrice() {
   try {
     const r = await fetch('/api/price', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       vehicles: wiz.vehicles.map(({ photos, ...v }) => v), distance: Number(wiz.distance) || 0,
-      transportType: wiz.transportType, pickupDate: wiz.pickupDate, mustDeliverBy: wiz.mustDeliverBy }) });
+      transportType: wiz.transportType, pickupDate: wiz.pickupDate, mustDeliverBy: wiz.mustDeliverBy,
+      pickup: wiz.location.pickup, delivery: wiz.location.delivery,
+      pickupLat: wiz.location.pickupLat, pickupLng: wiz.location.pickupLng, deliveryLat: wiz.location.deliveryLat, deliveryLng: wiz.location.deliveryLng }) });
     const d = await r.json();
     if (d.success) wiz.serverPrice = d;
   } catch (e) { console.warn('price:', e); }
@@ -1729,6 +1786,7 @@ async function wizSave() {
         transportType: wiz.transportType,
         total,
         noShowFee: wiz.noShowFee != null && wiz.noShowFee !== '' ? Number(wiz.noShowFee) : undefined,
+        pricing: wiz.serverPrice ? { lines: wiz.serverPrice.lines, factors: wiz.serverPrice.factors, cpm: wiz.serverPrice.cpm } : undefined,
         notes: wiz.notes
       })
     });
