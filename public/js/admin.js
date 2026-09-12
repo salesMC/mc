@@ -48,7 +48,7 @@ async function initAdminPage() {
   if (page === 'email')       loadEmailStatus();
   if (page === 'search')      loadSearchResults();
   if (page === 'home')        loadDashboard();
-  if (page === 'email')       loadReviewUrl();
+  if (page === 'email')     { loadReviewUrl(); loadSmsStatus(); }
   if (page === 'calculator')  { loadPricingSettings(); loadLocationRatings(); }
   if (page === 'customers') {
     loadCustomers();
@@ -1873,6 +1873,7 @@ function confirmationPanelHTML(o) {
     <div>
       <label class="label-dark">No-show / dry-run fee ($)</label>
       <input id="noShowFeeInput" type="number" min="0" step="1" value="${fee}" class="input-admin w-32">
+      ${window.MC_SMS_READY && (o.contact || {}).phone ? `<label class="inline-flex items-center gap-2 text-sm text-dim ml-2"><input type="checkbox" id="confirmSmsChk" checked> Also text the link to ${esc(o.contact.phone)}</label>` : ''}
     </div>`;
 
   let body = '';
@@ -2002,10 +2003,12 @@ async function postOrderAction(orderId, action, body) {
 async function sendConfirmation(orderId) {
   const fee = document.getElementById('noShowFeeInput')?.value;
   try {
-    const d = await postOrderAction(orderId, 'send-confirmation', { noShowFee: fee });
+    const sms = !!(document.getElementById('confirmSmsChk') || {}).checked;
+    const d = await postOrderAction(orderId, 'send-confirmation', { noShowFee: fee, sms });
     loadOrders();
     await showOrderDetail(orderId);
-    panelMsg(d.emailSent ? `Confirmation email sent to ${d.sentTo}.` : `Link generated, but no email was sent: ${d.emailError}`, d.emailSent);
+    const smsNote = sms ? (d.smsSent ? ' Link also texted.' : ` Text not sent: ${d.smsError || 'unknown'}.`) : '';
+    panelMsg((d.emailSent ? `Confirmation email sent to ${d.sentTo}.` : `Link generated, but no email was sent: ${d.emailError}`) + smsNote, d.emailSent);
   } catch (e) { panelMsg(e.message, false); }
 }
 
@@ -2447,8 +2450,18 @@ function dispatchPanelHTML(o) {
         <div class="flex flex-wrap gap-2">
           <input id="dsp-update" class="input-admin flex-1 min-w-[220px]" placeholder="e.g. Truck passed Amarillo, delivery now Thursday morning">
           <label class="inline-flex items-center gap-2 text-sm text-dim"><input type="checkbox" id="dsp-updateNotify" checked ${(o.contact || {}).email ? '' : 'disabled'}> Email it</label>
+          <label class="inline-flex items-center gap-2 text-sm text-dim" title="${window.MC_SMS_READY ? '' : 'Add the Twilio keys on Railway to enable texting'}"><input type="checkbox" id="dsp-updateSms" ${window.MC_SMS_READY && (o.contact || {}).phone ? 'checked' : 'disabled'}> Text it</label>
           <button onclick="postOrderUpdate('${esc(o.id)}')" class="btn btn-ghost px-4 py-2 text-sm"><i class="fas fa-plus"></i> Post</button>
         </div>
+      </div>
+
+      <div class="mt-5 pt-4 border-t border-[var(--line)]">
+        <div class="text-xs text-muted uppercase tracking-wider mb-2">Text the customer ${(o.contact || {}).phone ? `<span class="normal-case tracking-normal">(${esc(o.contact.phone)})</span>` : '<span class="normal-case tracking-normal text-amber-300">(no phone on the order)</span>'}</div>
+        ${window.MC_SMS_READY ? `<div class="flex flex-wrap gap-2">
+          <input id="dsp-sms" class="input-admin flex-1 min-w-[220px]" maxlength="300" placeholder="Short message. 'Mcships:' is added in front automatically." ${(o.contact || {}).phone ? '' : 'disabled'}>
+          <button onclick="sendOrderSms('${esc(o.id)}')" class="btn btn-ghost px-4 py-2 text-sm" ${(o.contact || {}).phone ? '' : 'disabled'}><i class="fas fa-comment-sms"></i> Send text</button>
+        </div>` : '<p class="text-xs text-muted">Texting is off until the Twilio keys are added on Railway (Email page shows the status). Emails still go out.</p>'}
+        ${(o.sms || []).length ? `<div class="mt-3 space-y-1 text-xs">${o.sms.slice(-5).reverse().map(s => `<div class="flex gap-3"><span class="text-muted whitespace-nowrap w-32 shrink-0">${fmtDateTime(s.at)}</span><span class="${s.ok ? 'text-dim' : 'text-red-400'}"><i class="fas ${s.ok ? 'fa-check text-lime-400' : 'fa-triangle-exclamation'} mr-1"></i>${esc(s.body)}${s.ok ? '' : ' — ' + esc(s.error || 'failed')}</span></div>`).join('')}</div>` : ''}
       </div>
 
       <div class="mt-5 pt-4 border-t border-[var(--line)]">
@@ -2482,19 +2495,22 @@ async function saveDispatch(orderId, notify) {
     const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/dispatch`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await r.json();
     if (!r.ok || !data.success) return alert(data.message || 'Could not save');
-    panelMsg(notify ? (data.emailed ? 'Saved and emailed to the customer.' : 'Saved. The email could not be sent.') : 'Dispatch saved.', true);
+    const how = [data.emailed ? 'emailed' : '', data.texted ? 'texted' : ''].filter(Boolean).join(' and ');
+    panelMsg(notify ? (how ? `Saved and ${how} to the customer.` : 'Saved. The customer could not be reached (no email/text went out).') : 'Dispatch saved.', true);
     refreshOrderPanel(orderId);
   } catch (e) { alert('Could not save'); }
 }
 async function postOrderUpdate(orderId) {
   const note = (document.getElementById('dsp-update') || {}).value || '';
   const notify = !!(document.getElementById('dsp-updateNotify') || {}).checked;
+  const sms = !!(document.getElementById('dsp-updateSms') || {}).checked;
   if (!note.trim()) return alert('Write the update first.');
   try {
-    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note, notify }) });
+    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note, notify, sms }) });
     const data = await r.json();
     if (!r.ok || !data.success) return alert(data.message || 'Could not post');
-    panelMsg(notify && data.emailed ? 'Update posted and emailed.' : 'Update posted.', true);
+    const how = [data.emailed ? 'emailed' : '', data.texted ? 'texted' : ''].filter(Boolean).join(' and ');
+    panelMsg(how ? `Update posted and ${how}.` : 'Update posted.', true);
     refreshOrderPanel(orderId);
   } catch (e) { alert('Could not post'); }
 }
@@ -2529,7 +2545,8 @@ async function markDelivered(orderId) {
     const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/delivered`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notify: true }) });
     const data = await r.json();
     if (!r.ok || !data.success) return alert(data.message || 'Could not update');
-    panelMsg(data.emailed ? 'Marked delivered and the customer was emailed.' : 'Marked delivered.', true);
+    const how = [data.emailed ? 'emailed' : '', data.texted ? 'texted' : ''].filter(Boolean).join(' and ');
+    panelMsg(how ? `Marked delivered and the customer was ${how}.` : 'Marked delivered.', true);
     refreshOrderPanel(orderId);
   } catch (e) { alert('Could not update'); }
 }
@@ -2546,3 +2563,38 @@ async function saveReviewUrl() {
     msg.textContent = d.success ? (d.url ? 'Saved. Review emails will link to it.' : 'Saved. Review emails will ask customers to reply.') : (d.message || 'Could not save');
   } catch (e) { msg.classList.remove('hidden'); msg.className = 'text-sm mt-3 text-red-400'; msg.textContent = 'Could not save'; }
 }
+
+async function sendOrderSms(orderId) {
+  const el = document.getElementById('dsp-sms'); const body = (el && el.value || '').trim();
+  if (!body) return alert('Write the text first.');
+  try {
+    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/sms`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body }) });
+    const data = await r.json();
+    if (!r.ok || !data.success) return alert(data.message || 'Could not send');
+    panelMsg('Text sent.', true);
+    refreshOrderPanel(orderId);
+  } catch (e) { alert('Could not send'); }
+}
+async function loadSmsStatus() {
+  const box = document.getElementById('smsStatus'); if (!box) return;
+  try {
+    const st = await (await fetch('/api/sms/status')).json();
+    window.MC_SMS_READY = !!st.configured;
+    box.innerHTML = st.configured
+      ? `<i class="fas fa-circle-check text-lime-400 mr-1"></i> Texting is on. Customers get texts from <strong class="text-white">${esc(st.from)}</strong> for the confirmation link, carrier assigned, picked up, updates and delivery. Emails go out as well.`
+      : `<i class="fas fa-circle-minus text-amber-300 mr-1"></i> Texting is off. To turn it on, create a Twilio account, buy a number, then add <span class="font-mono text-white">TWILIO_ACCOUNT_SID</span>, <span class="font-mono text-white">TWILIO_AUTH_TOKEN</span> and <span class="font-mono text-white">TWILIO_FROM</span> on Railway. Nothing else changes: emails keep going out.`;
+    document.getElementById('smsTestBox').classList.toggle('hidden', !st.configured);
+  } catch (e) { box.textContent = 'Could not check the SMS status.'; }
+}
+async function sendTestSms() {
+  const to = (document.getElementById('testSmsTo').value || '').trim(), msg = document.getElementById('testSmsMsg');
+  msg.classList.remove('hidden'); msg.className = 'text-sm mt-3 text-dim'; msg.textContent = 'Sending…';
+  try {
+    const r = await fetch('/api/sms/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
+    const d = await r.json();
+    msg.className = 'text-sm mt-3 ' + (d.success ? 'text-lime-400' : 'text-red-400');
+    msg.textContent = d.success ? 'Sent. Check the phone.' : (d.message || 'Could not send');
+  } catch (e) { msg.className = 'text-sm mt-3 text-red-400'; msg.textContent = 'Could not send'; }
+}
+// Know whether texting is on before the order popup renders (one small call per page)
+fetch('/api/sms/status').then(r => r.json()).then(st => { window.MC_SMS_READY = !!st.configured; }).catch(() => {});

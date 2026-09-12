@@ -25,6 +25,16 @@
       </div>
 
       <div class="mt-10 pt-8 border-t border-[var(--line)]">
+        <h3 class="font-semibold text-white mb-2"><i class="fas fa-comment-sms text-cyan-300 mr-1"></i> Text messages (SMS)</h3>
+        <div id="smsStatus" class="text-sm text-dim mb-3"><i class="fas fa-circle-notch fa-spin mr-1"></i> Checking…</div>
+        <div id="smsTestBox" class="hidden flex flex-wrap gap-2">
+          <input id="testSmsTo" type="tel" placeholder="(502) 555-0100" class="input-admin flex-1 min-w-[240px]">
+          <button onclick="sendTestSms()" class="btn btn-primary px-5"><i class="fas fa-paper-plane"></i> Send test text</button>
+        </div>
+        <p id="testSmsMsg" class="hidden text-sm mt-3"></p>
+      </div>
+
+      <div class="mt-10 pt-8 border-t border-[var(--line)]">
         <h3 class="font-semibold text-white mb-2"><i class="fas fa-star text-amber-300 mr-1"></i> Review request link</h3>
         <p class="text-dim text-sm mb-3">The day after a delivery, the customer gets a "How did we do?" email with this button. Paste your Google review link (Google Business Profile → Ask for reviews). Leave it empty and the email asks them to reply instead.</p>
         <div class="flex flex-wrap gap-2">

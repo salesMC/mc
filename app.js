@@ -258,9 +258,73 @@ function mapOrderRow(r, withPhotos = false) {
     documents     : safeJson(r.documents_json) || [],          // [{ url, name, kind: bol|pickup|delivery|other, mime, size, at }]
     events        : safeJson(r.events_json) || [],             // [{ at, type, note }] shown on the customer tracking page
     reviewSentAt  : r.review_sent_at || null,
+    sms           : safeJson(r.sms_json) || [],                // [{ at, to, body, ok, error }] texts sent to the customer
     createdAt     : r.created_at
   };
 }
+// ---------------------------------------------------------------------------
+// SMS via Twilio's REST API (no SDK needed). Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+// and TWILIO_FROM (your Twilio number, e.g. +15025550100, or a Messaging Service SID).
+// ---------------------------------------------------------------------------
+function smsConfigured() { return !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_FROM); }
+// "(502) 417-8040" → "+15024178040"; anything that isn't a 10/11-digit US number → null
+function toE164(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (digits.length === 10) return '+1' + digits;
+  if (digits.length === 11 && digits[0] === '1') return '+' + digits;
+  if (/^\+\d{11,15}$/.test(String(phone || '').trim())) return String(phone).trim();
+  return null;
+}
+let smsTransport = async (to, body) => {
+  const sid = process.env.TWILIO_ACCOUNT_SID.trim(), from = process.env.TWILIO_FROM.trim();
+  const params = new URLSearchParams({ To: to, Body: body });
+  params.set(/^MG[a-f0-9]{32}$/i.test(from) ? 'MessagingServiceSid' : 'From', from);
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + Buffer.from(`${sid}:${process.env.TWILIO_AUTH_TOKEN.trim()}`).toString('base64'), 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString()
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.message || `Twilio error ${r.status}`);
+  return { sid: data.sid };
+};
+function setSmsTransport(fn) { smsTransport = fn; } // tests swap in a fake
+// Send one text. Never throws; returns { sent, reason }. Logged on the order when orderId is given.
+async function sendSms(phone, body, orderId) {
+  const to = toE164(phone);
+  let result;
+  if (!smsConfigured()) result = { sent: false, reason: 'Texting is not set up yet (add the Twilio keys)' };
+  else if (!to) result = { sent: false, reason: 'No valid US mobile number on the order' };
+  else {
+    try { const r = await smsTransport(to, String(body).slice(0, 1200)); result = { sent: true, sid: r && r.sid }; }
+    catch (e) { console.error('SMS failed:', e.message); result = { sent: false, reason: e.message }; }
+  }
+  if (orderId && to) {
+    try {
+      const [[row]] = await pool.execute('SELECT sms_json FROM orders WHERE id = ?', [orderId]);
+      if (row) {
+        const log = safeJson(row.sms_json) || [];
+        log.push({ at: new Date().toISOString(), to, body: String(body).slice(0, 1200), ok: result.sent, error: result.sent ? null : result.reason });
+        await pool.execute('UPDATE orders SET sms_json = ? WHERE id = ?', [JSON.stringify(log.slice(-50)), orderId]);
+      }
+    } catch (e) { console.error('sms log:', e.message); }
+  }
+  return result;
+}
+const smsFirstName = o => (((o.contact || {}).fullName || '').trim().split(/\s+/)[0]) || 'there';
+const smsVehicle = o => vehicleLabel(orderVehicles(o)[0] || {}).replace(/^Vehicle$/, 'vehicle');
+function smsText(kind, o, extra = {}) {
+  const d = o.dispatch || {};
+  switch (kind) {
+    case 'confirm':   return `Mcships: Hi ${smsFirstName(o)}, please confirm your pickup for the ${smsVehicle(o)} and add a card here (nothing is charged until pickup): ${extra.link}`;
+    case 'dispatch':  return `Mcships: A carrier is assigned for your ${smsVehicle(o)}.${d.driverName ? ' Driver: ' + d.driverName + (d.driverPhone ? ' ' + d.driverPhone : '') + '.' : ''}${d.pickupEta ? ' Pickup: ' + d.pickupEta + '.' : ''} Track: ${extra.track}`;
+    case 'picked_up': return `Mcships: Your ${smsVehicle(o)} has been picked up.${d.deliveryEta ? ' Delivery: ' + d.deliveryEta + '.' : ''} Track: ${extra.track}`;
+    case 'update':    return `Mcships update: ${extra.note} Track: ${extra.track}`;
+    case 'delivered': return `Mcships: Your ${smsVehicle(o)} was delivered. Thank you for shipping with us! Details: ${extra.track}`;
+    default:          return String(extra.note || '');
+  }
+}
+
 // Customer-facing tracking link. Older orders get a token the first time one is needed.
 async function ensureTrackingToken(row) {
   if (row.tracking_token) return row.tracking_token;
@@ -748,6 +812,7 @@ async function initDB() {
       ['pickup_eta', 'VARCHAR(80)'], ['delivery_eta', 'VARCHAR(80)'], ['dispatch_notes', 'TEXT'], ['dispatched_at', 'DATETIME'],
       ['delivered_at', 'DATETIME'], ['tracking_token', 'VARCHAR(64)'], ['documents_json', 'MEDIUMTEXT'], ['events_json', 'MEDIUMTEXT'],
       ['review_sent_at', 'DATETIME'],
+      ['sms_json', 'MEDIUMTEXT'],
     ];
     for (const [col, def] of orderExtraCols) {
       try { await conn.execute(`ALTER TABLE orders ADD COLUMN ${col} ${def}`); } catch (e) { /* exists */ }
@@ -2291,7 +2356,9 @@ app.post('/api/orders/:id/send-confirmation', requireAdmin, async (req, res) => 
       try { mail = await sendMail({ to: email, ...confirmationEmail(order, link) }); }
       catch (e) { console.error('send-confirmation mail:', e); mail = { sent: false, reason: e.message }; }
     }
-    res.json({ success: true, link, emailSent: mail.sent, emailError: mail.sent ? null : mail.reason, sentTo: email || null });
+    let sms = { sent: false };
+    if (req.body && req.body.sms && (order.contact || {}).phone) sms = await sendSms(order.contact.phone, smsText('confirm', order, { link }), order.id);
+    res.json({ success: true, link, emailSent: mail.sent, emailError: mail.sent ? null : mail.reason, sentTo: email || null, smsSent: sms.sent, smsError: sms.sent ? null : (sms.reason || null) });
   } catch (err) {
     console.error('POST /api/orders/:id/send-confirmation:', err);
     res.status(500).json({ success: false, message: err.message || 'Server error' });
@@ -2352,7 +2419,9 @@ app.post('/api/orders/:id/pickup', requireAdmin, async (req, res) => {
     try {
       await addOrderEvent(row.id, 'picked_up', 'Vehicle picked up by the carrier');
       const fresh = await loadOrderRow(row.id); const o = mapOrderRow(fresh, false); const c = o.contact || {};
-      if (c.email) await sendMail({ to: c.email, ...pickedUpEmail(o, await trackingUrl(fresh, req)) });
+      const tUrl = await trackingUrl(fresh, req);
+      if (c.email) await sendMail({ to: c.email, ...pickedUpEmail(o, tUrl) });
+      if (c.phone && smsConfigured()) await sendSms(c.phone, smsText('picked_up', o, { track: tUrl }), o.id);
     } catch (e) { console.error('pickup notice:', e.message); }
   } catch (err) {
     console.error('POST /api/orders/:id/pickup:', err);
@@ -2518,8 +2587,14 @@ app.patch('/api/orders/:id/dispatch', requireAdmin, async (req, res) => {
     if (firstAssign) await addOrderEvent(row.id, 'dispatched', `Carrier assigned${d.carrierName ? ': ' + d.carrierName : ''}${d.pickupEta ? ' · pickup ' + d.pickupEta : ''}`);
     let emailed = false;
     const fresh = await loadOrderRow(row.id); const o = mapOrderRow(fresh, false); const c = o.contact || {};
-    if (b.notify && c.email) { const m = await sendMail({ to: c.email, ...dispatchEmail(o, await trackingUrl(fresh, req)) }).catch(e => ({ sent: false, reason: e.message })); emailed = !!m.sent; if (emailed) await addOrderEvent(row.id, 'update', 'Carrier details emailed to the customer'); }
-    res.json({ success: true, emailed, order: mapOrderRow(await loadOrderRow(row.id), false) });
+    let texted = false;
+    if (b.notify) {
+      const tUrl = await trackingUrl(fresh, req);
+      if (c.email) { const m = await sendMail({ to: c.email, ...dispatchEmail(o, tUrl) }).catch(e => ({ sent: false, reason: e.message })); emailed = !!m.sent; }
+      if (c.phone && b.sms !== false && smsConfigured()) texted = (await sendSms(c.phone, smsText('dispatch', o, { track: tUrl }), o.id)).sent;
+      if (emailed || texted) await addOrderEvent(row.id, 'update', `Carrier details ${[emailed ? 'emailed' : '', texted ? 'texted' : ''].filter(Boolean).join(' and ')} to the customer`);
+    }
+    res.json({ success: true, emailed, texted, order: mapOrderRow(await loadOrderRow(row.id), false) });
   } catch (err) { console.error('PATCH /api/orders/:id/dispatch:', err); res.status(500).json({ success: false, message: 'Server error' }); }
 });
 // Post a plain-language update to the timeline ("Truck is in Amarillo, delivery Thursday"), optionally emailed
@@ -2532,8 +2607,11 @@ app.post('/api/orders/:id/update', requireAdmin, async (req, res) => {
     await addOrderEvent(row.id, 'update', note);
     let emailed = false;
     const o = mapOrderRow(row, false); const c = o.contact || {};
-    if (req.body.notify && c.email) { const m = await sendMail({ to: c.email, ...updateEmail(o, note, await trackingUrl(row, req)) }).catch(e => ({ sent: false })); emailed = !!m.sent; }
-    res.json({ success: true, emailed, order: mapOrderRow(await loadOrderRow(row.id), false) });
+    let texted = false;
+    const tUrl = (req.body.notify || req.body.sms) ? await trackingUrl(row, req) : '';
+    if (req.body.notify && c.email) { const m = await sendMail({ to: c.email, ...updateEmail(o, note, tUrl) }).catch(e => ({ sent: false })); emailed = !!m.sent; }
+    if (req.body.sms && c.phone) texted = (await sendSms(c.phone, smsText('update', o, { note, track: tUrl }), o.id)).sent;
+    res.json({ success: true, emailed, texted, order: mapOrderRow(await loadOrderRow(row.id), false) });
   } catch (err) { console.error('POST /api/orders/:id/update:', err); res.status(500).json({ success: false, message: 'Server error' }); }
 });
 // Documents: BOL (documents/bols), pickup/delivery photos (uploads/<order>), anything else (documents/attachments)
@@ -2588,9 +2666,33 @@ app.post('/api/orders/:id/delivered', requireAdmin, async (req, res) => {
     await addOrderEvent(row.id, 'delivered', 'Delivered');
     let emailed = false;
     const fresh = await loadOrderRow(row.id); const o = mapOrderRow(fresh, false); const c = o.contact || {};
-    if ((req.body || {}).notify !== false && c.email) { const m = await sendMail({ to: c.email, ...deliveredEmail(o, await trackingUrl(fresh, req)) }).catch(e => ({ sent: false })); emailed = !!m.sent; }
-    res.json({ success: true, emailed, order: mapOrderRow(await loadOrderRow(row.id), false) });
+    let texted = false;
+    if ((req.body || {}).notify !== false) {
+      const tUrl = await trackingUrl(fresh, req);
+      if (c.email) { const m = await sendMail({ to: c.email, ...deliveredEmail(o, tUrl) }).catch(e => ({ sent: false })); emailed = !!m.sent; }
+      if (c.phone && smsConfigured()) texted = (await sendSms(c.phone, smsText('delivered', o, { track: tUrl }), o.id)).sent;
+    }
+    res.json({ success: true, emailed, texted, order: mapOrderRow(await loadOrderRow(row.id), false) });
   } catch (err) { console.error('POST /api/orders/:id/delivered:', err); res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.post('/api/orders/:id/sms', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    const body = String((req.body || {}).body || '').trim().slice(0, 1200);
+    if (!body) return res.status(400).json({ success: false, message: 'Write the text first' });
+    const o = mapOrderRow(row, false); const phone = (o.contact || {}).phone;
+    if (!phone) return res.status(400).json({ success: false, message: 'The order has no phone number' });
+    const r = await sendSms(phone, body.startsWith('Mcships') ? body : `Mcships: ${body}`, o.id);
+    if (!r.sent) return res.status(502).json({ success: false, message: r.reason });
+    res.json({ success: true, order: mapOrderRow(await loadOrderRow(row.id), false) });
+  } catch (err) { console.error('POST /api/orders/:id/sms:', err); res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.get('/api/sms/status', requireAdmin, (req, res) => res.json({ configured: smsConfigured(), from: smsConfigured() ? process.env.TWILIO_FROM.trim() : null }));
+app.post('/api/sms/test', requireAdmin, async (req, res) => {
+  const r = await sendSms((req.body || {}).to, 'Mcships: test text from your website. Texting works.');
+  if (!r.sent) return res.status(502).json({ success: false, message: r.reason });
+  res.json({ success: true });
 });
 app.get('/api/orders/:id/tracking-link', requireAdmin, async (req, res) => {
   try { const row = await loadOrderRow(req.params.id); if (!row) return res.status(404).json({ success: false }); res.json({ success: true, url: await trackingUrl(row, req) }); }
@@ -4471,4 +4573,4 @@ initDB().then(() => {
   process.exit(1);
 });
 
-module.exports = { app, pool, expireCardHolds, sendQuoteFollowups, sendReviewRequests };
+module.exports = { app, pool, expireCardHolds, sendQuoteFollowups, sendReviewRequests, setSmsTransport };
