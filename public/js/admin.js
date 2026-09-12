@@ -49,7 +49,7 @@ async function initAdminPage() {
   if (page === 'search')      loadSearchResults();
   if (page === 'home')        loadDashboard();
   if (page === 'email')     { loadReviewUrl(); loadSmsStatus(); }
-  if (page === 'calculator')  { loadPricingSettings(); loadLocationRatings(); }
+  if (page === 'calculator')  { loadPricingSettings(); loadLocationRatings(); loadVehicleWeights(); }
   if (page === 'customers') {
     loadCustomers();
     if (open) showCustomerDetail(Number(open)); // /admin/customers?open=<id>
@@ -487,6 +487,20 @@ async function loadPricingSettings() {
       </div>
 
       <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <h4 class="font-semibold text-white mb-1"><i class="fas fa-weight-hanging text-[var(--orange)] mr-2"></i>Heavy vehicles <span class="text-muted text-sm font-normal">— a Hummer EV weighs what two sedans weigh and takes that much of the truck's payload</span></h4>
+        <p class="text-xs text-muted mb-4">The engine looks up the curb weight of each year/make/model once (AI, cached; fix any number in the Vehicle weights list below) and adds a percentage to that vehicle's transport price. Tiers apply from the weight listed upward. ${d.aiConfigured ? '<span class="text-lime-300">Weight lookup is on.</span>' : '<span class="text-amber-300">Weight lookup needs ANTHROPIC_API_KEY in Railway.</span>'}</p>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+          <div><label class="label-dark">Weight surcharge on</label><select id="pWeightOn" class="input-admin"><option value="true" ${P.weight.enabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.weight.enabled ? 'selected' : ''}>No</option></select></div>
+          <div><label class="label-dark">Look up weights with AI</label><select id="pWeightAi" class="input-admin"><option value="true" ${P.weight.aiEnabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.weight.aiEnabled ? 'selected' : ''}>No</option></select></div>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          ${[0, 1, 2].map(i => { const t = P.weight.tiers[i] || { minLbs: '', pct: '' }; return `<div class="p-3 rounded-lg" style="border:1px solid var(--line)"><div class="text-xs text-muted uppercase tracking-wider mb-2">${['Heavy', 'Very heavy', 'Two-car weight'][i]}</div>
+            <label class="label-dark">From (lb)</label><input id="pWeightLbs${i}" type="number" step="100" value="${t.minLbs}" class="input-admin mb-2">
+            <label class="label-dark">Add (%)</label><input id="pWeightPct${i}" type="number" step="1" value="${t.pct}" class="input-admin"></div>`; }).join('')}
+        </div>
+      </div>
+
+      <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
         <h4 class="font-semibold text-white mb-1"><i class="fas fa-route text-[var(--orange)] mr-2"></i>Lane multipliers <span class="text-muted text-sm font-normal">— from region (rows) to region (columns). 1.00 = no change, 1.08 = +8%, 0.96 = −4%</span></h4>
         <p class="text-xs text-muted mb-4">Direction matters: out of Florida costs more than into Florida because trucks are already heading south. Leave a box at 1 to ignore it.</p>
         <div class="overflow-x-auto"><table class="text-xs" id="laneGrid"><thead><tr><th class="p-1 text-muted">from \\ to</th>${Object.keys(d.regions).map(r => `<th class="p-1 text-center text-muted" title="${esc(d.regions[r])}">${r}</th>`).join('')}</tr></thead>
@@ -524,6 +538,8 @@ function readPricingForm() {
     difficulty: { enabled: g('pDiffOn') === 'true', aiEnabled: g('pDiffAi') === 'true',
       fees: { 1: parseFloat(g('pDiffFee1')), 2: parseFloat(g('pDiffFee2')), 3: parseFloat(g('pDiffFee3')) },
       metroMiles: { 1: parseFloat(g('pDiffMiles1')), 2: parseFloat(g('pDiffMiles2')), 3: parseFloat(g('pDiffMiles3')) } },
+    weight: { enabled: g('pWeightOn') === 'true', aiEnabled: g('pWeightAi') === 'true',
+      tiers: [0, 1, 2].map(i => ({ minLbs: parseFloat(g('pWeightLbs' + i)), pct: parseFloat(g('pWeightPct' + i)) })).filter(t => t.minLbs > 0 && t.pct >= 0) },
     lanes: (() => { const out = {}; document.querySelectorAll('#laneGrid input[data-lane]').forEach(i => { const v = parseFloat(i.value); if (v && v !== 1) out[i.dataset.lane] = v; }); return out; })()
   };
 }
@@ -541,6 +557,26 @@ async function loadLocationRatings() {
         <td><select onchange="overrideLocation(${r.id}, this.value)" class="input-admin py-1 text-xs w-32"><option value="" ${r.overrideTier == null ? 'selected' : ''}>auto</option>${[0,1,2,3].map(t => `<option value="${t}" ${r.overrideTier === t ? 'selected' : ''}>Tier ${t}</option>`).join('')}</select></td></tr>`).join('')}
     </tbody></table></div>`;
   } catch (e) { box.innerHTML = '<p class="text-red-400 text-sm">Could not load.</p>'; }
+}
+async function loadVehicleWeights() {
+  const box = document.getElementById('vehicleWeights'); if (!box) return;
+  const q = document.getElementById('weightSearch')?.value.trim() || '';
+  try {
+    const rows = await (await fetch('/api/vehicle-weights' + (q ? '?q=' + encodeURIComponent(q) : ''))).json();
+    if (!rows.length) { box.innerHTML = '<p class="text-muted text-sm">No vehicles looked up yet. Weights appear as customers get quotes with a year, make and model.</p>'; return; }
+    box.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Vehicle</th><th>Curb weight</th><th>Note</th><th>Override (lb)</th></tr></thead><tbody class="text-dim">
+      ${rows.map(r => `<tr><td class="text-white">${esc([r.year, r.make, r.model].filter(Boolean).join(' '))}</td>
+        <td class="text-xs">${r.curbLbs ? r.curbLbs.toLocaleString() + ' lb' : '<span class="text-amber-300">unknown</span>'}${r.overrideLbs ? ` <span class="text-lime-300">→ ${r.overrideLbs.toLocaleString()} lb (yours)</span>` : ''}</td>
+        <td class="text-xs text-muted max-w-[280px] truncate" title="${esc(r.note || '')}">${esc(r.note || '')}</td>
+        <td><input type="number" step="100" value="${r.overrideLbs || ''}" placeholder="auto" class="input-admin py-1 text-xs w-28" onchange="overrideWeight(${r.id}, this.value)"></td></tr>`).join('')}
+    </tbody></table></div>`;
+  } catch (e) { box.innerHTML = '<p class="text-red-400 text-sm">Could not load.</p>'; }
+}
+async function overrideWeight(id, v) {
+  const r = await fetch('/api/vehicle-weights/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrideLbs: v === '' ? null : Number(v) }) });
+  const d = await r.json();
+  panelMsg(d.success ? 'Weight updated. New quotes for this model use it.' : (d.message || 'Could not save'), !!d.success);
+  if (d.success) loadVehicleWeights();
 }
 async function overrideLocation(id, v) {
   await fetch('/api/locations/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ overrideTier: v === '' ? null : Number(v) }) });

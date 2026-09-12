@@ -126,6 +126,18 @@
       </div>
       <div id="locationRatings"><p class="text-muted text-sm">Loading…</p></div>
     </div>
+
+    <!-- ==================== VEHICLE WEIGHTS ==================== -->
+    <div class="tile mt-8" id="sec-weights">
+      <div class="flex flex-wrap justify-between items-center gap-3 mb-4">
+        <div>
+          <h2 class="text-2xl font-bold text-white flex items-center gap-3"><i class="fas fa-weight-hanging"></i> Vehicle weights</h2>
+          <p class="text-dim text-sm mt-1">Every model that has been quoted, with the curb weight the engine uses for the heavy-vehicle surcharge. Type a number to correct one; clear it to go back to the looked-up value.</p>
+        </div>
+        <input id="weightSearch" type="search" placeholder="Search make or model…" class="input-admin w-64" oninput="loadVehicleWeights()">
+      </div>
+      <div id="vehicleWeights"><p class="text-muted text-sm">Loading…</p></div>
+    </div>
   </main>
 
   <%- include("_modals") %>

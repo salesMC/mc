@@ -459,7 +459,9 @@ const DEFAULT_PRICING = {
   timing: { shortNoticeDays: 2, shortNoticePct: 8, flexibleDays: 5, flexiblePct: -3 },
   marketPct: 0,                 // your hand on the wheel: +/- % on everything
   // Hard-to-reach pickup/delivery: tier from distance to the nearest metro and/or the AI check
-  difficulty: { enabled: true, aiEnabled: true, fees: { 1: 75, 2: 150, 3: 300 }, metroMiles: { 1: 60, 2: 120, 3: 220 } },
+  difficulty: { enabled: true, aiEnabled: true, fees: { 1: 300, 2: 450, 3: 600 }, metroMiles: { 1: 60, 2: 120, 3: 220 } },
+  // Heavy vehicles: curb weight per model (AI lookup, cached, overridable) → % on that vehicle's transport price
+  weight: { enabled: true, aiEnabled: true, tiers: [{ minLbs: 6000, pct: 15 }, { minLbs: 7500, pct: 35 }, { minLbs: 9000, pct: 90 }] },
   // Region-to-region multipliers ("FROM>TO"); anything not listed is 1.00
   lanes: { 'FL>NE': 1.08, 'FL>MW': 1.06, 'FL>MA': 1.06, 'NE>FL': 0.96, 'MW>FL': 0.96, 'MA>FL': 0.97, 'MT>PW': 1.04, 'PW>MT': 1.04, 'CE>NE': 1.05, 'NE>CE': 1.05, 'CE>PW': 1.04, 'PW>CE': 1.04, 'TX>PW': 0.98, 'PW>TX': 0.98 }
 };
@@ -528,6 +530,58 @@ async function aiAssessLocation(address, lat, lng, metro) {
   finally { clearTimeout(timer); }
 }
 
+// Curb weight for "year make model": cached per model; AI answers once, an admin override always wins.
+async function aiVehicleWeight(year, make, model) {
+  const key = (process.env.ANTHROPIC_API_KEY || '').trim();
+  if (!key) return null;
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST', signal: ctrl.signal,
+      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: process.env.AI_MODEL || 'claude-sonnet-5', max_tokens: 120,
+        system: 'You give the typical curb weight of a production vehicle in pounds for a car-hauler pricing system. Reply with JSON only: {"curbWeightLbs": number|null, "note": "short"}. Use the heaviest common trim if trims vary a lot. If the model is unknown or not a road vehicle, use null.',
+        messages: [{ role: 'user', content: `${year || ''} ${make} ${model}`.trim() }]
+      })
+    });
+    const j = await r.json();
+    const text = j && j.content && j.content[0] && j.content[0].text || '';
+    const m = text.match(/\{[\s\S]*\}/);
+    if (!m) throw new Error('no JSON in AI reply');
+    const out = JSON.parse(m[0]);
+    const lbs = Number(out.curbWeightLbs);
+    return { lbs: Number.isFinite(lbs) && lbs >= 500 && lbs <= 40000 ? Math.round(lbs) : null, note: String(out.note || '').slice(0, 200) };
+  } catch (e) { console.error('aiVehicleWeight:', e.message); return null; }
+  finally { clearTimeout(timer); }
+}
+async function lookupVehicleWeight(P, v) {
+  const make = str(v && v.make, 60).trim(), model = str(v && v.model, 60).trim(), year = str(v && v.year, 4).trim();
+  if (!make || !model) return null;
+  const keyStr = `${year}|${make}|${model}`.toLowerCase().replace(/\s+/g, ' ');
+  const key = crypto.createHash('sha256').update(keyStr).digest('hex');
+  let row = null;
+  try { const [rows] = await pool.execute('SELECT * FROM vehicle_weights WHERE weight_key = ?', [key]); row = rows[0] || null; } catch (e) {}
+  if (!row && P.weight.aiEnabled) {
+    const ai = await aiVehicleWeight(year, make, model);
+    if (ai) {
+      try {
+        await pool.execute('INSERT IGNORE INTO vehicle_weights (weight_key, year, make, model, curb_lbs, note, source) VALUES (?,?,?,?,?,?,?)', [key, year || null, make, model, ai.lbs, ai.note || null, 'ai']);
+        const [rows] = await pool.execute('SELECT * FROM vehicle_weights WHERE weight_key = ?', [key]); row = rows[0] || null;
+      } catch (e) { console.error('vehicle_weights insert:', e.message); }
+    }
+  }
+  if (!row) return null;
+  const lbs = row.override_lbs != null ? Number(row.override_lbs) : (row.curb_lbs != null ? Number(row.curb_lbs) : null);
+  return lbs ? { lbs, source: row.override_lbs != null ? 'override' : (row.source || 'ai'), note: row.note || '' } : null;
+}
+function weightTier(P, lbs) {
+  if (!P.weight || !P.weight.enabled || !lbs) return null;
+  let hit = null;
+  for (const t of P.weight.tiers) if (lbs >= t.minLbs) hit = t;
+  return hit && hit.pct > 0 ? hit : null;
+}
+
 // One assessment per address, cached in location_ratings. Tier = max(metro-distance tier, AI tier), unless an admin override is set.
 async function assessLocation(P, address, lat, lng) {
   address = str(address, 500);
@@ -593,6 +647,12 @@ function sanitizePricing(v) {
       fees: { 1: num(v.difficulty && v.difficulty.fees && v.difficulty.fees[1], 0, 5000, D.difficulty.fees[1]), 2: num(v.difficulty && v.difficulty.fees && v.difficulty.fees[2], 0, 5000, D.difficulty.fees[2]), 3: num(v.difficulty && v.difficulty.fees && v.difficulty.fees[3], 0, 10000, D.difficulty.fees[3]) },
       metroMiles: { 1: num(v.difficulty && v.difficulty.metroMiles && v.difficulty.metroMiles[1], 1, 2000, D.difficulty.metroMiles[1]), 2: num(v.difficulty && v.difficulty.metroMiles && v.difficulty.metroMiles[2], 1, 2000, D.difficulty.metroMiles[2]), 3: num(v.difficulty && v.difficulty.metroMiles && v.difficulty.metroMiles[3], 1, 3000, D.difficulty.metroMiles[3]) }
     },
+    weight: (() => {
+      const w = v.weight || {};
+      const src = Array.isArray(w.tiers) && w.tiers.length ? w.tiers : D.weight.tiers;
+      const tiers = src.map(t => ({ minLbs: num(t && t.minLbs, 1000, 40000, null), pct: num(t && t.pct, 0, 400, null) })).filter(t => t.minLbs != null && t.pct != null).sort((x, y) => x.minLbs - y.minLbs).slice(0, 5);
+      return { enabled: !(w.enabled === false || w.enabled === 'false'), aiEnabled: !(w.aiEnabled === false || w.aiEnabled === 'false'), tiers: tiers.length ? tiers : D.weight.tiers };
+    })(),
     lanes: (() => { const out = {}; const src = v.lanes && typeof v.lanes === 'object' ? v.lanes : D.lanes; for (const [k, val] of Object.entries(src)) { if (/^[A-Z]{2}>[A-Z]{2}$/.test(k)) { const n = num(val, 0.5, 2, null); if (n != null && n !== 1) out[k] = n; } } return out; })()
   };
 }
@@ -649,6 +709,7 @@ function priceQuote(ctx, input) {
   const enclosed = input.transportType === 'enclosed';
   const lines = [];
   const addons = [];   // flat per-vehicle extras the customer chose; added after the minimum price
+  const weights = []; // heavy-vehicle surcharges applied (admin breakdown)
   let subtotal = 0;
   const nVeh = (input.vehicles || []).length;
   (input.vehicles || []).forEach((v, i) => {
@@ -656,11 +717,14 @@ function priceQuote(ctx, input) {
     const mult = cfg.multipliers[v.type] || 1;
     base *= mult;
     if (enclosed) base *= P.enclosedMultiplier;
+    const w = input.weights && input.weights[i];
+    const wt = weightTier(P, w && w.lbs);
+    if (wt) { base *= 1 + wt.pct / 100; weights.push({ vehicle: i, lbs: w.lbs, pct: wt.pct, source: w.source }); }
     let price = base;
     if (i > 0 && P.multiVehicleDiscountPct) price *= (1 - P.multiVehicleDiscountPct / 100);
     price = Math.round(price);
     const label = [v.year, v.make, v.model].filter(Boolean).join(' ') || (v.type || 'vehicle');
-    lines.push({ label: `Vehicle ${i + 1}: ${label} — ${miles.toLocaleString()} mi × $${cpm.toFixed(2)} + base $${cfg.baseFee}${mult !== 1 ? ', ×' + mult + ' size' : ''}${enclosed ? ', ×' + P.enclosedMultiplier + ' enclosed' : ''}${i > 0 && P.multiVehicleDiscountPct ? ', −' + P.multiVehicleDiscountPct + '% extra vehicle' : ''}`, amount: price });
+    lines.push({ label: `Vehicle ${i + 1}: ${label} — ${miles.toLocaleString()} mi × $${cpm.toFixed(2)} + base $${cfg.baseFee}${mult !== 1 ? ', ×' + mult + ' size' : ''}${enclosed ? ', ×' + P.enclosedMultiplier + ' enclosed' : ''}${wt ? `, +${wt.pct}% heavy (≈${w.lbs.toLocaleString()} lb)` : ''}${i > 0 && P.multiVehicleDiscountPct ? ', −' + P.multiVehicleDiscountPct + '% extra vehicle' : ''}`, amount: price });
     subtotal += price;
     const add = (key, text, amt) => { amt = Math.round(Number(amt) || 0); if (amt > 0) addons.push({ vehicle: i, key, label: (nVeh > 1 ? `Vehicle ${i + 1}: ` : '') + text, amount: amt }); };
     if (v.condition === 'inoperable') add('inoperable', 'Inoperable (winch loading)', cfg.addons.inoperable);
@@ -722,6 +786,7 @@ function priceQuote(ctx, input) {
   for (const ad of addons) { lines.push({ label: ad.label, amount: ad.amount }); total += ad.amount; }
   total = Math.max(0, Math.round(total));
   const requiresCall = !!((input.pickupLoc && input.pickupLoc.noRoad) || (input.deliveryLoc && input.deliveryLoc.noRoad));
+  if (weights.length) factors.weights = weights;
   return { total, transport, subtotal: Math.round(subtotal), cpm: Math.round(cpm * 100) / 100, lines, factors, requiresCall, addons, fees };
 }
 
@@ -736,6 +801,7 @@ async function computeQuoteLive(vehicles, distance, opts = {}) {
     ]);
     input.pickupLoc = pl; input.deliveryLoc = dl;
   }
+  if (ctx.pricing.weight.enabled) input.weights = await Promise.all((vehicles || []).map(v => lookupVehicleWeight(ctx.pricing, v).catch(() => null)));
   return priceQuote(ctx, input);
 }
 // Address/coordinate fields from a request body, sanitized
@@ -887,6 +953,22 @@ async function initDB() {
         ai_flags      JSON,
         override_tier TINYINT,
         created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Curb weight per model, looked up once (AI) and reusable; admin can override
+    await conn.execute(`
+      CREATE TABLE IF NOT EXISTS vehicle_weights (
+        id           INT AUTO_INCREMENT PRIMARY KEY,
+        weight_key   VARCHAR(64) UNIQUE NOT NULL,
+        year         VARCHAR(4),
+        make         VARCHAR(60),
+        model        VARCHAR(60),
+        curb_lbs     INT,
+        note         VARCHAR(200),
+        source       VARCHAR(20),
+        override_lbs INT,
+        created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
 
@@ -3247,7 +3329,8 @@ app.post('/api/price', publicLimiter, async (req, res) => {
       pickupDate: str(req.body.pickupDate, 10), mustDeliverBy: str(req.body.mustDeliverBy, 10), ...locationOpts(req.body)
     });
     const isAdmin = !!(req.session && req.session.role === 'admin');
-    res.json({ success: true, total: priced.total, transport: priced.transport, addons: priced.addons, fees: priced.fees, requiresCall: priced.requiresCall, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors } : {}) });
+    const feesTotal = (priced.fees || []).reduce((s, f) => s + f.amount, 0);
+    res.json({ success: true, total: priced.total, transport: priced.transport + feesTotal, addons: priced.addons, requiresCall: priced.requiresCall, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors, fees: priced.fees } : {}) });
   } catch (err) { console.error('POST /api/price:', err); res.status(500).json({ success: false }); }
 });
 
@@ -3264,6 +3347,21 @@ app.get('/api/locations', requireAdmin, async (req, res) => {
       : await pool.execute('SELECT * FROM location_ratings ORDER BY created_at DESC LIMIT 100');
     res.json(rows.map(r => ({ id: r.id, address: r.address, metro: r.metro_name, metroMiles: r.metro_miles, aiTier: r.ai_tier, reasons: safeJson(r.ai_reasons) || [], flags: safeJson(r.ai_flags) || {}, overrideTier: r.override_tier, createdAt: r.created_at })));
   } catch (err) { res.json([]); }
+});
+app.get('/api/vehicle-weights', requireAdmin, async (req, res) => {
+  try {
+    const q = str(req.query.q, 100);
+    const [rows] = q
+      ? await pool.execute("SELECT * FROM vehicle_weights WHERE CONCAT_WS(' ', year, make, model) LIKE ? ORDER BY created_at DESC LIMIT 100", ['%' + q + '%'])
+      : await pool.execute('SELECT * FROM vehicle_weights ORDER BY created_at DESC LIMIT 100');
+    res.json(rows.map(r => ({ id: r.id, year: r.year, make: r.make, model: r.model, curbLbs: r.curb_lbs, note: r.note, source: r.source, overrideLbs: r.override_lbs, createdAt: r.created_at })));
+  } catch (err) { res.json([]); }
+});
+app.patch('/api/vehicle-weights/:id', requireAdmin, async (req, res) => {
+  const v = req.body.overrideLbs === null || req.body.overrideLbs === '' || req.body.overrideLbs == null ? null : Math.round(Number(req.body.overrideLbs));
+  if (v != null && !(v >= 500 && v <= 40000)) return res.status(400).json({ success: false, message: 'Weight must be between 500 and 40,000 lb' });
+  try { await pool.execute('UPDATE vehicle_weights SET override_lbs = ? WHERE id = ?', [v, req.params.id]); res.json({ success: true }); }
+  catch (err) { res.status(500).json({ success: false }); }
 });
 app.patch('/api/locations/:id', requireAdmin, async (req, res) => {
   const t = req.body.overrideTier === null || req.body.overrideTier === '' ? null : Math.max(0, Math.min(3, parseInt(req.body.overrideTier, 10)));
@@ -3510,7 +3608,7 @@ function quoteEmail(q, bookUrl) {
     ['Pickup', escHtml(q.pickup || '—')], ['Delivery', escHtml(q.delivery || '—')],
     ['Distance', `${Number(q.distance || 0).toLocaleString()} miles`], ['Transport', escHtml(q.transportType || 'open')]
   ];
-  const extras = [...(q.addons || []), ...(q.fees || [])];
+  const extras = q.addons || [];
   if (extras.length) rows.push(['Includes', extras.map(x => `${escHtml(x.label)} (+${money(x.amount)})`).join('<br>')]);
   const table = `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:18px 0">${rows.map(([k, val]) =>
     `<tr><td style="padding:8px 10px;border-bottom:1px solid #eee;color:#666;width:120px">${k}</td><td style="padding:8px 10px;border-bottom:1px solid #eee">${val}</td></tr>`).join('')}</table>`;
@@ -3554,7 +3652,7 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
     pool.execute('INSERT IGNORE INTO leads (email, source) VALUES (?, ?)', [email, 'calculator']).catch(() => {});
 
     const bookUrl = `${appUrl(req)}/payment?quote=${token}`;
-    const q = { email, name, phone, vehicle, vehicles, distance, pickup, delivery, transportType, total, breakdown, addons: priced.addons, fees: priced.fees };
+    const q = { email, name, phone, vehicle, vehicles, distance, pickup, delivery, transportType, total, breakdown, addons: priced.addons };
     const mail = await sendMail({ to: email, ...quoteEmail(q, bookUrl) }).catch(e => ({ sent: false, reason: e.message }));
     if (mail.sent) pool.execute('UPDATE quotes SET emailed_at = NOW() WHERE token = ?', [token]).catch(() => {});
     else console.error('quote email not sent:', mail.reason);
@@ -3582,7 +3680,7 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
         text: `New website quote ${money(total)}\n\nCustomer: ${name || '—'}\nEmail: ${email}\nPhone: ${phone || '—'}\nVehicle: ${vl}${flags ? ' (' + flags + ')' : ''}\nPickup: ${pickup}\nDelivery: ${delivery}\nDistance: ${distance} mi\nTransport: ${transportType}\n\nLeads: ${appUrl(req)}/admin/leads`
       }).catch(e => console.error('quote notify mail:', e.message));
     }
-    res.json({ success: true, quoteId: token, total, addons: priced.addons, fees: priced.fees, bookUrl, emailSent: !!mail.sent, requiresCall: !!priced.requiresCall });
+    res.json({ success: true, quoteId: token, total, addons: priced.addons, bookUrl, emailSent: !!mail.sent, requiresCall: !!priced.requiresCall });
   } catch (err) {
     console.error('POST /api/quotes:', err);
     res.status(500).json({ success: false, message: 'Could not create the quote right now' });

@@ -290,6 +290,28 @@ async function sendAndAuthorize(id, fee) {
   check('lane table: out of Florida costs more than into Florida', pFLNE > pPlain1300 && pNEFL < pPlain1300 && pFLNE > pNEFL, { out: pFLNE, into: pNEFL, plain: pPlain1300 });
   r = await api('POST', '/api/price', { vehicles: sedan, distance: 1300, pickup: '1 Biscayne Blvd, Miami, FL 33132, USA', delivery: '1 Main St, Hartford, CT 06103, USA' });
   check('lane line shows the regions', r.data.lines.some(l => /Lane Florida → Northeast/.test(l.label)), r.data.lines.map(l => l.label));
+  // ---- heavy vehicles (weight cached per model; AI is off in tests so we seed the cache) ----
+  const hummer = { year: '2024', make: 'GMC', model: 'Hummer EV', type: 'pickup', condition: 'operable' };
+  const wKey = require('crypto').createHash('sha256').update('2024|gmc|hummer ev').digest('hex');
+  await pool.execute('DELETE FROM vehicle_weights WHERE weight_key = ?', [wKey]);
+  const pTruck = await priceVia([{ year: '2024', make: 'Ford', model: 'F-150', type: 'pickup', condition: 'operable' }], 470);
+  const pUnknown = await priceVia([hummer], 470);
+  check('no weight on file → no surcharge', pUnknown === pTruck, { pUnknown, pTruck });
+  await pool.execute("INSERT INTO vehicle_weights (weight_key, year, make, model, curb_lbs, note, source) VALUES (?,?,?,?,?,?,?)", [wKey, '2024', 'GMC', 'Hummer EV', 9063, 'test seed', 'ai']);
+  const pHeavy = await priceVia([hummer], 470);
+  check('9,000+ lb vehicle costs ~90% more transport than a normal pickup', pHeavy > pTruck * 1.8 && pHeavy < pTruck * 2.0, { pHeavy, pTruck, ratio: pHeavy / pTruck });
+  r = await api('POST', '/api/price', { vehicles: [hummer], distance: 470 });
+  check('admin breakdown shows the weight and percent', r.data.lines.some(l => /\+90% heavy \(≈9,063 lb\)/.test(l.label)) && r.data.factors.weights && r.data.factors.weights[0].lbs === 9063, r.data.lines.map(l => l.label));
+  r = await api('GET', '/api/vehicle-weights?q=Hummer');
+  const wRow = r.data.find(x => x.model === 'Hummer EV');
+  r = await api('PATCH', '/api/vehicle-weights/' + wRow.id, { overrideLbs: 7000 });
+  const pOverrideW = await priceVia([hummer], 470);
+  check('admin weight override changes the tier (7,000 lb → +15%)', r.data.success && pOverrideW < pHeavy && pOverrideW > pTruck, { pOverrideW, pHeavy, pTruck });
+  await pool.execute('DELETE FROM vehicle_weights WHERE weight_key = ?', [wKey]);
+  // hard-to-reach fee never shows to the customer
+  r = await api('POST', '/api/price', { vehicles: sedan, distance: 470, pickup: '100 Main St, Louisville, KY 40202, USA', pickupLat: 38.2527, pickupLng: -85.7585, delivery: 'Ranch Rd, Eureka, NV 89316, USA', deliveryLat: 39.5, deliveryLng: -116.5 }, { auth: false });
+  check('customer response hides the location fee inside the transport figure', r.data.fees === undefined && r.data.transport === r.data.total && !r.data.lines, r.data);
+  await pool.execute('DELETE FROM location_ratings WHERE address LIKE ?', ['%Eureka, NV%']);
 
   const webVehicles = [{ year: '2020', make: 'Kia', model: 'K5', type: 'pickup', condition: 'inoperable', modified: false, urgent: true }];
   const expected = await priceVia(webVehicles, 400);
