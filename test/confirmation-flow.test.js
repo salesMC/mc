@@ -296,21 +296,21 @@ async function sendAndAuthorize(id, fee) {
   check('VIN types: pickup, minivan, cargo van, passenger van', vt('Pickup', 'TRUCK', 'Class 2E: 6,001 - 7,000 lb', 'F-150') === 'pickup' && vt('Minivan', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 1D: 5,001 - 6,000 lb', 'Sienna') === 'mini-van' && vt('Cargo Van', 'TRUCK', 'Class 2G: 8,001 - 9,000 lb', 'Transit') === 'cargo-van' && vt('Van', 'BUS', '', 'Express') === 'other' && vt('Passenger Van', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 2G: 8,001 - 9,000 lb', 'Transit') === 'passenger-van');
   check('VIN types: SUVs by size, cars, unknown', vt('Sport Utility Vehicle [SUV]/Multipurpose Vehicle [MPV]', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 2F: 7,001 - 8,000 lb', 'Yukon XL') === 'full-suv' && vt('Sport Utility Vehicle [SUV]/Multipurpose Vehicle [MPV]', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 1D: 5,001 - 6,000 lb', 'Explorer') === 'mid-suv' && vt('Crossover Utility Vehicle (CUV)', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 1C: 4,001 - 5,000 lb', 'CR-V') === 'sedan' && vt('Sedan/Saloon', 'PASSENGER CAR', 'Class 1B: 3,001 - 4,000 lb', 'Camry') === 'sedan' && vt('', 'MOTORCYCLE', '', 'Sportster') === 'other' && vt('', '', '', 'Mystery') === null);
   // ---- heavy vehicles (weight cached per model; AI is off in tests so we seed the cache) ----
-  const hummer = { year: '2024', make: 'GMC', model: 'Hummer EV', type: 'pickup', condition: 'operable' };
-  const wKey = require('crypto').createHash('sha256').update('2024|gmc|hummer ev').digest('hex');
+  const hummer = { year: '2024', make: 'Zzz', model: 'Heavytest', type: 'pickup', condition: 'operable' }; // made-up model: never touches a real cached weight
+  const wKey = require('crypto').createHash('sha256').update('2024|zzz|heavytest').digest('hex');
   await pool.execute('DELETE FROM vehicle_weights WHERE weight_key = ?', [wKey]);
   const pTruck = await priceVia([{ year: '2024', make: 'Zzz', model: 'Testtruck', type: 'pickup', condition: 'operable' }], 470); // no weight on file (AI off in tests)
   const pUnknown = await priceVia([hummer], 470);
   check('no weight on file → same as any light vehicle', pUnknown === pTruck, { pUnknown, pTruck });
   r = await api('POST', '/api/price', { vehicles: [hummer], distance: 470 });
   check('light / unknown vehicles carry the base weight tier', r.data.lines.some(l => /\+8% weight base/.test(l.label)), r.data.lines.map(l => l.label));
-  await pool.execute("INSERT INTO vehicle_weights (weight_key, year, make, model, curb_lbs, note, source) VALUES (?,?,?,?,?,?,?)", [wKey, '2024', 'GMC', 'Hummer EV', 9063, 'test seed', 'ai']);
+  await pool.execute("INSERT INTO vehicle_weights (weight_key, year, make, model, curb_lbs, note, source) VALUES (?,?,?,?,?,?,?)", [wKey, '2024', 'Zzz', 'Heavytest', 9063, 'test seed', 'ai']);
   const pHeavy = await priceVia([hummer], 470);
   check('9,000+ lb vehicle costs ~53% more transport than a normal pickup (1.65 / 1.08)', pHeavy > pTruck * 1.45 && pHeavy < pTruck * 1.6, { pHeavy, pTruck, ratio: pHeavy / pTruck });
   r = await api('POST', '/api/price', { vehicles: [hummer], distance: 470 });
   check('admin breakdown shows the weight and percent', r.data.lines.some(l => /\+65% heavy \(≈9,063 lb\)/.test(l.label)) && r.data.factors.weights && r.data.factors.weights[0].lbs === 9063, r.data.lines.map(l => l.label));
-  r = await api('GET', '/api/vehicle-weights?q=Hummer');
-  const wRow = r.data.find(x => x.model === 'Hummer EV');
+  r = await api('GET', '/api/vehicle-weights?q=Heavytest');
+  const wRow = r.data.find(x => x.model === 'Heavytest');
   r = await api('PATCH', '/api/vehicle-weights/' + wRow.id, { overrideLbs: 7000 });
   const pOverrideW = await priceVia([hummer], 470);
   check('admin weight override changes the tier (7,000 lb → +25%)', r.data.success && pOverrideW < pHeavy && pOverrideW > pTruck, { pOverrideW, pHeavy, pTruck });
