@@ -4430,6 +4430,7 @@ app.post('/api/exchange/listings', requireShipper, async (req, res) => {
 });
 
 // VIN decode via NHTSA
+const { vehicleTypeFromVin } = require('./public/js/vin-type.js');
 app.get('/api/vin/:vin', publicLimiter, async (req, res) => {
   const vin = String(req.params.vin || '').trim().toUpperCase();
   if (!/^[A-HJ-NPR-Z0-9]{11,17}$/i.test(vin)) {
@@ -4455,7 +4456,9 @@ app.get('/api/vin/:vin', publicLimiter, async (req, res) => {
       type,
       label,
       trim: r.Trim || null,
-      bodyClass: r.BodyClass || null
+      bodyClass: r.BodyClass || null,
+      gvwr: r.GVWR || null,
+      mcType: vehicleTypeFromVin(r)   // the site's vehicle type (sedan, pickup, full-suv, …) or null
     });
   } catch (err) {
     console.error('VIN decode:', err);

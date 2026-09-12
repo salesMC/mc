@@ -290,6 +290,11 @@ async function sendAndAuthorize(id, fee) {
   check('lane table: out of Florida costs more than into Florida', pFLNE > pPlain1300 && pNEFL < pPlain1300 && pFLNE > pNEFL, { out: pFLNE, into: pNEFL, plain: pPlain1300 });
   r = await api('POST', '/api/price', { vehicles: sedan, distance: 1300, pickup: '1 Biscayne Blvd, Miami, FL 33132, USA', delivery: '1 Main St, Hartford, CT 06103, USA' });
   check('lane line shows the regions', r.data.lines.some(l => /Lane Florida → Northeast/.test(l.label)), r.data.lines.map(l => l.label));
+  // ---- VIN → vehicle type mapping (what NHTSA returns → our types) ----
+  const { vehicleTypeFromVin } = require('../public/js/vin-type.js');
+  const vt = (BodyClass, VehicleType, GVWR, Model) => vehicleTypeFromVin({ BodyClass, VehicleType, GVWR, Model });
+  check('VIN types: pickup, minivan, cargo van, passenger van', vt('Pickup', 'TRUCK', 'Class 2E: 6,001 - 7,000 lb', 'F-150') === 'pickup' && vt('Minivan', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 1D: 5,001 - 6,000 lb', 'Sienna') === 'mini-van' && vt('Cargo Van', 'TRUCK', 'Class 2G: 8,001 - 9,000 lb', 'Transit') === 'cargo-van' && vt('Van', 'BUS', '', 'Express') === 'other' && vt('Passenger Van', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 2G: 8,001 - 9,000 lb', 'Transit') === 'passenger-van');
+  check('VIN types: SUVs by size, cars, unknown', vt('Sport Utility Vehicle [SUV]/Multipurpose Vehicle [MPV]', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 2F: 7,001 - 8,000 lb', 'Yukon XL') === 'full-suv' && vt('Sport Utility Vehicle [SUV]/Multipurpose Vehicle [MPV]', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 1D: 5,001 - 6,000 lb', 'Explorer') === 'mid-suv' && vt('Crossover Utility Vehicle (CUV)', 'MULTIPURPOSE PASSENGER VEHICLE (MPV)', 'Class 1C: 4,001 - 5,000 lb', 'CR-V') === 'sedan' && vt('Sedan/Saloon', 'PASSENGER CAR', 'Class 1B: 3,001 - 4,000 lb', 'Camry') === 'sedan' && vt('', 'MOTORCYCLE', '', 'Sportster') === 'other' && vt('', '', '', 'Mystery') === null);
   // ---- heavy vehicles (weight cached per model; AI is off in tests so we seed the cache) ----
   const hummer = { year: '2024', make: 'GMC', model: 'Hummer EV', type: 'pickup', condition: 'operable' };
   const wKey = require('crypto').createHash('sha256').update('2024|gmc|hummer ev').digest('hex');

@@ -236,6 +236,7 @@
       }
     }
   </style>
+  <script src="/js/vin-type.js?v=<%= assetVersion %>"></script>
 </head>
 <body>
 
@@ -789,6 +790,14 @@
             if (vehicle.ModelYear) document.getElementById('year-' + i).value = vehicle.ModelYear;
             if (vehicle.Make)      document.getElementById('make-' + i).value = vehicle.Make;
             if (vehicle.Model)     document.getElementById('model-'+ i).value = vehicle.Model;
+            const t = vehicleTypeFromVin(vehicle);
+            if (t) {
+              const sel = document.getElementById('vehicleType-' + i);
+              if (sel) sel.value = t;
+              formData.vehicles[i].type = t;
+              resultDiv.textContent += ' · ' + VIN_TYPE_LABELS[t] + ' selected';
+              calculateAndUpdateTotal();
+            }
           } else {
             errorDiv.textContent = 'Could not decode VIN';
             errorDiv.classList.remove('hidden');

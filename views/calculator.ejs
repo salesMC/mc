@@ -53,6 +53,7 @@
     }
     .upload-zone:hover { border-color: var(--orange); background: #1C2128; }
   </style>
+  <script src="/js/vin-type.js?v=<%= assetVersion %>"></script>
 </head>
 <body>
 
@@ -464,7 +465,9 @@ function getVehicleTypeLabel(type) {
         vinTimer = setTimeout(async () => {
           const v = await decodeVIN(vin);
           if (v && v.Make) {
-            vinResult.innerHTML = `${v.ModelYear || ''} ${v.Make} ${v.Model || ''}`;
+            const t = vehicleTypeFromVin(v);
+            if (t) document.getElementById('vehicleType').value = t;
+            vinResult.innerHTML = `${v.ModelYear || ''} ${v.Make} ${v.Model || ''}${t ? ' · ' + VIN_TYPE_LABELS[t] + ' selected' : ''}`;
             vinResult.classList.remove('hidden');
           } else {
             vinError.textContent = "Invalid VIN";
@@ -563,7 +566,7 @@ function getVehicleTypeLabel(type) {
 
     // What the calculator knows about the vehicle, in the shape checkout uses
     function collectVehicle() {
-      const vinText = (document.getElementById('vin-result')?.textContent || '').trim(); // "2020 TOYOTA Camry" when the VIN decoded
+      const vinText = (document.getElementById('vin-result')?.textContent || '').split('·')[0].trim(); // "2020 TOYOTA Camry" when the VIN decoded
       const m = vinText.match(/^(\d{4})\s+(\S+)\s*(.*)$/);
       return {
         year: m ? m[1] : '', make: m ? m[2] : '', model: m ? m[3] : '',

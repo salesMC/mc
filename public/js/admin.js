@@ -1511,8 +1511,9 @@ async function wizDecodeVin(i) {
     if (d.year)  document.getElementById('wv-year-'  + i).value = d.year;
     if (d.make)  document.getElementById('wv-make-'  + i).value = d.make;
     if (d.model) document.getElementById('wv-model-' + i).value = d.model;
-    ok.innerHTML = `<i class="fas fa-check mr-1"></i>${esc(d.label)}${d.trim ? ' · ' + esc(d.trim) : ''}${d.bodyClass ? ' · ' + esc(d.bodyClass) : ''}`;
-    wizSaveVehicle(i);
+    if (d.mcType) { const sel = document.getElementById('wv-type-' + i); if (sel) sel.value = d.mcType; }
+    ok.innerHTML = `<i class="fas fa-check mr-1"></i>${esc(d.label)}${d.trim ? ' · ' + esc(d.trim) : ''}${d.mcType ? ' · ' + esc(VEHICLE_TYPE_LABELS[d.mcType] || d.mcType) + ' selected' : (d.bodyClass ? ' · ' + esc(d.bodyClass) : '')}`;
+    wizSaveVehicle(i); wizUpdateRunningTotal();
   } catch (e) {
     ok.classList.add('hidden');
     err.textContent = e.message || 'Could not decode VIN';
