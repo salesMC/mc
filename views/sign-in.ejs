@@ -129,7 +129,7 @@
           const redirects = {
             carrier: '/exchange/listings',
             shipper: '/exchange/shipments',
-            admin:   '/admin/orders'
+            admin:   '/admin/home'
           };
 
           // Already signed in (valid cookie) → go straight to the right place
@@ -203,7 +203,7 @@
                   sessionStorage.setItem('mcAdminEmail', data.email);
                   sessionStorage.removeItem('mcAuth');
                   sessionStorage.removeItem('mcRole');
-                  window.location.href = '/admin/orders';
+                  window.location.href = '/admin/home';
                 } else {
                   sessionStorage.setItem('mcAuth', '1');
                   sessionStorage.setItem('mcRole', data.role);

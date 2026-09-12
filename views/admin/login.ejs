@@ -77,7 +77,7 @@
     // Where to go after login: ?next=/admin/... (set by the auth guard) or Orders
     const nextUrl = (() => {
       const n = new URLSearchParams(location.search).get('next') || '';
-      return n.startsWith('/admin/') ? n : '/admin/orders';
+      return n.startsWith('/admin/') ? n : '/admin/home';
     })();
 
     // Already signed in (valid admin cookie) → straight to the dashboard

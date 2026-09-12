@@ -799,7 +799,7 @@ async function initDB() {
         created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    for (const [col, def] of [['pickup_lat', 'DECIMAL(9,6)'], ['pickup_lng', 'DECIMAL(9,6)'], ['delivery_lat', 'DECIMAL(9,6)'], ['delivery_lng', 'DECIMAL(9,6)']]) {
+    for (const [col, def] of [['pickup_lat', 'DECIMAL(9,6)'], ['pickup_lng', 'DECIMAL(9,6)'], ['delivery_lat', 'DECIMAL(9,6)'], ['delivery_lng', 'DECIMAL(9,6)'], ['followup1_at', 'DATETIME'], ['followup2_at', 'DATETIME']]) {
       try { await conn.execute(`ALTER TABLE quotes ADD COLUMN ${col} ${def}`); } catch (e) { /* exists */ }
     }
 
@@ -1469,6 +1469,7 @@ app.get('/extension',      (req, res) => res.render('extension'));
 const requireAdminPage = (req, res, next) =>
   (req.session && req.session.role === 'admin') ? next() : res.redirect('/admin?next=' + encodeURIComponent(req.originalUrl));
 app.get('/admin',             (req, res) => res.render('admin/login'));
+app.get('/admin/home',        requireAdminPage, (req, res) => res.render('admin/home'));
 app.get('/admin/orders',      requireAdminPage, (req, res) => res.render('admin/orders'));
 app.get('/admin/customers',   requireAdminPage, (req, res) => res.render('admin/customers'));
 app.get('/admin/promo-codes', requireAdminPage, (req, res) => res.render('admin/promo-codes'));
@@ -2388,6 +2389,77 @@ app.post('/api/orders/:id/refund', requireAdmin, async (req, res) => {
     res.status(stripeErrorStatus(err)).json({ success: false, message: err.message || 'Server error' });
   }
 });
+
+// ---- Admin home: what needs attention today ----
+app.get('/api/dashboard', requireAdmin, async (req, res) => {
+  try {
+    const [orders] = await pool.execute('SELECT * FROM orders ORDER BY created_at DESC');
+    const all = orders.map(r => mapOrderRow(r, false));
+    const now = new Date(), day = 86400000;
+    const todayStr = now.toISOString().slice(0, 10);
+    const soonStr = new Date(now.getTime() + 2 * day).toISOString().slice(0, 10);
+    const open = all.filter(o => !['Done', 'Canceled'].includes(o.status));
+    const pickups = open.filter(o => o.pickupDate && o.pickupDate <= soonStr && !o.pickedUpAt).sort((x, y) => String(x.pickupDate).localeCompare(String(y.pickupDate)));
+    const holdsExpiring = all.filter(o => o.paymentState === 'holding' && o.holdExpiresAt && new Date(o.holdExpiresAt) - now < 2 * day);
+    const awaitingCard = all.filter(o => o.paymentState === 'pending');
+    const inTransit = open.filter(o => o.pickedUpAt && o.status === 'In Work');
+    const weekAgo = new Date(now.getTime() - 7 * day);
+    const charged7 = all.filter(o => o.chargedAt && new Date(o.chargedAt) >= weekAgo).reduce((s, o) => s + (o.chargedAmount || 0), 0);
+    const refunded7 = all.filter(o => o.refundedAt && new Date(o.refundedAt) >= weekAgo).reduce((s, o) => s + (o.refundedAmount || 0), 0);
+    const holding = all.filter(o => o.paymentState === 'holding').reduce((s, o) => s + (o.holdAmount || o.total || 0), 0);
+    const newOrders7 = all.filter(o => new Date(o.createdAt) >= weekAgo).length;
+    const [quotes] = await pool.execute('SELECT token, email, name, phone, vehicle_json, pickup, delivery, distance, total, created_at, followup1_at, followup2_at FROM quotes WHERE order_id IS NULL AND created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY) ORDER BY created_at DESC LIMIT 25');
+    const [[leads7]] = await pool.execute('SELECT COUNT(*) n FROM leads WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)');
+    const brief = o => ({ id: o.id, customer: (o.contact || {}).fullName || '', phone: (o.contact || {}).phone || '', vehicle: o.vehicle ? [o.vehicle.year, o.vehicle.make, o.vehicle.model].filter(Boolean).join(' ') : '', pickup: (o.location || {}).pickup || '', delivery: (o.location || {}).delivery || '', pickupDate: o.pickupDate, total: o.total, status: o.status, paymentState: o.paymentState, holdExpiresAt: o.holdExpiresAt, confirmSentAt: o.confirmSentAt });
+    res.json({
+      today: todayStr,
+      counts: { pickups: pickups.length, holdsExpiring: holdsExpiring.length, awaitingCard: awaitingCard.length, inTransit: inTransit.length, unbookedQuotes: quotes.length, newOrders7, leads7: leads7.n },
+      money: { holding, charged7, refunded7 },
+      pickups: pickups.slice(0, 15).map(brief), holdsExpiring: holdsExpiring.map(brief), awaitingCard: awaitingCard.slice(0, 15).map(brief), inTransit: inTransit.slice(0, 15).map(brief),
+      quotes: quotes.map(q => { const v = safeJson(q.vehicle_json) || {}; return { token: q.token, email: q.email, name: q.name, phone: q.phone, vehicle: [v.year, v.make, v.model].filter(Boolean).join(' ') || v.type, pickup: q.pickup, delivery: q.delivery, distance: q.distance, total: Number(q.total), createdAt: q.created_at, followups: (q.followup1_at ? 1 : 0) + (q.followup2_at ? 1 : 0) }; }),
+      recent: all.slice(0, 8).map(brief)
+    });
+  } catch (err) { console.error('GET /api/dashboard:', err); res.status(500).json({ success: false }); }
+});
+
+// ---- Quote follow-ups: day 2 "still thinking?", day 6 "expires tomorrow" (only unbooked quotes that were emailed) ----
+function followupEmail(q, bookUrl, second) {
+  const v = q.vehicle || {};
+  const label = [v.year, v.make, v.model].filter(Boolean).join(' ') || 'your vehicle';
+  const html = emailShell(second ? `
+    <h1 style="margin:0 0 12px;font-size:22px">Your quote expires tomorrow</h1>
+    <p>Hi ${escHtml(q.name || 'there')},</p>
+    <p>Quick heads-up: the <strong>${money(q.total)}</strong> quote to move your ${escHtml(label)} from ${escHtml(q.pickup || 'pickup')} to ${escHtml(q.delivery || 'delivery')} is good through tomorrow. After that, fuel and carrier rates may move it.</p>
+    <p style="text-align:center;margin:26px 0"><a href="${bookUrl}" style="display:inline-block;background:#FF6A3D;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:8px">Lock in ${money(q.total)}</a></p>
+    <p style="font-size:13px;color:#6b7280">Dates not set yet? Book now and we'll work around your schedule. Questions: reply to this email or call ${COMPANY_PHONE}.</p>` : `
+    <h1 style="margin:0 0 12px;font-size:22px">Still thinking about shipping your ${escHtml(label)}?</h1>
+    <p>Hi ${escHtml(q.name || 'there')},</p>
+    <p>A couple of days ago you priced a transport from ${escHtml(q.pickup || 'pickup')} to ${escHtml(q.delivery || 'delivery')} at <strong>${money(q.total)}</strong>. That price is still good, and booking takes about two minutes: pick your dates, enter a card, done. Nothing is charged until the vehicle is picked up.</p>
+    <p style="text-align:center;margin:26px 0"><a href="${bookUrl}" style="display:inline-block;background:#FF6A3D;color:#ffffff;text-decoration:none;font-weight:700;padding:14px 28px;border-radius:8px">Book this transport</a></p>
+    <p style="font-size:13px;color:#6b7280">Have a question first, or want to talk it through? Reply to this email or call ${COMPANY_PHONE}. We're happy to help.</p>`);
+  const text = second
+    ? `Hi ${q.name || 'there'}, your ${money(q.total)} quote for ${label} (${q.pickup} → ${q.delivery}) is good through tomorrow. Book: ${bookUrl}\n\nQuestions? Call ${COMPANY_PHONE}.`
+    : `Hi ${q.name || 'there'}, your ${money(q.total)} quote for ${label} (${q.pickup} → ${q.delivery}) is still good. Book in two minutes: ${bookUrl}\n\nQuestions? Call ${COMPANY_PHONE}.`;
+  return { subject: second ? `Your Mcships quote expires tomorrow` : `Still thinking about shipping your ${label}?`, html, text };
+}
+async function sendQuoteFollowups() {
+  try {
+    const base = (process.env.APP_URL || 'https://mcships.com').replace(/\/$/, '');
+    const [due1] = await pool.execute(`SELECT * FROM quotes WHERE order_id IS NULL AND emailed_at IS NOT NULL AND followup1_at IS NULL
+      AND created_at <= DATE_SUB(NOW(), INTERVAL 2 DAY) AND created_at >= DATE_SUB(NOW(), INTERVAL 5 DAY) LIMIT 50`);
+    const [due2] = await pool.execute(`SELECT * FROM quotes WHERE order_id IS NULL AND emailed_at IS NOT NULL AND followup2_at IS NULL
+      AND created_at <= DATE_SUB(NOW(), INTERVAL 6 DAY) AND created_at >= DATE_SUB(NOW(), INTERVAL 8 DAY) LIMIT 50`);
+    for (const [rows, second] of [[due1, false], [due2, true]]) {
+      for (const r of rows) {
+        const q = { name: r.name, total: Number(r.total), pickup: r.pickup, delivery: r.delivery, vehicle: safeJson(r.vehicle_json) || {} };
+        const bookUrl = `${base}/payment?quote=${r.token}`;
+        const m = await sendMail({ to: r.email, ...followupEmail(q, bookUrl, second) }).catch(e => ({ sent: false, reason: e.message }));
+        await pool.execute(`UPDATE quotes SET ${second ? 'followup2_at' : 'followup1_at'} = NOW() WHERE token = ?`, [r.token]); // mark even on failure: never spam retries
+        if (m.sent) console.log(`📨 Quote follow-up ${second ? 2 : 1} sent to ${r.email} (${r.token.slice(0, 8)})`);
+      }
+    }
+  } catch (e) { console.error('sendQuoteFollowups:', e.message); }
+}
 
 // ---- Admin: payments overview (every order's money situation, newest first) ----
 app.get('/api/payments', requireAdmin, async (req, res) => {
@@ -4120,6 +4192,9 @@ initDB().then(() => {
   const runExpiry = () => expireCardHolds().catch(e => console.error('expireCardHolds:', e.message));
   runExpiry();
   setInterval(runExpiry, 60 * 60 * 1000).unref();
+  // Quote follow-up emails: hourly (each quote gets at most one day-2 and one day-6 email)
+  setTimeout(() => sendQuoteFollowups(), 60 * 1000);
+  setInterval(sendQuoteFollowups, 60 * 60 * 1000).unref();
   // Diesel index for the fuel surcharge: at boot, then daily (only refetches when older than 6 days)
   refreshFuelIndex().catch(() => {});
   setInterval(() => refreshFuelIndex().catch(() => {}), 24 * 3600 * 1000).unref();
@@ -4128,4 +4203,4 @@ initDB().then(() => {
   process.exit(1);
 });
 
-module.exports = { app, pool, expireCardHolds };
+module.exports = { app, pool, expireCardHolds, sendQuoteFollowups };

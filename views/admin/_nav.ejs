@@ -1,6 +1,7 @@
 <%# Admin top bar. Expects `page` = 'orders' | 'customers' | 'promo-codes' | 'calculator' %>
 <%
   const adminLinks = [
+    ['home',        '/admin/home',        'fa-house',          'Home'],
     ['orders',      '/admin/orders',      'fa-clipboard-list', 'Orders'],
     ['payments',    '/admin/payments',    'fa-credit-card',    'Payments'],
     ['customers',   '/admin/customers',   'fa-users',          'Customers'],
@@ -12,7 +13,7 @@
 %>
 <nav class="admin-nav">
   <div class="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-    <a href="/admin/orders" class="flex items-center gap-2 flex-shrink-0">
+    <a href="/admin/home" class="flex items-center gap-2 flex-shrink-0">
       <span class="text-xl font-bold tracking-tight text-white">MC</span>
       <span class="w-1.5 h-1.5 rounded-full bg-[var(--orange)] mx-1"></span>
       <span class="text-[10px] tracking-[0.22em] uppercase text-[var(--ink-muted)] font-medium pt-0.5">Admin</span>

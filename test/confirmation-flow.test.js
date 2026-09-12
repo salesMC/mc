@@ -546,7 +546,29 @@ async function sendAndAuthorize(id, fee) {
   r = await api('GET', '/api/leads?q=quote-test&page=1');
   check('quote also recorded as a lead', r.data && r.data.leads && r.data.leads.some(l => l.email === 'quote-test@example.test' && l.source === 'calculator'));
   for (const l of (r.data.leads || [])) await api('DELETE', '/api/leads/' + l.id);
+  // Follow-up emails: day 2 and day 6 for unbooked quotes, never twice, never after booking
+  const { sendQuoteFollowups } = require('../app');
+  await sendQuoteFollowups();
+  check('no follow-up on a fresh quote', MAIL.filter(m => m.to === 'quote-test@example.test').length === 1);
+  await pool.execute('UPDATE quotes SET created_at = DATE_SUB(NOW(), INTERVAL 3 DAY) WHERE token = ?', [qTok]);
+  await sendQuoteFollowups(); await sendQuoteFollowups();
+  let fu = MAIL.filter(m => m.to === 'quote-test@example.test');
+  check('day-2 follow-up sent once with the Book link', fu.length === 2 && /Still thinking/.test(fu[1].subject) && fu[1].text.includes('/payment?quote=' + qTok), fu.map(m => m.subject));
+  await pool.execute('UPDATE quotes SET created_at = DATE_SUB(NOW(), INTERVAL 7 DAY) WHERE token = ?', [qTok]);
+  await sendQuoteFollowups(); await sendQuoteFollowups();
+  fu = MAIL.filter(m => m.to === 'quote-test@example.test');
+  check('day-6 "expires tomorrow" sent once', fu.length === 3 && /expires tomorrow/.test(fu[2].subject), fu.map(m => m.subject));
+  await pool.execute('UPDATE quotes SET followup1_at = NULL, followup2_at = NULL, created_at = DATE_SUB(NOW(), INTERVAL 3 DAY), order_id = ? WHERE token = ?', ['MC-T-WEB', qTok]);
+  await sendQuoteFollowups();
+  check('booked quote gets no follow-up', MAIL.filter(m => m.to === 'quote-test@example.test').length === 3);
   await pool.execute('DELETE FROM quotes WHERE token = ?', [qTok]);
+  // Admin home dashboard
+  r = await api('GET', '/api/dashboard');
+  check('dashboard summarises the day', r.status === 200 && r.data.counts && typeof r.data.counts.pickups === 'number' && r.data.money && typeof r.data.money.holding === 'number' && Array.isArray(r.data.recent), r.data && r.data.counts);
+  r = await api('GET', '/api/dashboard', null, { auth: false });
+  check('dashboard needs admin login', r.status === 401 || r.status === 403);
+  page = await fetch(B + '/admin/home', { headers: { Cookie: adminCookie } });
+  check('home page renders', page.status === 200 && (await page.text()).includes('id="homeStats"'));
 
   // ---------- 6. Vehicle gone → no-show fee ----------
   console.log('\n6) Vehicle gone → charge no-show fee, release hold');
