@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="/favicon.ico" sizes="48x48">
+  <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title><%= notFound ? 'Shipment not found' : 'Tracking order ' + order.id %> – Mcships</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <%- include('partials/theme') %>
+  <style>
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+    .step { text-align: center; font-size: 12px; color: var(--ink-muted); }
+    .step .bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.08); margin-bottom: 8px; }
+    .step.done .bar { background: #BEF264; }
+    .step.now .bar { background: var(--orange); }
+    .step.done, .step.now { color: #fff; }
+    .tl { border-left: 2px solid var(--line); margin-left: 8px; padding-left: 18px; }
+    .tl-item { position: relative; padding-bottom: 18px; }
+    .tl-item::before { content: ''; position: absolute; left: -24px; top: 5px; width: 10px; height: 10px; border-radius: 50%; background: var(--ink-muted); }
+    .tl-item:first-child::before { background: var(--orange); box-shadow: 0 0 0 4px rgba(255,106,61,0.2); }
+    .card { background: rgba(255,255,255,0.03); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  </style>
+</head>
+<body>
+  <%- include('partials/header') %>
+  <main class="relative overflow-hidden py-14 md:py-20">
+    <div class="glow-orange" style="top: -120px; right: -100px;"></div>
+    <div class="relative max-w-3xl mx-auto px-6 lg:px-8">
+    <% if (notFound) { %>
+      <p class="text-[11px] tracking-[0.22em] uppercase text-[var(--ink-muted)] font-medium mb-3">Tracking</p>
+      <h1 class="text-3xl font-bold text-white">We couldn't find that shipment</h1>
+      <p class="text-dim mt-3">The link may be incomplete. Open it from the email we sent you, or call <a class="text-cyan-400" href="tel:<%= phone.replace(/[^0-9+]/g, '') %>"><%= phone %></a> and we'll look it up.</p>
+    <% } else { const d = order.dispatch || {}; const labels = ['Booked', 'Confirmed', 'Carrier assigned', 'Picked up', 'Delivered']; %>
+      <p class="text-[11px] tracking-[0.22em] uppercase text-[var(--ink-muted)] font-medium mb-3">Tracking · order <%= order.id %></p>
+      <h1 class="text-3xl md:text-4xl font-bold text-white tracking-tight"><%= order.deliveredAt ? 'Delivered' : order.pickedUpAt ? 'On its way' : d.dispatchedAt ? 'Carrier assigned' : 'Booked' %></h1>
+      <p class="text-dim mt-2"><%= order.vehicles.join(', ') %> · <%= order.transportType === 'enclosed' ? 'Enclosed' : 'Open' %> transport</p>
+
+      <div class="card mt-8">
+        <div class="steps">
+          <% [1,2,3,4].forEach(i => { %>
+            <div class="step <%= step > i ? 'done' : step === i ? 'now' : '' %>"><div class="bar"></div><%= labels[i] %></div>
+          <% }) %>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4 mt-4">
+        <div class="card">
+          <h2 class="text-white font-semibold mb-3"><i class="fas fa-route text-[var(--orange)] mr-2"></i>Route</h2>
+          <p class="text-sm text-dim"><span class="text-muted text-xs uppercase tracking-wider">From</span><br><%= order.pickup %></p>
+          <p class="text-sm text-dim mt-3"><span class="text-muted text-xs uppercase tracking-wider">To</span><br><%= order.delivery %></p>
+          <% if (d.pickupEta || d.deliveryEta) { %>
+            <div class="mt-4 pt-4 border-t border-[var(--line)] text-sm">
+              <% if (d.pickupEta) { %><p><span class="text-muted">Pickup window:</span> <span class="text-white"><%= d.pickupEta %></span></p><% } %>
+              <% if (d.deliveryEta) { %><p><span class="text-muted">Delivery window:</span> <span class="text-white"><%= d.deliveryEta %></span></p><% } %>
+            </div>
+          <% } else if (order.pickupDate) { %>
+            <p class="text-sm mt-4 pt-4 border-t border-[var(--line)]"><span class="text-muted">First available pickup:</span> <span class="text-white"><%= order.pickupDate %></span></p>
+          <% } %>
+        </div>
+        <div class="card">
+          <h2 class="text-white font-semibold mb-3"><i class="fas fa-truck text-[var(--orange)] mr-2"></i>Carrier</h2>
+          <% if (d.carrierName || d.driverName) { %>
+            <% if (d.carrierName) { %><p class="text-sm"><span class="text-muted">Carrier:</span> <span class="text-white"><%= d.carrierName %></span></p><% } %>
+            <% if (d.driverName) { %><p class="text-sm mt-1"><span class="text-muted">Driver:</span> <span class="text-white"><%= d.driverName %></span></p><% } %>
+            <% if (d.driverPhone) { %><p class="text-sm mt-1"><span class="text-muted">Driver phone:</span> <a class="text-cyan-400" href="tel:<%= d.driverPhone.replace(/[^0-9+]/g, '') %>"><%= d.driverPhone %></a></p><% } %>
+            <% if (d.notes) { %><p class="text-sm mt-3 text-dim"><%= d.notes %></p><% } %>
+          <% } else { %>
+            <p class="text-sm text-dim">We're matching your shipment with a carrier. You'll get an email with the driver's details and pickup window as soon as it's assigned.</p>
+          <% } %>
+          <p class="text-sm mt-4 pt-4 border-t border-[var(--line)] text-dim">Questions any time: <a class="text-cyan-400" href="tel:<%= phone.replace(/[^0-9+]/g, '') %>"><%= phone %></a></p>
+        </div>
+      </div>
+
+      <% if (order.documents.length) { const bols = order.documents.filter(x => x.kind === 'bol'); const photos = order.documents.filter(x => x.kind !== 'bol'); %>
+        <div class="card mt-4">
+          <h2 class="text-white font-semibold mb-3"><i class="fas fa-file-contract text-[var(--orange)] mr-2"></i>Documents &amp; photos</h2>
+          <% bols.forEach(b => { %>
+            <a class="inline-flex items-center gap-2 text-cyan-400 text-sm mr-4" href="<%= b.url %>" target="_blank" rel="noopener"><i class="fas fa-file-pdf"></i> Bill of Lading<%= bols.length > 1 ? ' (' + new Date(b.at).toLocaleDateString() + ')' : '' %></a>
+          <% }) %>
+          <% if (photos.length) { %>
+            <div class="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
+              <% photos.forEach(p => { %>
+                <a href="<%= p.url %>" target="_blank" rel="noopener" title="<%= p.kind === 'delivery' ? 'Delivery photo' : 'Pickup photo' %>"><img src="<%= p.url %>" class="rounded-lg border border-[var(--line)] object-cover h-24 w-full" alt="<%= p.kind %> photo"></a>
+              <% }) %>
+            </div>
+          <% } %>
+        </div>
+      <% } %>
+
+      <div class="card mt-4">
+        <h2 class="text-white font-semibold mb-4"><i class="fas fa-clock-rotate-left text-[var(--orange)] mr-2"></i>Updates</h2>
+        <div class="tl">
+          <% order.events.forEach(e => { %>
+            <div class="tl-item">
+              <p class="text-white text-sm"><%= { booked: 'Booked', confirmed: 'Pickup confirmed', dispatched: 'Carrier assigned', picked_up: 'Picked up', delivered: 'Delivered', update: 'Update' }[e.type] || 'Update' %><% if (e.note) { %><span class="text-dim"> · <%= e.note %></span><% } %></p>
+              <p class="text-xs text-muted mt-0.5"><%= new Date(e.at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) %></p>
+            </div>
+          <% }) %>
+          <% if (!order.events.length) { %><p class="text-sm text-dim">No updates yet.</p><% } %>
+        </div>
+      </div>
+    <% } %>
+    </div>
+  </main>
+  <%- include('partials/footer') %>
+</body>
+</html>

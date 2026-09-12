@@ -250,8 +250,34 @@ function mapOrderRow(r, withPhotos = false) {
     agreement     : safeJson(r.agreement_json) || null,   // signed pickup agreement record (proof)
     disputeStatus : r.dispute_status || null,               // 'open' while a chargeback is being fought
     pricing       : safeJson(r.pricing_json) || null,         // engine breakdown at the time of the quote (admin)
+    // Dispatch & tracking
+    dispatch      : { carrierName: r.carrier_name || '', carrierPhone: r.carrier_phone || '', driverName: r.driver_name || '', driverPhone: r.driver_phone || '',
+                      pickupEta: r.pickup_eta || '', deliveryEta: r.delivery_eta || '', notes: r.dispatch_notes || '', dispatchedAt: r.dispatched_at || null },
+    deliveredAt   : r.delivered_at || null,
+    trackingToken : r.tracking_token || null,
+    documents     : safeJson(r.documents_json) || [],          // [{ url, name, kind: bol|pickup|delivery|other, mime, size, at }]
+    events        : safeJson(r.events_json) || [],             // [{ at, type, note }] shown on the customer tracking page
+    reviewSentAt  : r.review_sent_at || null,
     createdAt     : r.created_at
   };
+}
+// Customer-facing tracking link. Older orders get a token the first time one is needed.
+async function ensureTrackingToken(row) {
+  if (row.tracking_token) return row.tracking_token;
+  const token = crypto.randomBytes(24).toString('hex');
+  await pool.execute('UPDATE orders SET tracking_token = ? WHERE id = ? AND tracking_token IS NULL', [token, row.id]);
+  const [[fresh]] = await pool.execute('SELECT tracking_token FROM orders WHERE id = ?', [row.id]);
+  return (fresh && fresh.tracking_token) || token;
+}
+const SITE_URL = () => (process.env.APP_URL || 'https://mcships.com').replace(/\/$/, '');
+async function trackingUrl(row, req) { return `${req ? appUrl(req) : SITE_URL()}/track/${await ensureTrackingToken(row)}`; }
+// Append one line to the order's customer-visible timeline
+async function addOrderEvent(id, type, note) {
+  const [[row]] = await pool.execute('SELECT events_json FROM orders WHERE id = ?', [id]);
+  if (!row) return;
+  const events = safeJson(row.events_json) || [];
+  events.push({ at: new Date().toISOString(), type, note: note ? String(note).slice(0, 500) : '' });
+  await pool.execute('UPDATE orders SET events_json = ? WHERE id = ?', [JSON.stringify(events.slice(-100)), id]);
 }
 
 // One word for the money situation, used by the admin Payments page:
@@ -717,6 +743,11 @@ async function initDB() {
       ['charged_at', 'DATETIME'],
       ['charged_amount', 'DECIMAL(10,2)'],
       ['picked_up_at', 'DATETIME'],
+      // Dispatch + tracking (drivers have no app; the team relays updates)
+      ['carrier_name', 'VARCHAR(255)'], ['carrier_phone', 'VARCHAR(40)'], ['driver_name', 'VARCHAR(255)'], ['driver_phone', 'VARCHAR(40)'],
+      ['pickup_eta', 'VARCHAR(80)'], ['delivery_eta', 'VARCHAR(80)'], ['dispatch_notes', 'TEXT'], ['dispatched_at', 'DATETIME'],
+      ['delivered_at', 'DATETIME'], ['tracking_token', 'VARCHAR(64)'], ['documents_json', 'MEDIUMTEXT'], ['events_json', 'MEDIUMTEXT'],
+      ['review_sent_at', 'DATETIME'],
     ];
     for (const [col, def] of orderExtraCols) {
       try { await conn.execute(`ALTER TABLE orders ADD COLUMN ${col} ${def}`); } catch (e) { /* exists */ }
@@ -1734,8 +1765,8 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
          (id, status, contact, vehicle, vehicles, location,
           pickup_date, must_deliver_by, transport_type, total,
           customer_id, source, payment_status, distance, notes, no_show_fee, pricing_json,
-          stripe_payment_intent_id, charged_at, charged_amount, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
+          stripe_payment_intent_id, charged_at, charged_amount, tracking_token, events_json, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NOW())`,
       [
         id, 'New',
         JSON.stringify(contact),
@@ -1744,7 +1775,9 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
         JSON.stringify(location),
         pickupDate, mustDeliverBy, transportType, total,
         customerId, source, paymentStatus, distance, notes, noShowFee, pricingJson,
-        stripePiId, stripePiId ? new Date() : null, stripePiId ? total : null
+        stripePiId, stripePiId ? new Date() : null, stripePiId ? total : null,
+        crypto.randomBytes(24).toString('hex'),
+        JSON.stringify([{ at: new Date().toISOString(), type: 'booked', note: isAdmin ? 'Order created by our team' : 'Booked and paid on mcships.com' }])
       ]
     );
     console.log(`New order: ${id}${isAdmin ? ' (admin intake)' : ` (web, ${money(total)} paid)`}`);
@@ -1755,10 +1788,11 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
     if (/^[a-f0-9]{48}$/.test(quoteToken))
       pool.execute('UPDATE quotes SET order_id = ? WHERE token = ? AND order_id IS NULL', [id, quoteToken]).catch(() => {});
 
-    // Website orders: tell the team (phone-in orders were typed by the team already)
+    // Website orders: receipt + tracking link to the customer, alert to the team
     if (!isAdmin && process.env.ADMIN_NOTIFY_EMAIL) {
       const [rows] = await pool.execute('SELECT * FROM orders WHERE id = ?', [id]).catch(() => [[]]);
       const order = rows && rows[0] ? mapOrderRow(rows[0], false) : null;
+      if (order && contact.email) trackingUrl(rows[0], req).then(u => sendMail({ to: contact.email, ...bookingEmail(order, u) })).catch(e => console.error('booking mail:', e.message));
       if (order) sendMail({
         to: process.env.ADMIN_NOTIFY_EMAIL,
         subject: `🚗 New website order ${id} – ${money(total)} paid – ${contact.fullName}`,
@@ -1989,16 +2023,90 @@ function confirmationEmail(order, link) {
   return { subject: `Please confirm your vehicle pickup – order ${order.id}`, html, text };
 }
 
-function receiptEmail(order, holdAmount) {
+function trackButton(url, label) {
+  return url ? `<p style="text-align:center;margin:22px 0"><a href="${url}" style="display:inline-block;background:#FF6A3D;color:#ffffff;text-decoration:none;font-weight:700;padding:13px 26px;border-radius:8px">${label || 'Track your shipment'}</a></p>` : '';
+}
+function bookingEmail(order, trackUrl) {
+  const name = (order.contact || {}).fullName || 'there';
+  const html = emailShell(`
+    <h1 style="margin:0 0 12px;font-size:22px">Booking received</h1>
+    <p>Hi ${escHtml(name)},</p>
+    <p>Thanks for booking with Mcships. We're assigning a carrier now and will email you the driver's details and pickup window as soon as it's set.</p>
+    ${summaryTableHtml(order)}
+    ${trackButton(trackUrl)}
+    <p style="font-size:13px;color:#6b7280">Keep this link: it shows every update on your shipment, the driver's contact once assigned, and your Bill of Lading after pickup. Questions? Call ${COMPANY_PHONE}.</p>`);
+  const text = `Hi ${name},\n\nThanks for booking with Mcships. We'll email the driver's details and pickup window once assigned.\n\n${summaryText(order)}\n\nTrack your shipment: ${trackUrl}\n\nQuestions? Call ${COMPANY_PHONE}.`;
+  return { subject: `Booking received – order ${order.id}`, html, text };
+}
+function dispatchEmail(order, trackUrl) {
+  const d = order.dispatch || {}, name = (order.contact || {}).fullName || 'there';
+  const rows = [['Carrier', d.carrierName], ['Driver', d.driverName], ['Driver phone', d.driverPhone], ['Pickup window', d.pickupEta], ['Delivery window', d.deliveryEta]].filter(r => r[1]);
+  const html = emailShell(`
+    <h1 style="margin:0 0 12px;font-size:22px">Your carrier is assigned</h1>
+    <p>Hi ${escHtml(name)},</p>
+    <p>Good news: a carrier has been assigned to move your ${escHtml(vehicleLabel(orderVehicles(order)[0] || {}))} (order ${escHtml(order.id)}).</p>
+    <table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e5e7eb;border-radius:8px;margin:18px 0">${rows.map(([k, v]) => `<tr><td style="padding:8px 12px;color:#6b7280;font-size:13px;white-space:nowrap;border-bottom:1px solid #f3f4f6">${k}</td><td style="padding:8px 12px;color:#111827;font-size:14px;border-bottom:1px solid #f3f4f6">${escHtml(v)}</td></tr>`).join('')}</table>
+    ${d.notes ? `<p style="font-size:14px"><strong>Note from us:</strong> ${escHtml(d.notes)}</p>` : ''}
+    <p style="font-size:14px">Please have the keys ready and make sure the vehicle is accessible. The driver will call ahead before arriving.</p>
+    ${trackButton(trackUrl)}
+    <p style="font-size:13px;color:#6b7280">Questions? Reply to this email or call ${COMPANY_PHONE}.</p>`);
+  const text = `Hi ${name},\n\nA carrier has been assigned to order ${order.id}.\n${rows.map(([k, v]) => k + ': ' + v).join('\n')}${d.notes ? '\nNote: ' + d.notes : ''}\n\nTrack: ${trackUrl}\n\nQuestions? Call ${COMPANY_PHONE}.`;
+  return { subject: `Carrier assigned – order ${order.id}`, html, text };
+}
+function pickedUpEmail(order, trackUrl) {
+  const name = (order.contact || {}).fullName || 'there', d = order.dispatch || {};
+  const html = emailShell(`
+    <h1 style="margin:0 0 12px;font-size:22px">Your vehicle is on its way</h1>
+    <p>Hi ${escHtml(name)},</p>
+    <p>Your ${escHtml(vehicleLabel(orderVehicles(order)[0] || {}))} has been picked up and is heading to ${escHtml((order.location || {}).delivery || 'the delivery address')}.${d.deliveryEta ? ` Expected delivery: <strong>${escHtml(d.deliveryEta)}</strong>.` : ''}</p>
+    <p style="font-size:14px">The card on file has been charged ${money(order.chargedAmount || order.total)}. At delivery, walk around the vehicle with the driver and note anything on the Bill of Lading before signing.</p>
+    ${trackButton(trackUrl)}
+    <p style="font-size:13px;color:#6b7280">Questions? Call ${COMPANY_PHONE}.</p>`);
+  const text = `Hi ${name},\n\nYour vehicle has been picked up (order ${order.id}).${d.deliveryEta ? ' Expected delivery: ' + d.deliveryEta + '.' : ''}\n\nTrack: ${trackUrl}\n\nQuestions? Call ${COMPANY_PHONE}.`;
+  return { subject: `Picked up – order ${order.id}`, html, text };
+}
+function updateEmail(order, note, trackUrl) {
+  const name = (order.contact || {}).fullName || 'there';
+  const html = emailShell(`
+    <h1 style="margin:0 0 12px;font-size:22px">Shipment update</h1>
+    <p>Hi ${escHtml(name)},</p>
+    <p style="font-size:16px;padding:14px 16px;background:#f9fafb;border-left:4px solid #FF6A3D;border-radius:6px">${escHtml(note)}</p>
+    ${trackButton(trackUrl)}
+    <p style="font-size:13px;color:#6b7280">Order ${escHtml(order.id)}. Questions? Call ${COMPANY_PHONE}.</p>`);
+  return { subject: `Update on your shipment – order ${order.id}`, html, text: `Hi ${name},\n\n${note}\n\nTrack: ${trackUrl}\n\nOrder ${order.id}. Questions? Call ${COMPANY_PHONE}.` };
+}
+function deliveredEmail(order, trackUrl) {
+  const name = (order.contact || {}).fullName || 'there';
+  const html = emailShell(`
+    <h1 style="margin:0 0 12px;font-size:22px">Delivered</h1>
+    <p>Hi ${escHtml(name)},</p>
+    <p>Your ${escHtml(vehicleLabel(orderVehicles(order)[0] || {}))} has been delivered. Thank you for shipping with Mcships.</p>
+    <p style="font-size:14px">Your signed Bill of Lading and delivery photos are on your tracking page. If anything about the delivery isn't right, call us within 24 hours so we can help.</p>
+    ${trackButton(trackUrl, 'View delivery details')}
+    <p style="font-size:13px;color:#6b7280">Order ${escHtml(order.id)} · ${COMPANY_PHONE}</p>`);
+  return { subject: `Delivered – order ${order.id}`, html, text: `Hi ${name},\n\nYour vehicle has been delivered (order ${order.id}). Thank you for shipping with Mcships.\n\nDelivery details: ${trackUrl}\n\n${COMPANY_PHONE}` };
+}
+function reviewEmail(order, reviewUrl) {
+  const name = (order.contact || {}).fullName || 'there';
+  const html = emailShell(`
+    <h1 style="margin:0 0 12px;font-size:22px">How did we do?</h1>
+    <p>Hi ${escHtml(name)},</p>
+    <p>Your ${escHtml(vehicleLabel(orderVehicles(order)[0] || {}))} was delivered yesterday. We'd really appreciate a quick review: it takes a minute and helps other people find a transporter they can trust.</p>
+    ${reviewUrl ? trackButton(reviewUrl, 'Leave a review') : '<p style="font-size:14px">Just reply to this email and tell us how it went.</p>'}
+    <p style="font-size:13px;color:#6b7280">If something wasn't right, reply here first and we'll make it right. Thank you, from the Mcships team. ${COMPANY_PHONE}</p>`);
+  return { subject: `How did we do? – order ${order.id}`, html, text: `Hi ${name},\n\nYour vehicle was delivered yesterday. We'd appreciate a quick review${reviewUrl ? ': ' + reviewUrl : ' - just reply to this email'}.\n\nIf something wasn't right, reply here first. Thank you, the Mcships team. ${COMPANY_PHONE}` };
+}
+function receiptEmail(order, holdAmount, trackUrl) {
   const name = (order.contact || {}).fullName || 'there';
   const html = emailShell(`
     <h1 style="margin:0 0 12px;font-size:22px">You're confirmed</h1>
     <p>Hi ${escHtml(name)},</p>
     <p>Thank you — your pickup is confirmed. A temporary hold of <strong>${money(holdAmount)}</strong> has been placed on your card. <strong>You will only be charged once the vehicle is picked up.</strong></p>
     ${summaryTableHtml(order)}
+    ${trackButton(trackUrl)}
     <p style="font-size:13px;color:#6b7280">Reminder: if the vehicle is not available when our carrier arrives, or the pickup is cancelled with less than 24 hours' notice, the no-show fee of ${money(orderFee(order))} applies as agreed.</p>
     <p style="font-size:13px;color:#6b7280">Need to change anything? Call ${COMPANY_PHONE}.</p>`);
-  const text = `Hi ${name},\n\nYour pickup is confirmed. A temporary hold of ${money(holdAmount)} has been placed on your card. You will only be charged once the vehicle is picked up.\n\n${summaryText(order)}\n\nQuestions? Call ${COMPANY_PHONE}.`;
+  const text = `Hi ${name},\n\nYour pickup is confirmed. A temporary hold of ${money(holdAmount)} has been placed on your card. You will only be charged once the vehicle is picked up.\n\n${summaryText(order)}\n\n${trackUrl ? 'Track your shipment: ' + trackUrl + '\n\n' : ''}Questions? Call ${COMPANY_PHONE}.`;
   return { subject: `Pickup confirmed – order ${order.id}`, html, text };
 }
 
@@ -2126,7 +2234,8 @@ app.post('/api/confirm/:token/complete', publicLimiter, async (req, res) => {
     const order = mapOrderRow(row, false);
     const c = order.contact || {};
     try {
-      if (c.email) await sendMail({ to: c.email, ...receiptEmail(order, pi.amount / 100) });
+      await addOrderEvent(row.id, 'confirmed', 'Pickup terms accepted and card authorized');
+      if (c.email) await sendMail({ to: c.email, ...receiptEmail(order, pi.amount / 100, await trackingUrl(row, req)) });
       if (process.env.ADMIN_NOTIFY_EMAIL) {
         await sendMail({
           to: process.env.ADMIN_NOTIFY_EMAIL,
@@ -2240,6 +2349,11 @@ app.post('/api/orders/:id/pickup', requireAdmin, async (req, res) => {
     );
     await detachCard(row); // charged — no reason to keep the card
     res.json({ success: true, ...charged });
+    try {
+      await addOrderEvent(row.id, 'picked_up', 'Vehicle picked up by the carrier');
+      const fresh = await loadOrderRow(row.id); const o = mapOrderRow(fresh, false); const c = o.contact || {};
+      if (c.email) await sendMail({ to: c.email, ...pickedUpEmail(o, await trackingUrl(fresh, req)) });
+    } catch (e) { console.error('pickup notice:', e.message); }
   } catch (err) {
     console.error('POST /api/orders/:id/pickup:', err);
     res.status(stripeErrorStatus(err)).json({ success: false, message: err.message || 'Server error' });
@@ -2389,6 +2503,147 @@ app.post('/api/orders/:id/refund', requireAdmin, async (req, res) => {
     res.status(stripeErrorStatus(err)).json({ success: false, message: err.message || 'Server error' });
   }
 });
+
+// ---- Dispatch: carrier / driver / windows on the order, documents, updates, delivered ----
+app.patch('/api/orders/:id/dispatch', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    const b = req.body || {}; const s = (v, n) => v == null ? '' : String(v).trim().slice(0, n);
+    const d = { carrierName: s(b.carrierName, 255), carrierPhone: s(b.carrierPhone, 40), driverName: s(b.driverName, 255), driverPhone: s(b.driverPhone, 40), pickupEta: s(b.pickupEta, 80), deliveryEta: s(b.deliveryEta, 80), notes: s(b.notes, 2000) };
+    const firstAssign = !row.dispatched_at && (d.carrierName || d.driverName);
+    await pool.execute(`UPDATE orders SET carrier_name = ?, carrier_phone = ?, driver_name = ?, driver_phone = ?, pickup_eta = ?, delivery_eta = ?, dispatch_notes = ?,
+        dispatched_at = ${firstAssign ? 'NOW()' : 'dispatched_at'}, status = CASE WHEN status = 'New' AND ? THEN 'In Work' ELSE status END WHERE id = ?`,
+      [d.carrierName || null, d.carrierPhone || null, d.driverName || null, d.driverPhone || null, d.pickupEta || null, d.deliveryEta || null, d.notes || null, firstAssign ? 1 : 0, row.id]);
+    if (firstAssign) await addOrderEvent(row.id, 'dispatched', `Carrier assigned${d.carrierName ? ': ' + d.carrierName : ''}${d.pickupEta ? ' · pickup ' + d.pickupEta : ''}`);
+    let emailed = false;
+    const fresh = await loadOrderRow(row.id); const o = mapOrderRow(fresh, false); const c = o.contact || {};
+    if (b.notify && c.email) { const m = await sendMail({ to: c.email, ...dispatchEmail(o, await trackingUrl(fresh, req)) }).catch(e => ({ sent: false, reason: e.message })); emailed = !!m.sent; if (emailed) await addOrderEvent(row.id, 'update', 'Carrier details emailed to the customer'); }
+    res.json({ success: true, emailed, order: mapOrderRow(await loadOrderRow(row.id), false) });
+  } catch (err) { console.error('PATCH /api/orders/:id/dispatch:', err); res.status(500).json({ success: false, message: 'Server error' }); }
+});
+// Post a plain-language update to the timeline ("Truck is in Amarillo, delivery Thursday"), optionally emailed
+app.post('/api/orders/:id/update', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    const note = String((req.body || {}).note || '').trim().slice(0, 500);
+    if (!note) return res.status(400).json({ success: false, message: 'Write the update first' });
+    await addOrderEvent(row.id, 'update', note);
+    let emailed = false;
+    const o = mapOrderRow(row, false); const c = o.contact || {};
+    if (req.body.notify && c.email) { const m = await sendMail({ to: c.email, ...updateEmail(o, note, await trackingUrl(row, req)) }).catch(e => ({ sent: false })); emailed = !!m.sent; }
+    res.json({ success: true, emailed, order: mapOrderRow(await loadOrderRow(row.id), false) });
+  } catch (err) { console.error('POST /api/orders/:id/update:', err); res.status(500).json({ success: false, message: 'Server error' }); }
+});
+// Documents: BOL (documents/bols), pickup/delivery photos (uploads/<order>), anything else (documents/attachments)
+const DOC_KINDS = { bol: 'bol', pickup: 'pickup', delivery: 'delivery', other: 'other' };
+app.post('/api/orders/:id/documents', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    const kind = DOC_KINDS[(req.body || {}).kind] || 'other';
+    const files = Array.isArray(req.body.files) ? req.body.files.slice(0, 12) : [];
+    if (!files.length) return res.status(400).json({ success: false, message: 'No files' });
+    const folder = kind === 'bol' ? FILE_FOLDERS.bols : (kind === 'pickup' || kind === 'delivery') ? `${FILE_FOLDERS.photos}/${safeSegment(row.id)}` : FILE_FOLDERS.attachments;
+    const docs = safeJson(row.documents_json) || [];
+    let added = 0;
+    for (const f of files) {
+      const stored = await storeBase64Upload(f && f.data, folder, `${row.id}-${kind}`);
+      if (!stored) continue;
+      docs.push({ url: stored.url, name: String((f && f.name) || stored.name).slice(0, 120), kind, mime: stored.mime, size: stored.size, at: new Date().toISOString() });
+      added++;
+    }
+    if (!added) return res.status(400).json({ success: false, message: 'Only images and PDFs up to 8 MB can be uploaded' });
+    await pool.execute('UPDATE orders SET documents_json = ? WHERE id = ?', [JSON.stringify(docs), row.id]);
+    const label = { bol: 'Bill of Lading', pickup: 'pickup photos', delivery: 'delivery photos', other: 'documents' }[kind];
+    await addOrderEvent(row.id, 'update', `${added} ${added === 1 && kind !== 'bol' ? label.replace(/s$/, '') : label} added`);
+    res.json({ success: true, added, documents: docs });
+  } catch (err) { console.error('POST /api/orders/:id/documents:', err); res.status(500).json({ success: false, message: 'Server error' }); }
+});
+async function deleteStoredFile(key) {
+  if (!FILE_KEY_RE.test(key)) return;
+  if (s3) { const { DeleteObjectCommand } = require('@aws-sdk/client-s3'); await s3.send(new DeleteObjectCommand({ Bucket: S3_BUCKET, Key: key })).catch(() => {}); }
+  try { fs.unlinkSync(path.join(STORAGE_ROOT, key)); } catch (_) {}
+}
+app.delete('/api/orders/:id/documents', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    const url = String((req.body || {}).url || '');
+    const docs = safeJson(row.documents_json) || [];
+    const keep = docs.filter(d => d.url !== url);
+    if (keep.length === docs.length) return res.status(404).json({ success: false, message: 'Document not found' });
+    await pool.execute('UPDATE orders SET documents_json = ? WHERE id = ?', [JSON.stringify(keep), row.id]);
+    await deleteStoredFile(url.replace(/^\/+/, ''));
+    res.json({ success: true, documents: keep });
+  } catch (err) { console.error('DELETE /api/orders/:id/documents:', err); res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.post('/api/orders/:id/delivered', requireAdmin, async (req, res) => {
+  try {
+    const row = await loadOrderRow(req.params.id);
+    if (!row) return res.status(404).json({ success: false, message: 'Order not found' });
+    if (row.delivered_at) return res.status(409).json({ success: false, message: 'Already marked delivered' });
+    await pool.execute("UPDATE orders SET delivered_at = NOW(), status = 'Done', picked_up_at = COALESCE(picked_up_at, NOW()) WHERE id = ?", [row.id]);
+    await addOrderEvent(row.id, 'delivered', 'Delivered');
+    let emailed = false;
+    const fresh = await loadOrderRow(row.id); const o = mapOrderRow(fresh, false); const c = o.contact || {};
+    if ((req.body || {}).notify !== false && c.email) { const m = await sendMail({ to: c.email, ...deliveredEmail(o, await trackingUrl(fresh, req)) }).catch(e => ({ sent: false })); emailed = !!m.sent; }
+    res.json({ success: true, emailed, order: mapOrderRow(await loadOrderRow(row.id), false) });
+  } catch (err) { console.error('POST /api/orders/:id/delivered:', err); res.status(500).json({ success: false, message: 'Server error' }); }
+});
+app.get('/api/orders/:id/tracking-link', requireAdmin, async (req, res) => {
+  try { const row = await loadOrderRow(req.params.id); if (!row) return res.status(404).json({ success: false }); res.json({ success: true, url: await trackingUrl(row, req) }); }
+  catch (err) { res.status(500).json({ success: false }); }
+});
+
+// ---- Public: customer tracking page ----
+app.get('/track/:token', publicLimiter, async (req, res) => {
+  try {
+    const token = String(req.params.token || '');
+    const [rows] = /^[a-f0-9]{48}$/.test(token) ? await pool.execute('SELECT * FROM orders WHERE tracking_token = ?', [token]) : [[]];
+    if (!rows.length) return res.status(404).render('track', { notFound: true, order: null, phone: COMPANY_PHONE });
+    const o = mapOrderRow(rows[0], false);
+    const step = o.deliveredAt ? 4 : o.pickedUpAt ? 3 : (o.dispatch.dispatchedAt ? 2 : (o.agreedAt || o.source === 'web' || o.paymentState === 'charged') ? 1 : 0);
+    const docs = (o.documents || []).filter(d => d.kind === 'bol' || d.kind === 'delivery' || d.kind === 'pickup');
+    res.render('track', {
+      notFound: false, phone: COMPANY_PHONE, step,
+      order: { id: o.id, status: o.status, vehicles: orderVehicles(o).map(vehicleLabel), pickup: (o.location || {}).pickup || '', delivery: (o.location || {}).delivery || '',
+        pickupDate: o.pickupDate, mustDeliverBy: o.mustDeliverBy, transportType: o.transportType, dispatch: o.dispatch, pickedUpAt: o.pickedUpAt, deliveredAt: o.deliveredAt,
+        events: (o.events || []).slice().reverse(), documents: docs, firstName: ((o.contact || {}).fullName || '').split(' ')[0] }
+    });
+  } catch (err) { console.error('GET /track/:token:', err); res.status(500).render('404'); }
+});
+
+// ---- Review request: one email, the day after delivery ----
+async function getReviewUrl() {
+  try { const [rows] = await pool.execute("SELECT value FROM settings WHERE name = 'review_url'"); if (rows.length) { const v = safeJson(rows[0].value); if (v && v.url) return String(v.url); } } catch (_) {}
+  return (process.env.REVIEW_URL || '').trim();
+}
+app.get('/api/settings/review', requireAdmin, async (req, res) => res.json({ url: await getReviewUrl() }));
+app.put('/api/settings/review', requireAdmin, async (req, res) => {
+  try {
+    const url = String((req.body || {}).url || '').trim().slice(0, 500);
+    if (url && !/^https?:\/\//i.test(url)) return res.status(400).json({ success: false, message: 'The review link must start with http:// or https://' });
+    await pool.execute("INSERT INTO settings (name, value) VALUES ('review_url', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)", [JSON.stringify({ url })]);
+    res.json({ success: true, url });
+  } catch (err) { res.status(500).json({ success: false, message: 'Server error' }); }
+});
+async function sendReviewRequests() {
+  try {
+    const [rows] = await pool.execute(`SELECT * FROM orders WHERE delivered_at IS NOT NULL AND review_sent_at IS NULL
+      AND delivered_at <= DATE_SUB(NOW(), INTERVAL 1 DAY) AND delivered_at >= DATE_SUB(NOW(), INTERVAL 10 DAY) LIMIT 50`);
+    if (!rows.length) return;
+    const reviewUrl = await getReviewUrl();
+    for (const r of rows) {
+      const o = mapOrderRow(r, false); const c = o.contact || {};
+      await pool.execute('UPDATE orders SET review_sent_at = NOW() WHERE id = ?', [r.id]); // mark first: never send twice
+      if (!c.email) continue;
+      const m = await sendMail({ to: c.email, ...reviewEmail(o, reviewUrl) }).catch(e => ({ sent: false, reason: e.message }));
+      if (m.sent) console.log(`⭐ Review request sent for ${r.id}`);
+    }
+  } catch (e) { console.error('sendReviewRequests:', e.message); }
+}
 
 // ---- Admin home: what needs attention today ----
 app.get('/api/dashboard', requireAdmin, async (req, res) => {
@@ -4195,6 +4450,9 @@ initDB().then(() => {
   // Quote follow-up emails: hourly (each quote gets at most one day-2 and one day-6 email)
   setTimeout(() => sendQuoteFollowups(), 60 * 1000);
   setInterval(sendQuoteFollowups, 60 * 60 * 1000).unref();
+  // Review requests the day after delivery: hourly
+  setTimeout(() => sendReviewRequests(), 90 * 1000);
+  setInterval(sendReviewRequests, 60 * 60 * 1000).unref();
   // Diesel index for the fuel surcharge: at boot, then daily (only refetches when older than 6 days)
   refreshFuelIndex().catch(() => {});
   setInterval(() => refreshFuelIndex().catch(() => {}), 24 * 3600 * 1000).unref();
@@ -4203,4 +4461,4 @@ initDB().then(() => {
   process.exit(1);
 });
 
-module.exports = { app, pool, expireCardHolds, sendQuoteFollowups };
+module.exports = { app, pool, expireCardHolds, sendQuoteFollowups, sendReviewRequests };

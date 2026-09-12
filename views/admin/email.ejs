@@ -23,6 +23,16 @@
         </div>
         <p id="testEmailMsg" class="hidden text-sm mt-3"></p>
       </div>
+
+      <div class="mt-10 pt-8 border-t border-[var(--line)]">
+        <h3 class="font-semibold text-white mb-2"><i class="fas fa-star text-amber-300 mr-1"></i> Review request link</h3>
+        <p class="text-dim text-sm mb-3">The day after a delivery, the customer gets a "How did we do?" email with this button. Paste your Google review link (Google Business Profile → Ask for reviews). Leave it empty and the email asks them to reply instead.</p>
+        <div class="flex flex-wrap gap-2">
+          <input id="reviewUrl" type="url" placeholder="https://g.page/r/…/review" class="input-admin flex-1 min-w-[240px]">
+          <button onclick="saveReviewUrl()" class="btn btn-primary px-5"><i class="fas fa-save"></i> Save</button>
+        </div>
+        <p id="reviewUrlMsg" class="hidden text-sm mt-3"></p>
+      </div>
     </div>
   </main>
   <%- include("_modals") %>

@@ -48,6 +48,7 @@ async function initAdminPage() {
   if (page === 'email')       loadEmailStatus();
   if (page === 'search')      loadSearchResults();
   if (page === 'home')        loadDashboard();
+  if (page === 'email')       loadReviewUrl();
   if (page === 'calculator')  { loadPricingSettings(); loadLocationRatings(); }
   if (page === 'customers') {
     loadCustomers();
@@ -800,6 +801,7 @@ async function showOrderDetail(orderId, { fromHistory = false } = {}) {
         ${order.pricing.quotedTotal != null && order.pricing.quotedTotal !== order.total ? `<p class="text-xs text-amber-300 mt-3">Engine total was ${money(order.pricing.quotedTotal)}; the order total is ${money(order.total)} (adjusted by admin).</p>` : ''}
       </div>` : ''}
       ${confirmationPanelHTML(order)}
+      ${dispatchPanelHTML(order)}
 
       <div class="mt-10 pt-6 border-t border-[var(--line)] flex justify-between items-center">
         <div>
@@ -2393,4 +2395,154 @@ async function loadDashboard() {
     section('homeRecent', 'fa-clock-rotate-left', 'Recent orders', `${d.counts.newOrders7} new order${d.counts.newOrders7 === 1 ? '' : 's'} and ${d.counts.leads7} new lead${d.counts.leads7 === 1 ? '' : 's'} in the last 7 days.`,
       d.recent.map(o => row(o, `<span class="status-badge ${{ 'New': 'bg-blue-500/10 text-blue-400', 'In Work': 'bg-amber-500/10 text-amber-400', 'Done': 'bg-lime-500/10 text-lime-400', 'Canceled': 'bg-red-500/10 text-red-400' }[o.status] || 'bg-blue-500/10 text-blue-400'}">${esc(o.status || 'New')}</span>`)), 'No orders yet.');
   } catch (e) { stats.innerHTML = '<p class="text-red-400 text-sm">Could not load the dashboard.</p>'; console.error(e); }
+}
+
+
+// ==================== DISPATCH & TRACKING (on the order) ====================
+const EVENT_LABELS = { booked: 'Booked', confirmed: 'Pickup confirmed', dispatched: 'Carrier assigned', picked_up: 'Picked up', delivered: 'Delivered', update: 'Update' };
+function dispatchPanelHTML(o) {
+  const d = o.dispatch || {};
+  const track = o.trackingToken ? `${location.origin}/track/${o.trackingToken}` : '';
+  const docs = o.documents || [];
+  const docList = (kind, title) => {
+    const list = docs.filter(x => x.kind === kind);
+    if (!list.length) return '';
+    return `<div class="mt-3"><div class="text-xs text-muted uppercase tracking-wider mb-1">${title} (${list.length})</div>
+      <div class="flex flex-wrap gap-2">${list.map(x => x.mime === 'application/pdf'
+        ? `<span class="inline-flex items-center gap-1 text-sm border border-[var(--line)] rounded-lg px-2 py-1"><a href="${esc(x.url)}" target="_blank" rel="noopener" class="text-cyan-400 hover:text-white"><i class="fas fa-file-pdf"></i> ${esc(x.name)}</a><button onclick="removeOrderDoc('${esc(o.id)}', '${esc(x.url)}')" class="text-muted hover:text-red-400 ml-1" title="Remove">×</button></span>`
+        : `<span class="relative inline-block"><a href="${esc(x.url)}" target="_blank" rel="noopener"><img src="${esc(x.url)}" class="h-20 w-20 object-cover rounded-lg border border-[var(--line)]" alt=""></a><button onclick="removeOrderDoc('${esc(o.id)}', '${esc(x.url)}')" class="absolute -top-1 -right-1 bg-[var(--bg-deep)] border border-[var(--line)] rounded-full w-5 h-5 text-xs text-muted hover:text-red-400" title="Remove">×</button></span>`).join('')}</div></div>`;
+  };
+  const inp = (id, label, val, ph) => `<label class="block"><span class="text-xs text-muted">${label}</span><input id="dsp-${id}" value="${esc(val || '')}" placeholder="${ph || ''}" class="input-admin w-full mt-1"></label>`;
+  const events = (o.events || []).slice().reverse();
+  return `
+    <div class="mt-8 bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-5">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <h4 class="font-semibold text-white"><i class="fas fa-truck text-[var(--orange)] mr-2"></i>Dispatch &amp; tracking</h4>
+        ${o.deliveredAt ? `<span class="status-badge bg-lime-500/10 text-lime-400"><i class="fas fa-check mr-1"></i>Delivered ${fmtDateTime(o.deliveredAt)}</span>` : o.pickedUpAt ? `<span class="status-badge bg-amber-500/10 text-amber-400">In transit since ${fmtDateTime(o.pickedUpAt)}</span>` : d.dispatchedAt ? `<span class="status-badge bg-cyan-500/10 text-cyan-300">Carrier assigned</span>` : '<span class="status-badge bg-blue-500/10 text-blue-400">Not dispatched</span>'}
+      </div>
+      <p class="text-xs text-muted mb-4">Drivers don't have an app: type what the carrier tells you here and the customer sees it on their tracking page.</p>
+      ${track ? `<div class="flex items-center gap-2 mb-4">
+        <span class="text-xs text-muted shrink-0">Customer link</span>
+        <input readonly value="${esc(track)}" class="input-admin text-xs font-mono flex-1" onclick="this.select()">
+        <button onclick="copyText('${esc(track)}', this)" class="btn btn-ghost px-3 py-2 text-xs shrink-0"><i class="fas fa-copy"></i> Copy</button>
+        <a href="${esc(track)}" target="_blank" class="btn btn-ghost px-3 py-2 text-xs shrink-0" title="Open the tracking page"><i class="fas fa-arrow-up-right-from-square"></i></a>
+      </div>` : ''}
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        ${inp('carrierName', 'Carrier company', d.carrierName, 'ABC Auto Transport LLC')}
+        ${inp('carrierPhone', 'Carrier / dispatch phone', d.carrierPhone, '(555) 555-0100')}
+        ${inp('driverName', 'Driver', d.driverName, 'First name is enough')}
+        ${inp('driverPhone', 'Driver phone (shown to the customer)', d.driverPhone, '(555) 555-0101')}
+        ${inp('pickupEta', 'Pickup window', d.pickupEta, 'e.g. Tue Sep 15, 9am–1pm')}
+        ${inp('deliveryEta', 'Delivery window', d.deliveryEta, 'e.g. Fri Sep 18, afternoon')}
+        <label class="block sm:col-span-2"><span class="text-xs text-muted">Note to the customer (optional)</span><textarea id="dsp-notes" rows="2" class="input-admin w-full mt-1" placeholder="Driver will call 1 hour before arrival. Please have the keys ready.">${esc(d.notes || '')}</textarea></label>
+      </div>
+      <div class="flex flex-wrap gap-2 mt-3">
+        <button onclick="saveDispatch('${esc(o.id)}', false)" class="btn btn-ghost px-4 py-2 text-sm"><i class="fas fa-save"></i> Save</button>
+        <button onclick="saveDispatch('${esc(o.id)}', true)" class="btn btn-primary px-4 py-2 text-sm" ${(o.contact || {}).email ? '' : 'disabled title="No customer email"'}><i class="fas fa-paper-plane"></i> Save &amp; email the customer</button>
+        ${o.pickedUpAt && !o.deliveredAt ? `<button onclick="markDelivered('${esc(o.id)}')" class="btn btn-cyan px-4 py-2 text-sm ml-auto"><i class="fas fa-flag-checkered"></i> Mark delivered</button>` : ''}
+      </div>
+
+      <div class="mt-5 pt-4 border-t border-[var(--line)]">
+        <div class="text-xs text-muted uppercase tracking-wider mb-2">Post an update</div>
+        <div class="flex flex-wrap gap-2">
+          <input id="dsp-update" class="input-admin flex-1 min-w-[220px]" placeholder="e.g. Truck passed Amarillo, delivery now Thursday morning">
+          <label class="inline-flex items-center gap-2 text-sm text-dim"><input type="checkbox" id="dsp-updateNotify" checked ${(o.contact || {}).email ? '' : 'disabled'}> Email it</label>
+          <button onclick="postOrderUpdate('${esc(o.id)}')" class="btn btn-ghost px-4 py-2 text-sm"><i class="fas fa-plus"></i> Post</button>
+        </div>
+      </div>
+
+      <div class="mt-5 pt-4 border-t border-[var(--line)]">
+        <div class="text-xs text-muted uppercase tracking-wider mb-2">Documents &amp; photos <span class="normal-case tracking-normal">(the customer sees these on their tracking page)</span></div>
+        <div class="flex flex-wrap gap-2">
+          <label class="btn btn-ghost px-3 py-2 text-sm cursor-pointer"><i class="fas fa-file-contract"></i> Upload BOL<input type="file" accept="image/*,application/pdf" multiple class="hidden" onchange="uploadOrderDocs('${esc(o.id)}', 'bol', this)"></label>
+          <label class="btn btn-ghost px-3 py-2 text-sm cursor-pointer"><i class="fas fa-camera"></i> Pickup photos<input type="file" accept="image/*" multiple class="hidden" onchange="uploadOrderDocs('${esc(o.id)}', 'pickup', this)"></label>
+          <label class="btn btn-ghost px-3 py-2 text-sm cursor-pointer"><i class="fas fa-camera"></i> Delivery photos<input type="file" accept="image/*" multiple class="hidden" onchange="uploadOrderDocs('${esc(o.id)}', 'delivery', this)"></label>
+          <label class="btn btn-ghost px-3 py-2 text-sm cursor-pointer"><i class="fas fa-paperclip"></i> Other (internal)<input type="file" accept="image/*,application/pdf" multiple class="hidden" onchange="uploadOrderDocs('${esc(o.id)}', 'other', this)"></label>
+          <span id="dsp-upMsg" class="text-xs text-muted self-center"></span>
+        </div>
+        ${docList('bol', 'Bill of Lading')}${docList('pickup', 'Pickup photos')}${docList('delivery', 'Delivery photos')}${docList('other', 'Internal files (not shown to the customer)')}
+      </div>
+
+      ${events.length ? `<div class="mt-5 pt-4 border-t border-[var(--line)]">
+        <div class="text-xs text-muted uppercase tracking-wider mb-2">Timeline</div>
+        <div class="space-y-1 text-sm">${events.map(e => `<div class="flex gap-3"><span class="text-muted text-xs whitespace-nowrap w-32 shrink-0">${fmtDateTime(e.at)}</span><span><span class="text-white">${esc(EVENT_LABELS[e.type] || 'Update')}</span>${e.note ? ` <span class="text-dim">· ${esc(e.note)}</span>` : ''}</span></div>`).join('')}</div>
+      </div>` : ''}
+    </div>`;
+}
+async function refreshOrderPanel(orderId) {
+  await showOrderDetail(orderId, { fromHistory: true });
+  if (document.getElementById('ordersBody')) loadOrders();
+  if (document.getElementById('homeStats')) loadDashboard();
+}
+async function saveDispatch(orderId, notify) {
+  const v = id => (document.getElementById('dsp-' + id) || {}).value || '';
+  const body = { carrierName: v('carrierName'), carrierPhone: v('carrierPhone'), driverName: v('driverName'), driverPhone: v('driverPhone'), pickupEta: v('pickupEta'), deliveryEta: v('deliveryEta'), notes: v('notes'), notify: !!notify };
+  if (notify && !body.carrierName && !body.driverName) return alert('Add at least the carrier or driver before emailing the customer.');
+  try {
+    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/dispatch`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await r.json();
+    if (!r.ok || !data.success) return alert(data.message || 'Could not save');
+    panelMsg(notify ? (data.emailed ? 'Saved and emailed to the customer.' : 'Saved. The email could not be sent.') : 'Dispatch saved.', true);
+    refreshOrderPanel(orderId);
+  } catch (e) { alert('Could not save'); }
+}
+async function postOrderUpdate(orderId) {
+  const note = (document.getElementById('dsp-update') || {}).value || '';
+  const notify = !!(document.getElementById('dsp-updateNotify') || {}).checked;
+  if (!note.trim()) return alert('Write the update first.');
+  try {
+    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/update`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ note, notify }) });
+    const data = await r.json();
+    if (!r.ok || !data.success) return alert(data.message || 'Could not post');
+    panelMsg(notify && data.emailed ? 'Update posted and emailed.' : 'Update posted.', true);
+    refreshOrderPanel(orderId);
+  } catch (e) { alert('Could not post'); }
+}
+function readFileAsDataUrl(file) { return new Promise((res, rej) => { const fr = new FileReader(); fr.onload = e => res(e.target.result); fr.onerror = rej; fr.readAsDataURL(file); }); }
+async function uploadOrderDocs(orderId, kind, input) {
+  const files = Array.from(input.files || []).slice(0, 12);
+  input.value = '';
+  if (!files.length) return;
+  const msg = document.getElementById('dsp-upMsg'); if (msg) msg.textContent = 'Uploading…';
+  try {
+    const payload = [];
+    for (const f of files) { if (f.size > 8 * 1024 * 1024) { alert(`${f.name} is over 8 MB`); continue; } payload.push({ name: f.name, data: await readFileAsDataUrl(f) }); }
+    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/documents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, files: payload }) });
+    const data = await r.json();
+    if (!r.ok || !data.success) { if (msg) msg.textContent = ''; return alert(data.message || 'Upload failed'); }
+    panelMsg(`${data.added} file${data.added === 1 ? '' : 's'} uploaded.`, true);
+    refreshOrderPanel(orderId);
+  } catch (e) { if (msg) msg.textContent = ''; alert('Upload failed'); }
+}
+async function removeOrderDoc(orderId, url) {
+  if (!confirm('Remove this file?')) return;
+  try {
+    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/documents`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
+    const data = await r.json();
+    if (!r.ok || !data.success) return alert(data.message || 'Could not remove');
+    refreshOrderPanel(orderId);
+  } catch (e) { alert('Could not remove'); }
+}
+async function markDelivered(orderId) {
+  if (!confirm('Mark this order delivered? The customer gets a "Delivered" email now and a review request tomorrow.')) return;
+  try {
+    const r = await fetch(`/api/orders/${encodeURIComponent(orderId)}/delivered`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ notify: true }) });
+    const data = await r.json();
+    if (!r.ok || !data.success) return alert(data.message || 'Could not update');
+    panelMsg(data.emailed ? 'Marked delivered and the customer was emailed.' : 'Marked delivered.', true);
+    refreshOrderPanel(orderId);
+  } catch (e) { alert('Could not update'); }
+}
+async function loadReviewUrl() {
+  const el = document.getElementById('reviewUrl'); if (!el) return;
+  try { const d = await (await fetch('/api/settings/review')).json(); el.value = d.url || ''; } catch (_) {}
+}
+async function saveReviewUrl() {
+  const el = document.getElementById('reviewUrl'), msg = document.getElementById('reviewUrlMsg');
+  try {
+    const r = await fetch('/api/settings/review', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: el.value }) });
+    const d = await r.json();
+    msg.classList.remove('hidden'); msg.className = 'text-sm mt-3 ' + (d.success ? 'text-lime-400' : 'text-red-400');
+    msg.textContent = d.success ? (d.url ? 'Saved. Review emails will link to it.' : 'Saved. Review emails will ask customers to reply.') : (d.message || 'Could not save');
+  } catch (e) { msg.classList.remove('hidden'); msg.className = 'text-sm mt-3 text-red-400'; msg.textContent = 'Could not save'; }
 }
