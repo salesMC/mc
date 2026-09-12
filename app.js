@@ -461,7 +461,7 @@ const DEFAULT_PRICING = {
   // Hard-to-reach pickup/delivery: tier from distance to the nearest metro and/or the AI check
   difficulty: { enabled: true, aiEnabled: true, fees: { 1: 300, 2: 450, 3: 600 }, metroMiles: { 1: 60, 2: 120, 3: 220 } },
   // Heavy vehicles: curb weight per model (AI lookup, cached, overridable) → % on that vehicle's transport price
-  weight: { enabled: true, aiEnabled: true, tiers: [{ minLbs: 6000, pct: 15 }, { minLbs: 7500, pct: 35 }, { minLbs: 9000, pct: 90 }] },
+  weight: { enabled: true, aiEnabled: true, tiers: [{ minLbs: 5000, pct: 8 }, { minLbs: 6000, pct: 20 }, { minLbs: 7500, pct: 40 }, { minLbs: 9000, pct: 60 }] },
   // Region-to-region multipliers ("FROM>TO"); anything not listed is 1.00
   lanes: { 'FL>NE': 1.08, 'FL>MW': 1.06, 'FL>MA': 1.06, 'NE>FL': 0.96, 'MW>FL': 0.96, 'MA>FL': 0.97, 'MT>PW': 1.04, 'PW>MT': 1.04, 'CE>NE': 1.05, 'NE>CE': 1.05, 'CE>PW': 1.04, 'PW>CE': 1.04, 'TX>PW': 0.98, 'PW>TX': 0.98 }
 };

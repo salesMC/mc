@@ -493,8 +493,8 @@ async function loadPricingSettings() {
           <div><label class="label-dark">Weight surcharge on</label><select id="pWeightOn" class="input-admin"><option value="true" ${P.weight.enabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.weight.enabled ? 'selected' : ''}>No</option></select></div>
           <div><label class="label-dark">Look up weights with AI</label><select id="pWeightAi" class="input-admin"><option value="true" ${P.weight.aiEnabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.weight.aiEnabled ? 'selected' : ''}>No</option></select></div>
         </div>
-        <div class="grid grid-cols-3 gap-3">
-          ${[0, 1, 2].map(i => { const t = P.weight.tiers[i] || { minLbs: '', pct: '' }; return `<div class="p-3 rounded-lg" style="border:1px solid var(--line)"><div class="text-xs text-muted uppercase tracking-wider mb-2">${['Heavy', 'Very heavy', 'Two-car weight'][i]}</div>
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+          ${[0, 1, 2, 3].map(i => { const t = P.weight.tiers[i] || { minLbs: '', pct: '' }; return `<div class="p-3 rounded-lg" style="border:1px solid var(--line)"><div class="text-xs text-muted uppercase tracking-wider mb-2">${['Full-size truck / SUV', 'Heavy', 'Very heavy', 'Two-car weight'][i]}</div>
             <label class="label-dark">From (lb)</label><input id="pWeightLbs${i}" type="number" step="100" value="${t.minLbs}" class="input-admin mb-2">
             <label class="label-dark">Add (%)</label><input id="pWeightPct${i}" type="number" step="1" value="${t.pct}" class="input-admin"></div>`; }).join('')}
         </div>
@@ -539,7 +539,7 @@ function readPricingForm() {
       fees: { 1: parseFloat(g('pDiffFee1')), 2: parseFloat(g('pDiffFee2')), 3: parseFloat(g('pDiffFee3')) },
       metroMiles: { 1: parseFloat(g('pDiffMiles1')), 2: parseFloat(g('pDiffMiles2')), 3: parseFloat(g('pDiffMiles3')) } },
     weight: { enabled: g('pWeightOn') === 'true', aiEnabled: g('pWeightAi') === 'true',
-      tiers: [0, 1, 2].map(i => ({ minLbs: parseFloat(g('pWeightLbs' + i)), pct: parseFloat(g('pWeightPct' + i)) })).filter(t => t.minLbs > 0 && t.pct >= 0) },
+      tiers: [0, 1, 2, 3].map(i => ({ minLbs: parseFloat(g('pWeightLbs' + i)), pct: parseFloat(g('pWeightPct' + i)) })).filter(t => t.minLbs > 0 && t.pct >= 0) },
     lanes: (() => { const out = {}; document.querySelectorAll('#laneGrid input[data-lane]').forEach(i => { const v = parseFloat(i.value); if (v && v !== 1) out[i.dataset.lane] = v; }); return out; })()
   };
 }
