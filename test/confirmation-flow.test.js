@@ -144,12 +144,8 @@ async function newOrder(id, overrides = {}) {
 }
 const order = async id => (await api('GET', `/api/orders/${id}`)).data;
 const lastMailTo = to => [...MAIL].reverse().find(m => m.to === to);
-const quote = (cfg, vehicles, miles) => {   // mirror of the server formula, to cross-check
-  let cpm = cfg.tiers[cfg.tiers.length - 1].rate;
-  for (const t of cfg.tiers) if (miles <= (t.max == null ? Infinity : t.max)) { cpm = t.rate; break; }
-  return vehicles.reduce((sum, v) => { let s = cfg.baseFee + cpm * miles; if (cfg.multipliers[v.type]) s *= cfg.multipliers[v.type];
-    if (v.condition === 'inoperable') s += cfg.addons.inoperable; if (v.modified) s += cfg.addons.modified; if (v.urgent) s += cfg.addons.urgent; return sum + Math.round(s); }, 0);
-};
+// Price through the public engine endpoint (the same code path checkout and quotes use)
+const priceVia = async (vehicles, miles, extra = {}) => (await api('POST', '/api/price', { vehicles, distance: miles, ...extra }, { auth: false })).data.total;
 
 // Send confirmation + play the customer through agreement and card authorization (public calls)
 async function sendAndAuthorize(id, fee) {
@@ -235,8 +231,37 @@ async function sendAndAuthorize(id, fee) {
   r = await api('PUT', '/api/settings/calculator', { baseFee: -5, tiers: [] });
   check('invalid pricing rejected → 400', r.status === 400, r.status);
 
+  // ---- pricing engine sanity: rates slope down with distance, market layers apply, admin sees the breakdown ----
+  const sedan = [{ type: 'sedan', condition: 'operable' }];
+  const pLong = await priceVia(sedan, 2900), pMid = await priceVia(sedan, 470), pShort = await priceVia(sedan, 30);
+  check('cross-country sedan priced near market (1,600–2,300)', pLong >= 1600 && pLong <= 2300, pLong);
+  check('per-mile rate falls with distance', (pLong / 2900) < (pMid / 470) && (pMid / 470) < (pShort / 30), { long: +(pLong / 2900).toFixed(2), mid: +(pMid / 470).toFixed(2), short: +(pShort / 30).toFixed(2) });
+  check('short local run hits the minimum price', pShort === 250, pShort);
+  const pEnclosed = await priceVia(sedan, 2900, { transportType: 'enclosed' });
+  check('enclosed costs more than open', pEnclosed > pLong * 1.3, { open: pLong, enclosed: pEnclosed });
+  const p1001 = await priceVia(sedan, 1001), p1000 = await priceVia(sedan, 1000);
+  check('no price cliff between distance bands', p1001 >= p1000, { p1000, p1001 });
+  const twoCars = await priceVia([sedan[0], sedan[0]], 470);
+  check('second vehicle gets the extra-vehicle discount', twoCars < pMid * 2 && twoCars > pMid, { one: pMid, two: twoCars });
+  r = await api('POST', '/api/price', { vehicles: sedan, distance: 470 });
+  check('admin gets the breakdown lines and factors', r.data.success && Array.isArray(r.data.lines) && r.data.lines.length >= 1 && r.data.factors && typeof r.data.cpm === 'number', r.data && Object.keys(r.data));
+  r = await api('POST', '/api/price', { vehicles: sedan, distance: 470 }, { auth: false });
+  check('public callers get the total only', r.data.success && r.data.total > 0 && !r.data.lines, r.data);
+  // market dial moves every quote; reset afterwards
+  r = await api('PUT', '/api/settings/pricing', { marketPct: 10 });
+  check('market settings saved', r.status === 200 && r.data.pricing.marketPct === 10, r.data);
+  const pDial = await priceVia(sedan, 470);
+  check('market dial +10% raises the price', pDial > pMid && pDial <= Math.round(pMid * 1.11) + 1, { before: pMid, after: pDial });
+  r = await api('PUT', '/api/settings/pricing', { marketPct: 10 }, { auth: false });
+  check('market settings need login', r.status === 401);
+  await api('DELETE', '/api/settings/pricing');
+  check('market settings reset', (await priceVia(sedan, 470)) === pMid);
+  const inTwoDays = new Date(Date.now() + 86400000).toISOString().slice(0, 10), inTenDays = new Date(Date.now() + 10 * 86400000).toISOString().slice(0, 10), inTwentyDays = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
+  const pRush = await priceVia(sedan, 470, { pickupDate: inTwoDays }), pFlex = await priceVia(sedan, 470, { pickupDate: inTenDays, mustDeliverBy: inTwentyDays });
+  check('short-notice pickup costs more, flexible window costs less', pRush > pMid && pFlex < pMid, { normal: pMid, rush: pRush, flex: pFlex });
+
   const webVehicles = [{ year: '2020', make: 'Kia', model: 'K5', type: 'pickup', condition: 'inoperable', modified: false, urgent: true }];
-  const expected = quote(cfg, webVehicles, 400);
+  const expected = await priceVia(webVehicles, 400);
   r = await api('POST', '/api/create-payment-intent', { vehicles: webVehicles, distance: 400, amount: 50 }, { auth: false });
   check('payment intent priced by the server (client "amount" ignored)', r.data.success && r.data.amount === expected && S.intents[r.data.paymentIntentId].amount === expected * 100, { got: r.data.amount, expected });
   check('intent tagged as web_checkout with distance', S.intents[r.data.paymentIntentId].metadata.kind === 'web_checkout' && S.intents[r.data.paymentIntentId].metadata.distance === '400');
@@ -483,8 +508,8 @@ async function sendAndAuthorize(id, fee) {
   check('quote with a bad email → 400', r.status === 400);
   r = await api('POST', '/api/quotes', { name: 'Quote Tester', email: 'quote-test@example.test', phone: '555-0199', vehicle: { year: '2021', make: 'Ford', model: 'F-150', type: 'pickup', condition: 'operable' }, distance: 300, pickup: 'Louisville, KY', delivery: 'Nashville, TN', transportType: 'enclosed' }, { auth: false });
   const cfgQ = (await api('GET', '/api/settings/calculator', null, { auth: false })).data;
-  const expectedQ = quote(cfgQ, [{ type: 'pickup', condition: 'operable' }], 300);
-  check('quote priced on the server and saved', r.status === 200 && r.data.success && r.data.total === expectedQ && /^[a-f0-9]{48}$/.test(r.data.quoteId) && Array.isArray(r.data.breakdown) && r.data.breakdown.length >= 2, r.data && { t: r.data.total, e: expectedQ });
+  const expectedQ = await priceVia([{ type: 'pickup', condition: 'operable' }], 300, { transportType: 'enclosed' });
+  check('quote priced on the server and saved', r.status === 200 && r.data.success && r.data.total === expectedQ && /^[a-f0-9]{48}$/.test(r.data.quoteId) && Array.isArray(r.data.breakdown) && r.data.breakdown.length >= 1, r.data && { t: r.data.total, e: expectedQ });
   const qMail = lastMailTo('quote-test@example.test');
   check('quote emailed to the customer with a Book link', !!qMail && qMail.subject.includes('Your Mcships quote') && qMail.text.includes('/payment?quote=' + r.data.quoteId), qMail && qMail.subject);
   check('team notified of the new quote', !!lastMailTo('admin@mcships.test') && /New website quote/.test(lastMailTo('admin@mcships.test').subject));

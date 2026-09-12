@@ -291,14 +291,18 @@ function mapCustomerRow(r) {
 // The calculator config is stored in the `settings` table and edited from the
 // admin Calculator page. Both the public pages and the Stripe amount use it, so
 // a customer cannot change the price from the browser.
+// Rate per mile falls with distance (a 2,900-mile run is ~$0.60/mi, a 100-mile
+// run ~$2.20/mi). Rates BLEND between the distance points below — no cliffs.
 const DEFAULT_CALCULATOR_CONFIG = {
-  baseFee: 120,
+  baseFee: 95,
   tiers: [
-    { max: 30,   rate: 3.00 },
-    { max: 70,   rate: 2.20 },
-    { max: 110,  rate: 1.80 },
-    { max: 160,  rate: 1.50 },
-    { max: null, rate: 1.30 }   // null = no upper limit
+    { max: 100,  rate: 2.20 },
+    { max: 300,  rate: 1.45 },
+    { max: 600,  rate: 1.05 },
+    { max: 1000, rate: 0.82 },
+    { max: 1500, rate: 0.70 },
+    { max: 2200, rate: 0.63 },
+    { max: null, rate: 0.58 }   // null = everything beyond the last point
   ],
   multipliers: { 'sedan': 1.00, 'mid-suv': 1.10, 'full-suv': 1.20, 'pickup': 1.15, 'cargo-van': 1.25, 'passenger-van': 1.25, 'mini-van': 1.00, 'other': 1.20 },
   addons: { inoperable: 75, modified: 100, urgent: 100 }
@@ -337,39 +341,160 @@ async function getCalculatorConfig() {
   return DEFAULT_CALCULATOR_CONFIG;
 }
 
-// Same formula as the public calculator: per vehicle (base + tiered cpm × miles) × type, + add-ons
-function computeQuote(cfg, vehicles, distance) {
-  const miles = Math.max(0, Number(distance) || 0);
-  let cpm = cfg.tiers[cfg.tiers.length - 1].rate;
-  for (const t of cfg.tiers) {
-    if (miles <= (t.max == null ? Infinity : t.max)) { cpm = t.rate; break; }
+// Rate per mile for a distance: linear blend between the tier points (no cliffs)
+function cpmForDistance(cfg, miles) {
+  const pts = cfg.tiers.filter(t => t.max != null).sort((a, b) => a.max - b.max);
+  const tail = cfg.tiers.find(t => t.max == null);
+  if (!pts.length) return tail ? tail.rate : 0;
+  if (miles <= pts[0].max) return pts[0].rate;
+  for (let i = 1; i < pts.length; i++) {
+    if (miles <= pts[i].max) {
+      const a = pts[i - 1], b = pts[i];
+      return a.rate + (b.rate - a.rate) * ((miles - a.max) / (b.max - a.max));
+    }
   }
-  return vehicles.reduce((sum, v) => {
-    let s = cfg.baseFee + cpm * miles;
-    if (cfg.multipliers[v.type]) s *= cfg.multipliers[v.type];
-    if (v.condition === 'inoperable') s += cfg.addons.inoperable;
-    if (v.modified) s += cfg.addons.modified;
-    if (v.urgent)   s += cfg.addons.urgent;
-    return sum + Math.round(s);
-  }, 0);
+  return tail ? tail.rate : pts[pts.length - 1].rate;
 }
 
-// Line-by-line breakdown of one vehicle's price (what the calculator shows)
-function quoteBreakdown(cfg, vehicle, distance) {
-  const miles = Math.max(0, Number(distance) || 0);
-  let cpm = cfg.tiers[cfg.tiers.length - 1].rate;
-  for (const t of cfg.tiers) if (miles <= (t.max == null ? Infinity : t.max)) { cpm = t.rate; break; }
-  const lines = [
-    { label: 'Base fee', amount: cfg.baseFee },
-    { label: `Mileage (${miles.toLocaleString()} mi × $${cpm})`, amount: Math.round(cpm * miles) }
-  ];
-  const base = cfg.baseFee + cpm * miles;
-  const mult = cfg.multipliers[vehicle.type] || 1;
-  if (mult !== 1) lines.push({ label: `Vehicle size (${vehicle.type}, ${Math.round(mult * 100 - 100)}%)`, amount: Math.round(base * (mult - 1)) });
-  if (vehicle.condition === 'inoperable') lines.push({ label: 'Inoperable vehicle', amount: cfg.addons.inoperable });
-  if (vehicle.modified) lines.push({ label: 'Modified vehicle', amount: cfg.addons.modified });
-  if (vehicle.urgent)   lines.push({ label: 'Urgent delivery', amount: cfg.addons.urgent });
-  return lines;
+// ==================== MARKET LAYERS ====================
+// Everything here sits on top of the base curve. Stored in settings 'pricing',
+// edited on the admin Calculator page. Customers only ever see the total.
+const DEFAULT_PRICING = {
+  minimumPrice: 250,            // floor per order
+  enclosedMultiplier: 1.45,     // enclosed trailer vs open
+  multiVehicleDiscountPct: 5,   // off each extra vehicle on the same route
+  fuel: { enabled: true, baselineDiesel: 3.60, pctPerQuarter: 3, minPct: -10, maxPct: 25 },   // % per $0.25 of diesel vs baseline
+  season: { 1: 1.06, 2: 1.04, 3: 1.02, 4: 1.00, 5: 1.03, 6: 1.06, 7: 1.06, 8: 1.04, 9: 1.00, 10: 1.02, 11: 1.04, 12: 1.06 },
+  timing: { shortNoticeDays: 2, shortNoticePct: 8, flexibleDays: 5, flexiblePct: -3 },
+  marketPct: 0                  // your hand on the wheel: +/- % on everything
+};
+function sanitizePricing(v) {
+  if (!v || typeof v !== 'object') return null;
+  const num = (x, min, max, d) => { const n = Number(x); return Number.isFinite(n) && n >= min && n <= max ? n : d; };
+  const D = DEFAULT_PRICING, f = v.fuel || {}, t = v.timing || {}, se = v.season || {};
+  const season = {};
+  for (let m = 1; m <= 12; m++) season[m] = num(se[m], 0.5, 2, D.season[m]);
+  return {
+    minimumPrice: num(v.minimumPrice, 0, 100000, D.minimumPrice),
+    enclosedMultiplier: num(v.enclosedMultiplier, 1, 3, D.enclosedMultiplier),
+    multiVehicleDiscountPct: num(v.multiVehicleDiscountPct, 0, 50, D.multiVehicleDiscountPct),
+    fuel: { enabled: f.enabled !== false && f.enabled !== 'false', baselineDiesel: num(f.baselineDiesel, 1, 10, D.fuel.baselineDiesel), pctPerQuarter: num(f.pctPerQuarter, 0, 20, D.fuel.pctPerQuarter), minPct: num(f.minPct, -50, 0, D.fuel.minPct), maxPct: num(f.maxPct, 0, 100, D.fuel.maxPct) },
+    season,
+    timing: { shortNoticeDays: num(t.shortNoticeDays, 0, 30, D.timing.shortNoticeDays), shortNoticePct: num(t.shortNoticePct, 0, 50, D.timing.shortNoticePct), flexibleDays: num(t.flexibleDays, 0, 60, D.timing.flexibleDays), flexiblePct: num(t.flexiblePct, -30, 0, D.timing.flexiblePct) },
+    marketPct: num(v.marketPct, -50, 100, D.marketPct)
+  };
+}
+async function getPricing() {
+  try {
+    const [rows] = await pool.execute("SELECT value FROM settings WHERE name = 'pricing'");
+    if (rows.length) { const p = sanitizePricing(safeJson(rows[0].value)); if (p) return p; }
+  } catch (e) { console.error('getPricing:', e.message); }
+  return DEFAULT_PRICING;
+}
+
+// ---- Fuel index: U.S. average diesel ($/gal) from the EIA weekly series ----
+let fuelCache = { checkedAt: 0, idx: null };
+async function getFuelIndex() {
+  if (Date.now() - fuelCache.checkedAt < 10 * 60 * 1000) return fuelCache.idx;
+  try {
+    const [rows] = await pool.execute("SELECT value FROM settings WHERE name = 'fuel_index'");
+    fuelCache = { checkedAt: Date.now(), idx: rows.length ? safeJson(rows[0].value) : null };
+  } catch (e) { fuelCache = { checkedAt: Date.now(), idx: null }; }
+  return fuelCache.idx;
+}
+async function refreshFuelIndex(force = false) {
+  const key = (process.env.EIA_API_KEY || '').trim();
+  if (!key) return { ok: false, reason: 'EIA_API_KEY not set' };
+  const cur = await getFuelIndex();
+  if (!force && cur && cur.fetchedAt && Date.now() - new Date(cur.fetchedAt).getTime() < 6 * 86400000) return { ok: true, idx: cur, skipped: true };
+  try {
+    const url = 'https://api.eia.gov/v2/petroleum/pri/gnd/data/?' + new URLSearchParams({
+      api_key: key, frequency: 'weekly', 'data[0]': 'value', 'facets[series][0]': 'EMD_EPD2D_PTE_NUS_DPG',
+      'sort[0][column]': 'period', 'sort[0][direction]': 'desc', length: '1'
+    });
+    const r = await fetch(url); const j = await r.json();
+    const row = j && j.response && j.response.data && j.response.data[0];
+    if (!row || !(Number(row.value) > 0)) throw new Error('no data in EIA response');
+    const idx = { price: Number(row.value), period: row.period, fetchedAt: new Date().toISOString(), source: 'EIA weekly U.S. No 2 diesel retail' };
+    await pool.execute("INSERT INTO settings (name, value) VALUES ('fuel_index', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)", [JSON.stringify(idx)]);
+    fuelCache = { checkedAt: Date.now(), idx };
+    console.log(`⛽ Diesel index updated: $${idx.price}/gal (week of ${idx.period})`);
+    return { ok: true, idx };
+  } catch (e) { console.error('refreshFuelIndex:', e.message); return { ok: false, reason: e.message }; }
+}
+
+async function getPricingContext() {
+  const [cfg, pricing, fuel] = await Promise.all([getCalculatorConfig(), getPricing(), getFuelIndex()]);
+  return { cfg, pricing, fuel };
+}
+
+// The engine. Returns { total, subtotal, lines:[{label, amount}], factors }.
+// input: { vehicles, distance, transportType, pickupDate, mustDeliverBy, when }
+function priceQuote(ctx, input) {
+  const { cfg, pricing: P, fuel } = ctx;
+  const miles = Math.max(0, Number(input.distance) || 0);
+  const cpm = cpmForDistance(cfg, miles);
+  const enclosed = input.transportType === 'enclosed';
+  const lines = [];
+  let subtotal = 0;
+  (input.vehicles || []).forEach((v, i) => {
+    let base = cfg.baseFee + cpm * miles;
+    const mult = cfg.multipliers[v.type] || 1;
+    base *= mult;
+    if (enclosed) base *= P.enclosedMultiplier;
+    let price = base;
+    if (v.condition === 'inoperable') price += cfg.addons.inoperable;
+    if (v.modified) price += cfg.addons.modified;
+    if (v.urgent)   price += cfg.addons.urgent;
+    if (i > 0 && P.multiVehicleDiscountPct) price *= (1 - P.multiVehicleDiscountPct / 100);
+    price = Math.round(price);
+    const label = [v.year, v.make, v.model].filter(Boolean).join(' ') || (v.type || 'vehicle');
+    lines.push({ label: `Vehicle ${i + 1}: ${label} — ${miles.toLocaleString()} mi × $${cpm.toFixed(2)} + base $${cfg.baseFee}${mult !== 1 ? ', ×' + mult + ' size' : ''}${enclosed ? ', ×' + P.enclosedMultiplier + ' enclosed' : ''}${i > 0 && P.multiVehicleDiscountPct ? ', −' + P.multiVehicleDiscountPct + '% extra vehicle' : ''}`, amount: price });
+    subtotal += price;
+  });
+
+  // market layers (each a %; applied multiplicatively)
+  const factors = {};
+  if (P.fuel.enabled && fuel && fuel.price > 0) {
+    const pct = Math.max(P.fuel.minPct, Math.min(P.fuel.maxPct, ((fuel.price - P.fuel.baselineDiesel) / 0.25) * P.fuel.pctPerQuarter));
+    factors.fuel = { pct: Math.round(pct * 10) / 10, diesel: fuel.price, baseline: P.fuel.baselineDiesel };
+  }
+  const when = input.when ? new Date(input.when) : new Date();
+  const pickup = input.pickupDate && /^\d{4}-\d{2}-\d{2}$/.test(input.pickupDate) ? new Date(input.pickupDate + 'T12:00:00') : null;
+  const month = (pickup && !isNaN(pickup) ? pickup : when).getMonth() + 1;
+  factors.season = { pct: Math.round((P.season[month] - 1) * 1000) / 10, month };
+  if (pickup && !isNaN(pickup)) {
+    const daysOut = Math.round((pickup - when) / 86400000);
+    if (daysOut <= P.timing.shortNoticeDays) factors.shortNotice = { pct: P.timing.shortNoticePct, daysOut };
+    const deliverBy = input.mustDeliverBy && /^\d{4}-\d{2}-\d{2}$/.test(input.mustDeliverBy) ? new Date(input.mustDeliverBy + 'T12:00:00') : null;
+    if (deliverBy && !isNaN(deliverBy)) {
+      const windowDays = Math.round((deliverBy - pickup) / 86400000);
+      if (windowDays >= P.timing.flexibleDays && !(daysOut <= P.timing.shortNoticeDays)) factors.flexible = { pct: P.timing.flexiblePct, windowDays };
+    }
+  }
+  if (P.marketPct) factors.market = { pct: P.marketPct };
+
+  let total = subtotal;
+  const apply = (key, label) => {
+    const f = factors[key]; if (!f || !f.pct) return;
+    const amt = Math.round(total * f.pct / 100);
+    lines.push({ label, amount: amt });
+    total += amt;
+  };
+  apply('fuel', `Fuel surcharge (diesel $${factors.fuel ? factors.fuel.diesel.toFixed(2) : ''} vs $${P.fuel.baselineDiesel.toFixed(2)} baseline, ${factors.fuel ? (factors.fuel.pct > 0 ? '+' : '') + factors.fuel.pct : 0}%)`);
+  apply('season', `Season (month ${month}, ${factors.season.pct > 0 ? '+' : ''}${factors.season.pct}%)`);
+  apply('shortNotice', `Short notice (pickup within ${P.timing.shortNoticeDays} days, +${P.timing.shortNoticePct}%)`);
+  apply('flexible', `Flexible dates (${factors.flexible ? factors.flexible.windowDays : ''}-day window, ${P.timing.flexiblePct}%)`);
+  apply('market', `Market adjustment (${P.marketPct > 0 ? '+' : ''}${P.marketPct}%)`);
+  if (total < P.minimumPrice && (input.vehicles || []).length) { lines.push({ label: `Minimum order price`, amount: Math.round(P.minimumPrice - total) }); total = P.minimumPrice; }
+  total = Math.max(0, Math.round(total));
+  return { total, subtotal: Math.round(subtotal), cpm: Math.round(cpm * 100) / 100, lines, factors };
+}
+
+// Back-compat: price with market layers loaded from settings
+async function computeQuoteLive(vehicles, distance, opts = {}) {
+  const ctx = await getPricingContext();
+  return priceQuote(ctx, { vehicles, distance, ...opts });
 }
 
 async function findActivePromo(code) {
@@ -2493,6 +2618,43 @@ app.delete('/api/employees/:id', requireAdmin, async (req, res) => {
 // ==================== API: SETTINGS ====================
 
 // Public: pricing config used by the calculator / checkout pages
+// Price anything, server-side (public: total only; admins also get the breakdown)
+app.post('/api/price', publicLimiter, async (req, res) => {
+  try {
+    const vehicles = sanitizeVehicles(req.body.vehicles);
+    if (!vehicles || !vehicles.length) return res.status(400).json({ success: false, message: 'At least one vehicle is required' });
+    const distance = Number(req.body.distance);
+    if (!(distance >= 0 && distance <= 6000)) return res.status(400).json({ success: false, message: 'Invalid distance' });
+    const priced = await computeQuoteLive(vehicles, distance, {
+      transportType: req.body.transportType === 'enclosed' ? 'enclosed' : 'open',
+      pickupDate: str(req.body.pickupDate, 10), mustDeliverBy: str(req.body.mustDeliverBy, 10)
+    });
+    const isAdmin = !!(req.session && req.session.role === 'admin');
+    res.json({ success: true, total: priced.total, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors } : {}) });
+  } catch (err) { console.error('POST /api/price:', err); res.status(500).json({ success: false }); }
+});
+
+app.get('/api/settings/pricing', requireAdmin, async (req, res) => {
+  const [pricing, fuel] = await Promise.all([getPricing(), getFuelIndex()]);
+  res.json({ pricing, fuel, defaults: DEFAULT_PRICING, fuelConfigured: !!(process.env.EIA_API_KEY || '').trim() });
+});
+app.put('/api/settings/pricing', requireAdmin, async (req, res) => {
+  const p = sanitizePricing(req.body);
+  if (!p) return res.status(400).json({ success: false, message: 'Invalid pricing settings' });
+  try {
+    await pool.execute("INSERT INTO settings (name, value) VALUES ('pricing', ?) ON DUPLICATE KEY UPDATE value = VALUES(value)", [JSON.stringify(p)]);
+    res.json({ success: true, pricing: p });
+  } catch (err) { console.error('PUT pricing:', err); res.status(500).json({ success: false }); }
+});
+app.delete('/api/settings/pricing', requireAdmin, async (req, res) => {
+  try { await pool.execute("DELETE FROM settings WHERE name = 'pricing'"); res.json({ success: true, pricing: DEFAULT_PRICING }); }
+  catch (err) { res.status(500).json({ success: false }); }
+});
+app.post('/api/settings/pricing/refresh-fuel', requireAdmin, async (req, res) => {
+  const r = await refreshFuelIndex(true);
+  res.status(r.ok ? 200 : 400).json({ success: r.ok, fuel: r.idx || null, message: r.ok ? 'Diesel price updated' : r.reason });
+});
+
 app.get('/api/settings/calculator', async (req, res) => {
   res.json(await getCalculatorConfig());
 });
@@ -2536,8 +2698,10 @@ app.post('/api/create-payment-intent', publicLimiter, async (req, res) => {
     if (!(distance >= 1 && distance <= 6000))
       return res.status(400).json({ success: false, message: 'Enter a valid distance in miles' });
 
-    const cfg = await getCalculatorConfig();
-    const subtotal = computeQuote(cfg, vehicles, distance);
+    const transportType = req.body.transportType === 'enclosed' ? 'enclosed' : 'open';
+    const pickupDate = str(req.body.pickupDate, 10), mustDeliverBy = str(req.body.mustDeliverBy, 10);
+    const priced = await computeQuoteLive(vehicles, distance, { transportType, pickupDate, mustDeliverBy });
+    const subtotal = priced.total;
     const promo = req.body.promoCode ? await findActivePromo(req.body.promoCode) : null;
     const discount = promoDiscount(promo, subtotal);
     const total = Math.max(0, subtotal - discount);
@@ -2731,9 +2895,9 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
     const pickup = str(b.pickup, 500), delivery = str(b.delivery, 500);
     const transportType = b.transportType === 'enclosed' ? 'enclosed' : 'open';
 
-    const cfg = await getCalculatorConfig();
-    const total = computeQuote(cfg, [vehicle], distance);
-    const breakdown = quoteBreakdown(cfg, vehicle, distance);
+    const priced = await computeQuoteLive([vehicle], distance, { transportType });
+    const total = priced.total;
+    const breakdown = priced.lines;
     const token = crypto.randomBytes(24).toString('hex');
     await pool.execute(
       `INSERT INTO quotes (token, email, name, phone, vehicle_json, distance, pickup, delivery, transport_type, total, breakdown_json)
@@ -3764,6 +3928,9 @@ initDB().then(() => {
   const runExpiry = () => expireCardHolds().catch(e => console.error('expireCardHolds:', e.message));
   runExpiry();
   setInterval(runExpiry, 60 * 60 * 1000).unref();
+  // Diesel index for the fuel surcharge: at boot, then daily (only refetches when older than 6 days)
+  refreshFuelIndex().catch(() => {});
+  setInterval(() => refreshFuelIndex().catch(() => {}), 24 * 3600 * 1000).unref();
 }).catch(err => {
   console.error('❌ DB init failed:', err.message);
   process.exit(1);

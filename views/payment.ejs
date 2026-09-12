@@ -412,13 +412,30 @@
       return Math.round(subtotal);
     }
 
-    function calculateAndUpdateTotal() {
+    // The price is computed on the server (fuel, season, timing, market layers).
+    // We show the last server total immediately and refresh it in the background.
+    let serverTotal = null, priceReq = 0;
+    async function refreshServerTotal() {
+      const seq = ++priceReq;
+      try {
+        const r = await fetch('/api/price', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+          vehicles: formData.vehicles.map(({ photos, ...v }) => v), distance: formData.distance || 0,
+          transportType: formData.transportType, pickupDate: formData.pickupDate, mustDeliverBy: formData.mustDeliverBy }) });
+        const d = await r.json();
+        if (seq !== priceReq || !d.success) return;
+        serverTotal = d.total;
+        calculateAndUpdateTotal(true);
+      } catch (e) { /* keep the last known total */ }
+    }
+    function calculateAndUpdateTotal(fromServer = false) {
       // The distance input only exists on the Route step; remember it for later steps
       const distEl = document.getElementById('distance');
       if (distEl) formData.distance = Math.max(0, parseFloat(distEl.value) || 0);
       const miles = formData.distance || 0;
       let grand = 0;
-      formData.vehicles.forEach(v => { grand += calcVehiclePrice(miles, v); });
+      if (serverTotal != null) grand = serverTotal;
+      else formData.vehicles.forEach(v => { grand += calcVehiclePrice(miles, v); });
+      if (!fromServer) refreshServerTotal();
 
       // Apply promo discount
       let discountAmount = 0;
@@ -1323,6 +1340,9 @@
           body: JSON.stringify({
             vehicles : formData.vehicles.map(({ photos, ...v }) => v),
             distance : formData.distance,
+            transportType: formData.transportType,
+            pickupDate: formData.pickupDate,
+            mustDeliverBy: formData.mustDeliverBy,
             promoCode: appliedPromo ? appliedPromo.code : null
           })
         });

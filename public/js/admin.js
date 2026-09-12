@@ -47,6 +47,7 @@ async function initAdminPage() {
   if (page === 'leads')       loadLeads();
   if (page === 'email')       loadEmailStatus();
   if (page === 'search')      loadSearchResults();
+  if (page === 'calculator')  loadPricingSettings();
   if (page === 'customers') {
     loadCustomers();
     if (open) showCustomerDetail(Number(open)); // /admin/customers?open=<id>
@@ -410,6 +411,118 @@ function saveConfig() {
     renderTiers();
     alert('✅ Calculator settings saved — the website, checkout and phone quotes now use these prices.');
   }).catch(e => alert('Error saving settings: ' + e.message));
+}
+
+// ---------- Market pricing (settings 'pricing') ----------
+let pricingCfg = null;
+async function loadPricingSettings() {
+  const box = document.getElementById('pricingSection'); if (!box) return;
+  try {
+    const d = await (await fetch('/api/settings/pricing')).json();
+    pricingCfg = d.pricing;
+    const P = d.pricing, F = d.fuel;
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    box.innerHTML = `
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div><label class="label-dark">Minimum order price ($)</label><input id="pMin" type="number" value="${P.minimumPrice}" class="input-admin"><p class="text-xs text-muted mt-1">Short local runs never go below this.</p></div>
+        <div><label class="label-dark">Enclosed multiplier</label><input id="pEnclosed" type="number" step="0.01" value="${P.enclosedMultiplier}" class="input-admin"><p class="text-xs text-muted mt-1">1.45 = enclosed costs 45% more than open.</p></div>
+        <div><label class="label-dark">Extra-vehicle discount (%)</label><input id="pMulti" type="number" step="0.5" value="${P.multiVehicleDiscountPct}" class="input-admin"><p class="text-xs text-muted mt-1">Off each additional vehicle on the same route.</p></div>
+      </div>
+
+      <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+          <h4 class="font-semibold text-white"><i class="fas fa-gas-pump text-[var(--orange)] mr-2"></i>Fuel surcharge <span class="text-muted text-sm font-normal">— moves with the U.S. diesel price every week</span></h4>
+          <div class="text-sm">${F ? `<span class="text-white font-semibold">Diesel $${Number(F.price).toFixed(2)}/gal</span> <span class="text-muted">· week of ${esc(F.period)} · updated ${new Date(F.fetchedAt).toLocaleDateString()}</span>` : (d.fuelConfigured ? '<span class="text-amber-300">No diesel price fetched yet</span>' : '<span class="text-amber-300">Add EIA_API_KEY in Railway to turn this on</span>')}
+            <button onclick="refreshFuel()" class="pay-action ml-2"><i class="fas fa-rotate"></i> Update now</button></div>
+        </div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div><label class="label-dark">On</label><select id="pFuelOn" class="input-admin"><option value="true" ${P.fuel.enabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.fuel.enabled ? 'selected' : ''}>No</option></select></div>
+          <div><label class="label-dark">Baseline diesel ($/gal)</label><input id="pFuelBase" type="number" step="0.01" value="${P.fuel.baselineDiesel}" class="input-admin"></div>
+          <div><label class="label-dark">% per $0.25 above/below</label><input id="pFuelPct" type="number" step="0.5" value="${P.fuel.pctPerQuarter}" class="input-admin"></div>
+          <div><label class="label-dark">Max discount (%)</label><input id="pFuelMin" type="number" step="1" value="${P.fuel.minPct}" class="input-admin"></div>
+          <div><label class="label-dark">Max surcharge (%)</label><input id="pFuelMax" type="number" step="1" value="${P.fuel.maxPct}" class="input-admin"></div>
+        </div>
+        <p class="text-xs text-muted mt-3">Example: baseline $3.60, 3% per $0.25 → diesel at $4.10 adds 6% to every quote; at $3.35 it takes 3% off.</p>
+      </div>
+
+      <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <h4 class="font-semibold text-white mb-1"><i class="fas fa-calendar-days text-[var(--orange)] mr-2"></i>Season multipliers <span class="text-muted text-sm font-normal">— by pickup month (1.06 = +6%)</span></h4>
+        <p class="text-xs text-muted mb-4">Winter and summer run high, spring and fall run flat. Snowbird traffic (south in fall, north in spring) is why Nov–Feb and Jun–Jul sit above 1.</p>
+        <div class="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-12 gap-2">
+          ${monthNames.map((m, i) => `<div><label class="label-dark text-center block">${m}</label><input id="pSeason${i + 1}" type="number" step="0.01" value="${P.season[i + 1]}" class="input-admin text-center px-1"></div>`).join('')}
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+        <div class="p-5 rounded-xl" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+          <h4 class="font-semibold text-white mb-3"><i class="fas fa-clock text-[var(--orange)] mr-2"></i>Timing</h4>
+          <div class="grid grid-cols-2 gap-3">
+            <div><label class="label-dark">Short notice: within (days)</label><input id="pShortDays" type="number" value="${P.timing.shortNoticeDays}" class="input-admin"></div>
+            <div><label class="label-dark">Short-notice surcharge (%)</label><input id="pShortPct" type="number" step="0.5" value="${P.timing.shortNoticePct}" class="input-admin"></div>
+            <div><label class="label-dark">Flexible: window of (days)</label><input id="pFlexDays" type="number" value="${P.timing.flexibleDays}" class="input-admin"></div>
+            <div><label class="label-dark">Flexible discount (%)</label><input id="pFlexPct" type="number" step="0.5" value="${P.timing.flexiblePct}" class="input-admin"></div>
+          </div>
+        </div>
+        <div class="p-5 rounded-xl" style="background: rgba(255,106,61,0.06); border: 1px solid rgba(255,106,61,0.35);">
+          <h4 class="font-semibold text-white mb-1"><i class="fas fa-sliders text-[var(--orange)] mr-2"></i>Market dial</h4>
+          <p class="text-xs text-muted mb-3">Your hand on the wheel. Hearing rates are up from carriers or Central Dispatch? +5. Slow month? −5. Applied on top of everything, on every quote, until you change it.</p>
+          <div class="flex items-center gap-3"><input id="pMarket" type="number" step="0.5" value="${P.marketPct}" class="input-admin text-2xl font-bold w-32" style="color: var(--orange);"><span class="text-white text-xl">%</span></div>
+        </div>
+      </div>
+
+      <div class="flex gap-3 mb-10">
+        <button onclick="savePricingSettings()" class="flex-1 btn btn-primary py-4"><i class="fas fa-save"></i> Save market settings</button>
+        <button onclick="resetPricingSettings()" class="btn btn-ghost py-4 px-6"><i class="fas fa-rotate-left"></i> Reset market settings</button>
+      </div>
+
+      <div class="p-5 rounded-xl" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
+        <h4 class="font-semibold text-white mb-3"><i class="fas fa-flask text-[var(--orange)] mr-2"></i>Test a price <span class="text-muted text-sm font-normal">— see exactly what a customer would be quoted today</span></h4>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3 items-end">
+          <div><label class="label-dark">Miles</label><input id="tMiles" type="number" value="2900" class="input-admin"></div>
+          <div><label class="label-dark">Vehicle</label><select id="tType" class="input-admin">${vehicleTypeOptions('sedan')}</select></div>
+          <div><label class="label-dark">Transport</label><select id="tTransport" class="input-admin"><option value="open">Open</option><option value="enclosed">Enclosed</option></select></div>
+          <div><label class="label-dark">Pickup date</label><input id="tPickup" type="date" class="input-admin"></div>
+          <button onclick="testPrice()" class="btn btn-cyan py-3"><i class="fas fa-calculator"></i> Price it</button>
+        </div>
+        <div id="tResult" class="mt-4 text-sm"></div>
+      </div>`;
+  } catch (e) { box.innerHTML = '<p class="text-red-400 text-sm">Could not load market settings.</p>'; }
+}
+function readPricingForm() {
+  const g = id => document.getElementById(id).value;
+  const season = {}; for (let m = 1; m <= 12; m++) season[m] = parseFloat(g('pSeason' + m));
+  return {
+    minimumPrice: parseFloat(g('pMin')), enclosedMultiplier: parseFloat(g('pEnclosed')), multiVehicleDiscountPct: parseFloat(g('pMulti')),
+    fuel: { enabled: g('pFuelOn') === 'true', baselineDiesel: parseFloat(g('pFuelBase')), pctPerQuarter: parseFloat(g('pFuelPct')), minPct: parseFloat(g('pFuelMin')), maxPct: parseFloat(g('pFuelMax')) },
+    season, timing: { shortNoticeDays: parseFloat(g('pShortDays')), shortNoticePct: parseFloat(g('pShortPct')), flexibleDays: parseFloat(g('pFlexDays')), flexiblePct: parseFloat(g('pFlexPct')) },
+    marketPct: parseFloat(g('pMarket'))
+  };
+}
+async function savePricingSettings() {
+  try {
+    const r = await fetch('/api/settings/pricing', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(readPricingForm()) });
+    const d = await r.json(); if (!d.success) throw new Error(d.message || 'Save failed');
+    panelMsg('Market settings saved. Every new quote uses them now.', true); loadPricingSettings();
+  } catch (e) { panelMsg(e.message, false); }
+}
+async function resetPricingSettings() {
+  if (!confirm('Reset all market settings to the defaults?')) return;
+  await fetch('/api/settings/pricing', { method: 'DELETE' }); loadPricingSettings();
+}
+async function refreshFuel() {
+  const r = await fetch('/api/settings/pricing/refresh-fuel', { method: 'POST' }); const d = await r.json();
+  panelMsg(d.message || (d.success ? 'Updated' : 'Failed'), d.success); loadPricingSettings();
+}
+async function testPrice() {
+  const out = document.getElementById('tResult'); out.innerHTML = '<span class="text-muted">Pricing…</span>';
+  const r = await fetch('/api/price', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+    vehicles: [{ type: document.getElementById('tType').value, condition: 'operable' }], distance: Number(document.getElementById('tMiles').value) || 0,
+    transportType: document.getElementById('tTransport').value, pickupDate: document.getElementById('tPickup').value }) });
+  const d = await r.json();
+  if (!d.success) { out.innerHTML = '<span class="text-red-400">Could not price.</span>'; return; }
+  out.innerHTML = `<div class="text-3xl font-bold text-[var(--orange)] mb-2">${money(d.total)}</div>
+    <div class="text-xs text-muted mb-2">Rate used: $${d.cpm}/mile · base $${config.baseFee}</div>
+    <div class="space-y-1">${d.lines.map(l => `<div class="flex justify-between gap-4 text-dim"><span>${esc(l.label)}</span><span class="${l.amount < 0 ? 'text-lime-300' : 'text-white'}">${l.amount < 0 ? '−' : ''}${money(Math.abs(l.amount))}</span></div>`).join('')}</div>`;
 }
 
 function resetConfig() {
@@ -1003,7 +1116,8 @@ function wizRender(step) {
     el.innerHTML = wizRouteHTML();
     wizInitMaps();
   } else {
-    el.innerHTML = wizQuoteHTML(); wizPriceDiff();
+    el.innerHTML = '<p class="text-muted text-sm"><i class="fas fa-circle-notch fa-spin mr-1"></i> Pricing this route…</p>';
+    wizFetchServerPrice().then(() => { el.innerHTML = wizQuoteHTML(); wizPriceDiff(); wizUpdateRunningTotal(); });
   }
   wizRenderSteps();
   el.scrollTop = 0;
@@ -1450,7 +1564,17 @@ function wizVehiclePrice(v) {
   if (v.urgent)   s += config.addons.urgent;
   return Math.round(s);
 }
-function wizComputedTotal() { return wiz.vehicles.reduce((sum, v) => sum + wizVehiclePrice(v), 0); }
+function wizComputedTotal() { return wiz.serverPrice ? wiz.serverPrice.total : wiz.vehicles.reduce((sum, v) => sum + wizVehiclePrice(v), 0); }
+// Ask the server engine (fuel/season/timing/market) for the real number + breakdown
+async function wizFetchServerPrice() {
+  try {
+    const r = await fetch('/api/price', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      vehicles: wiz.vehicles.map(({ photos, ...v }) => v), distance: Number(wiz.distance) || 0,
+      transportType: wiz.transportType, pickupDate: wiz.pickupDate, mustDeliverBy: wiz.mustDeliverBy }) });
+    const d = await r.json();
+    if (d.success) wiz.serverPrice = d;
+  } catch (e) { console.warn('price:', e); }
+}
 // Footer total: the price the customer will be quoted (the admin override when set)
 function wizFinalTotal() {
   const computed = wizComputedTotal();
@@ -1485,8 +1609,14 @@ function wizQuoteHTML() {
         </div>
         ${v.damages ? `<div class="text-xs text-amber-400 mt-1"><i class="fas fa-triangle-exclamation mr-1"></i>${esc(v.damages)}</div>` : ''}
       </div>
-      <div class="text-right shrink-0"><div class="text-dim font-semibold">$${wizVehiclePrice(v).toLocaleString()}</div><div class="text-[10px] text-muted uppercase tracking-wider">calculated</div></div>
+      <div class="text-right shrink-0"><div class="text-dim font-semibold">${wiz.serverPrice && wiz.serverPrice.lines[i] ? money(wiz.serverPrice.lines[i].amount) : '$' + wizVehiclePrice(v).toLocaleString()}</div><div class="text-[10px] text-muted uppercase tracking-wider">calculated</div></div>
     </div>`).join('');
+  const engineLines = wiz.serverPrice ? wiz.serverPrice.lines.slice(wiz.vehicles.length) : [];
+  const engineHTML = engineLines.length ? `
+    <div class="bg-[var(--bg-deep)] border border-[var(--line)] rounded-xl p-4 mb-6 text-xs text-dim space-y-1">
+      <div class="text-muted uppercase tracking-wider mb-2">Market adjustments (admin only)</div>
+      ${engineLines.map(l => `<div class="flex justify-between gap-4"><span>${esc(l.label)}</span><span class="${l.amount < 0 ? 'text-lime-300' : 'text-white'}">${l.amount < 0 ? '−' : '+'}${money(Math.abs(l.amount))}</span></div>`).join('')}
+    </div>` : '';
 
   return `
     <h4 class="text-lg font-semibold text-white mb-4">Quote Summary</h4>
@@ -1502,7 +1632,8 @@ function wizQuoteHTML() {
       </div>
     </div>
 
-    <div class="mb-6">${rows}</div>
+    <div class="mb-4">${rows}</div>
+    ${engineHTML}
 
     <div class="grid grid-cols-1 sm:grid-cols-2 gap-5 items-start">
       <div class="bg-[var(--bg-deep)] border rounded-xl p-5" style="border-color: rgba(255,106,61,0.4)">

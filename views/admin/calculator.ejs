@@ -25,7 +25,7 @@
 
         <div class="mb-10">
           <div class="flex justify-between items-center mb-6">
-            <h3 class="text-xl font-semibold text-white">Price per Mile (CPM Tiers)</h3>
+            <div><h3 class="text-xl font-semibold text-white">Rate per mile by distance</h3><p class="text-xs text-muted mt-1">The rate blends smoothly between these points, so a 2,900-mile run is priced near the last rate and a 150-mile run between the first two. No jumps.</p></div>
             <button onclick="addTier()" class="btn btn-cyan text-sm">
               <i class="fas fa-plus"></i> Add Tier
             </button>
@@ -33,7 +33,7 @@
           <table class="w-full">
             <thead>
               <tr class="text-left text-muted border-b border-[var(--line)]">
-                <th class="pb-4">Up to Miles</th>
+                <th class="pb-4">At this many miles</th>
                 <th class="pb-4">Rate per Mile ($)</th>
                 <th class="pb-4 w-12"></th>
               </tr>
@@ -97,13 +97,22 @@
 
         <div class="flex gap-3 calc-btn-row">
           <button onclick="saveConfig()" class="flex-1 btn btn-primary py-5">
-            <i class="fas fa-save"></i> Save Settings
+            <i class="fas fa-save"></i> Save base rates
           </button>
           <button onclick="resetConfig()" class="flex-1 btn btn-ghost py-5">
-            <i class="fas fa-rotate-left"></i> Reset to Default
+            <i class="fas fa-rotate-left"></i> Reset base rates to market defaults
           </button>
         </div>
       </div>
+    </div>
+
+    <!-- ==================== MARKET PRICING ==================== -->
+    <div class="tile mt-8" id="sec-pricing">
+      <div class="mb-6">
+        <h2 class="text-3xl font-bold text-white flex items-center gap-3"><i class="fas fa-chart-line"></i> Market pricing</h2>
+        <p class="text-dim text-sm mt-2">Layers applied on top of the base rates above. Fuel updates itself weekly; season and timing follow the calendar; the market dial is yours. Customers only ever see the final total.</p>
+      </div>
+      <div id="pricingSection"><p class="text-muted text-sm"><i class="fas fa-circle-notch fa-spin mr-1"></i> Loading…</p></div>
     </div>
   </main>
 
