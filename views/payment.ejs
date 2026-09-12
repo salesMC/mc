@@ -414,6 +414,13 @@
     }
 
     // ==================== PRICE CALCULATION ====================
+    function vehicleAddons(v, i, n) {
+      const out = [], pre = n > 1 ? 'Vehicle ' + (i + 1) + ': ' : '';
+      if (v.condition === 'inoperable') out.push({ vehicle: i, label: pre + 'Inoperable (winch loading)', amount: calculatorConfig.addons.inoperable });
+      if (v.modified) out.push({ vehicle: i, label: pre + 'Modified / custom vehicle', amount: calculatorConfig.addons.modified });
+      if (v.urgent)   out.push({ vehicle: i, label: pre + 'Urgent delivery', amount: calculatorConfig.addons.urgent });
+      return out;
+    }
     function calcVehiclePrice(miles, v) {
       miles = Math.max(0, miles || 0);
       let cpm = calculatorConfig.tiers[calculatorConfig.tiers.length - 1].rate;
@@ -430,7 +437,7 @@
 
     // The price is computed on the server (fuel, season, timing, market layers).
     // We show the last server total immediately and refresh it in the background.
-    let serverTotal = null, priceReq = 0;
+    let serverTotal = null, serverPrice = null, priceReq = 0;
     async function refreshServerTotal() {
       const seq = ++priceReq;
       try {
@@ -441,8 +448,9 @@
           pickupLat: formData.location.pickupLat, pickupLng: formData.location.pickupLng, deliveryLat: formData.location.deliveryLat, deliveryLng: formData.location.deliveryLng }) });
         const d = await r.json();
         if (seq !== priceReq || !d.success) return;
-        serverTotal = d.total;
+        serverTotal = d.total; serverPrice = d;
         calculateAndUpdateTotal(true);
+        if (currentStep === 3 && document.getElementById('summaryContent')) renderSummary();
       } catch (e) { /* keep the last known total */ }
     }
     function calculateAndUpdateTotal(fromServer = false) {
@@ -1108,14 +1116,17 @@
 
     function saveFormData() {
       if (currentStep === 0) {
+        if (!document.getElementById('fullName')) return;   // step not on screen: keep what we have
         formData.contact = {
           fullName: document.getElementById('fullName')?.value.trim() || '',
           email:    document.getElementById('email')?.value.trim()    || '',
           phone:    document.getElementById('phone')?.value.trim()    || ''
         };
       } else if (currentStep === 1) {
+        if (!document.getElementById('vehicleFormContainer')) return;
         saveCurrentVehicleData();
       } else if (currentStep === 2) {
+        if (!document.getElementById('pickupAddr')) return;
         formData.location = {
           ...formData.location,
           pickup:   document.getElementById('pickupAddr')?.value.trim()   || '',
@@ -1130,24 +1141,32 @@
     // ==================== SUMMARY ====================
     function renderSummary() {
       const miles = formData.distance || 0;
+      const n = formData.vehicles.length;
+      // Server price when we have it (same engine that charges the card); config-based estimate until then
+      const sp = serverPrice;
+      const addons = sp ? (sp.addons || []) : formData.vehicles.flatMap((v, i) => vehicleAddons(v, i, n));
+      const fees = sp ? (sp.fees || []) : [];
+      const extrasTotal = [...addons, ...fees].reduce((s, x) => s + (Number(x.amount) || 0), 0);
+      const transport = sp ? Number(sp.transport) : formData.vehicles.reduce((s, v) => s + calcVehiclePrice(miles, v), 0) - extrasTotal;
       const vehicleRows = formData.vehicles.map((v, i) => {
-        const price = calcVehiclePrice(miles, v);
+        const mine = addons.filter(x => x.vehicle === i);
         return `
           <div class="border-b border-[var(--line)] pb-3">
-            <div class="font-semibold text-white mb-1">Vehicle ${i + 1}: ${v.year} ${v.make} ${v.model}</div>
+            <div class="font-semibold text-white mb-1">Vehicle ${i + 1}: ${[v.year, v.make, v.model].filter(Boolean).join(' ') || v.type}</div>
             <div class="text-sm space-y-0.5 text-dim">
               <div>Type: ${v.type} &nbsp;|&nbsp; Condition: ${v.condition}</div>
-              ${v.vin      ? `<div>VIN: ${v.vin}</div>` : ''}
-              ${v.modified ? '<div>✓ Modified</div>'    : ''}
-              ${v.urgent   ? '<div>✓ Urgent</div>'      : ''}
-              <div class="text-[var(--orange)] font-semibold mt-1">Subtotal: $${price.toLocaleString()}</div>
+              ${v.vin ? `<div>VIN: ${v.vin}</div>` : ''}
+              ${mine.map(x => `<div class="flex justify-between"><span>✓ ${x.label.replace(/^Vehicle \d+: /, '')}</span><span class="text-white">+$${Number(x.amount).toLocaleString()}</span></div>`).join('')}
             </div>
           </div>`;
       }).join('');
+      const priceLines = `
+        <div class="flex justify-between"><span>Transport · ${n} vehicle${n > 1 ? 's' : ''} · ${Number(miles).toLocaleString()} mi · ${formData.transportType}</span><span class="text-white">$${Number(transport).toLocaleString()}</span></div>
+        ${addons.map(x => `<div class="flex justify-between"><span>${x.label}</span><span class="text-white">+$${Number(x.amount).toLocaleString()}</span></div>`).join('')}
+        ${fees.map(x => `<div class="flex justify-between"><span>${x.label}</span><span class="text-white">+$${Number(x.amount).toLocaleString()}</span></div>`).join('')}`;
 
-      // Compute subtotal before discount
-      let subtotal = 0;
-      formData.vehicles.forEach(v => { subtotal += calcVehiclePrice(miles, v); });
+      // Subtotal before discount (what the server will charge, minus promo)
+      let subtotal = sp ? Number(sp.total) : transport + extrasTotal;
       let discountAmount = 0;
       if (appliedPromo) {
         discountAmount = appliedPromo.type === 'percent'
@@ -1165,6 +1184,7 @@
             <strong class="text-white block mb-3">Vehicles (${formData.vehicles.length}):</strong>
             <div class="space-y-3">${vehicleRows}</div>
           </div>
+          <div class="pt-3 space-y-1 text-sm text-dim">${priceLines}</div>
           <div id="promoDiscountLine" class="${appliedPromo && discountAmount > 0 ? '' : 'hidden'} pt-1"></div>
           <div class="pt-2 text-lg text-dim">
             Subtotal: <span class="${appliedPromo ? 'line-through opacity-50' : ''}">$${subtotal.toLocaleString()}</span>
@@ -1447,7 +1467,7 @@
         const banner = document.createElement('div');
         banner.className = 'mb-5 p-4 rounded-xl text-sm flex items-start gap-3';
         banner.style.cssText = 'background: rgba(190,242,100,0.08); border: 1px solid rgba(190,242,100,0.35);';
-        banner.innerHTML = '<i class="fas fa-circle-check text-[var(--lime)] mt-0.5"></i><div><strong class="text-white">Your quote is loaded: $' + Number(q.total).toLocaleString() + (formData.vehicles.length > 1 ? ' for ' + formData.vehicles.length + ' vehicles' : '') + '</strong><div class="text-dim mt-1">Contact, vehicle' + (formData.vehicles.length > 1 ? 's' : '') + ' and route are filled in from your quote. Choose your dates below, check the summary, then pay. You can change anything by clicking a step on the left.</div></div>';
+        banner.innerHTML = '<i class="fas fa-circle-check text-[var(--lime)] mt-0.5"></i><div><strong class="text-white">Your quote is loaded: $' + Number(q.total).toLocaleString() + (formData.vehicles.length > 1 ? ' for ' + formData.vehicles.length + ' vehicles' : '') + '</strong><div class="text-dim mt-1">Contact, vehicle' + (formData.vehicles.length > 1 ? 's' : '') + ' and route are filled in from your quote. Add photos or notes for the driver if you like, then pick your dates on the Route step, check the summary, and pay.</div></div>';
         const content = document.getElementById('stepContent');
         content.parentNode.insertBefore(banner, content);
         return true;
@@ -1456,7 +1476,7 @@
 
     window.addEventListener('load', async () => {
       const fromQuote = await loadQuoteFromLink();
-      if (fromQuote && formData.contact.fullName && formData.contact.phone) { currentStep = 2; renderStep(2); }
+      if (fromQuote && formData.contact.fullName && formData.contact.phone) { currentStep = 1; renderStep(1); }
       else renderStep(0);
 
       const script  = document.createElement('script');

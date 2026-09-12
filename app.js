@@ -641,21 +641,24 @@ function priceQuote(ctx, input) {
   const cpm = cpmForDistance(cfg, miles);
   const enclosed = input.transportType === 'enclosed';
   const lines = [];
+  const addons = [];   // flat per-vehicle extras the customer chose; added after the minimum price
   let subtotal = 0;
+  const nVeh = (input.vehicles || []).length;
   (input.vehicles || []).forEach((v, i) => {
     let base = cfg.baseFee + cpm * miles;
     const mult = cfg.multipliers[v.type] || 1;
     base *= mult;
     if (enclosed) base *= P.enclosedMultiplier;
     let price = base;
-    if (v.condition === 'inoperable') price += cfg.addons.inoperable;
-    if (v.modified) price += cfg.addons.modified;
-    if (v.urgent)   price += cfg.addons.urgent;
     if (i > 0 && P.multiVehicleDiscountPct) price *= (1 - P.multiVehicleDiscountPct / 100);
     price = Math.round(price);
     const label = [v.year, v.make, v.model].filter(Boolean).join(' ') || (v.type || 'vehicle');
     lines.push({ label: `Vehicle ${i + 1}: ${label} — ${miles.toLocaleString()} mi × $${cpm.toFixed(2)} + base $${cfg.baseFee}${mult !== 1 ? ', ×' + mult + ' size' : ''}${enclosed ? ', ×' + P.enclosedMultiplier + ' enclosed' : ''}${i > 0 && P.multiVehicleDiscountPct ? ', −' + P.multiVehicleDiscountPct + '% extra vehicle' : ''}`, amount: price });
     subtotal += price;
+    const add = (key, text, amt) => { amt = Math.round(Number(amt) || 0); if (amt > 0) addons.push({ vehicle: i, key, label: (nVeh > 1 ? `Vehicle ${i + 1}: ` : '') + text, amount: amt }); };
+    if (v.condition === 'inoperable') add('inoperable', 'Inoperable (winch loading)', cfg.addons.inoperable);
+    if (v.modified) add('modified', 'Modified / custom vehicle', cfg.addons.modified);
+    if (v.urgent)   add('urgent', 'Urgent delivery', cfg.addons.urgent);
   });
 
   // market layers (each a %; applied multiplicatively)
@@ -682,15 +685,6 @@ function priceQuote(ctx, input) {
   if (lane.mult !== 1) factors.lane = { pct: Math.round((lane.mult - 1) * 1000) / 10, from: lane.from, to: lane.to };
 
   let total = subtotal;
-  // Hard-to-reach locations: flat fee per end, by tier (assessed before pricing)
-  for (const [end, loc] of [['pickup', input.pickupLoc], ['delivery', input.deliveryLoc]]) {
-    if (!P.difficulty.enabled || !loc || !loc.tier) continue;
-    const fee = P.difficulty.fees[loc.tier] || 0;
-    if (!fee) continue;
-    lines.push({ label: `Hard-to-reach ${end} (tier ${loc.tier}${loc.reasons.length ? ': ' + loc.reasons.slice(0, 2).join('; ') : ''})`, amount: fee });
-    total += fee;
-    factors[end + 'Difficulty'] = { tier: loc.tier, fee, reasons: loc.reasons };
-  }
   const apply = (key, label) => {
     const f = factors[key]; if (!f || !f.pct) return;
     const amt = Math.round(total * f.pct / 100);
@@ -703,10 +697,25 @@ function priceQuote(ctx, input) {
   apply('flexible', `Flexible dates (${factors.flexible ? factors.flexible.windowDays : ''}-day window, ${P.timing.flexiblePct}%)`);
   apply('lane', `Lane ${factors.lane ? (REGION_NAMES[factors.lane.from] || factors.lane.from) + ' → ' + (REGION_NAMES[factors.lane.to] || factors.lane.to) : ''} (${factors.lane && factors.lane.pct > 0 ? '+' : ''}${factors.lane ? factors.lane.pct : 0}%)`);
   apply('market', `Market adjustment (${P.marketPct > 0 ? '+' : ''}${P.marketPct}%)`);
-  if (total < P.minimumPrice && (input.vehicles || []).length) { lines.push({ label: `Minimum order price`, amount: Math.round(P.minimumPrice - total) }); total = P.minimumPrice; }
+  if (total < P.minimumPrice && nVeh) { lines.push({ label: `Minimum order price`, amount: Math.round(P.minimumPrice - total) }); total = P.minimumPrice; }
+  const transport = Math.max(0, Math.round(total));
+  total = transport;
+  // Flat fees on top of the transport price (never absorbed by the minimum):
+  // hard-to-reach locations by tier, then the extras chosen per vehicle
+  const fees = [];
+  for (const [end, loc] of [['pickup', input.pickupLoc], ['delivery', input.deliveryLoc]]) {
+    if (!P.difficulty.enabled || !loc || !loc.tier) continue;
+    const fee = P.difficulty.fees[loc.tier] || 0;
+    if (!fee) continue;
+    lines.push({ label: `Hard-to-reach ${end} (tier ${loc.tier}${loc.reasons.length ? ': ' + loc.reasons.slice(0, 2).join('; ') : ''})`, amount: fee });
+    fees.push({ key: end, label: `Hard-to-reach ${end} location`, amount: fee });
+    total += fee;
+    factors[end + 'Difficulty'] = { tier: loc.tier, fee, reasons: loc.reasons };
+  }
+  for (const ad of addons) { lines.push({ label: ad.label, amount: ad.amount }); total += ad.amount; }
   total = Math.max(0, Math.round(total));
   const requiresCall = !!((input.pickupLoc && input.pickupLoc.noRoad) || (input.deliveryLoc && input.deliveryLoc.noRoad));
-  return { total, subtotal: Math.round(subtotal), cpm: Math.round(cpm * 100) / 100, lines, factors, requiresCall };
+  return { total, transport, subtotal: Math.round(subtotal), cpm: Math.round(cpm * 100) / 100, lines, factors, requiresCall, addons, fees };
 }
 
 // Back-compat: price with market layers loaded from settings
@@ -3231,7 +3240,7 @@ app.post('/api/price', publicLimiter, async (req, res) => {
       pickupDate: str(req.body.pickupDate, 10), mustDeliverBy: str(req.body.mustDeliverBy, 10), ...locationOpts(req.body)
     });
     const isAdmin = !!(req.session && req.session.role === 'admin');
-    res.json({ success: true, total: priced.total, requiresCall: priced.requiresCall, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors } : {}) });
+    res.json({ success: true, total: priced.total, transport: priced.transport, addons: priced.addons, fees: priced.fees, requiresCall: priced.requiresCall, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors } : {}) });
   } catch (err) { console.error('POST /api/price:', err); res.status(500).json({ success: false }); }
 });
 
@@ -3494,6 +3503,8 @@ function quoteEmail(q, bookUrl) {
     ['Pickup', escHtml(q.pickup || '—')], ['Delivery', escHtml(q.delivery || '—')],
     ['Distance', `${Number(q.distance || 0).toLocaleString()} miles`], ['Transport', escHtml(q.transportType || 'open')]
   ];
+  const extras = [...(q.addons || []), ...(q.fees || [])];
+  if (extras.length) rows.push(['Includes', extras.map(x => `${escHtml(x.label)} (+${money(x.amount)})`).join('<br>')]);
   const table = `<table style="width:100%;border-collapse:collapse;font-size:14px;margin:18px 0">${rows.map(([k, val]) =>
     `<tr><td style="padding:8px 10px;border-bottom:1px solid #eee;color:#666;width:120px">${k}</td><td style="padding:8px 10px;border-bottom:1px solid #eee">${val}</td></tr>`).join('')}</table>`;
   const html = emailShell(`
@@ -3536,7 +3547,7 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
     pool.execute('INSERT IGNORE INTO leads (email, source) VALUES (?, ?)', [email, 'calculator']).catch(() => {});
 
     const bookUrl = `${appUrl(req)}/payment?quote=${token}`;
-    const q = { email, name, phone, vehicle, vehicles, distance, pickup, delivery, transportType, total, breakdown };
+    const q = { email, name, phone, vehicle, vehicles, distance, pickup, delivery, transportType, total, breakdown, addons: priced.addons, fees: priced.fees };
     const mail = await sendMail({ to: email, ...quoteEmail(q, bookUrl) }).catch(e => ({ sent: false, reason: e.message }));
     if (mail.sent) pool.execute('UPDATE quotes SET emailed_at = NOW() WHERE token = ?', [token]).catch(() => {});
     else console.error('quote email not sent:', mail.reason);
@@ -3564,7 +3575,7 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
         text: `New website quote ${money(total)}\n\nCustomer: ${name || '—'}\nEmail: ${email}\nPhone: ${phone || '—'}\nVehicle: ${vl}${flags ? ' (' + flags + ')' : ''}\nPickup: ${pickup}\nDelivery: ${delivery}\nDistance: ${distance} mi\nTransport: ${transportType}\n\nLeads: ${appUrl(req)}/admin/leads`
       }).catch(e => console.error('quote notify mail:', e.message));
     }
-    res.json({ success: true, quoteId: token, total, breakdown, bookUrl, emailSent: !!mail.sent, requiresCall: !!priced.requiresCall });
+    res.json({ success: true, quoteId: token, total, addons: priced.addons, fees: priced.fees, bookUrl, emailSent: !!mail.sent, requiresCall: !!priced.requiresCall });
   } catch (err) {
     console.error('POST /api/quotes:', err);
     res.status(500).json({ success: false, message: 'Could not create the quote right now' });

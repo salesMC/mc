@@ -239,6 +239,13 @@ async function sendAndAuthorize(id, fee) {
   check('cross-country sedan priced near market (1,600–2,300)', pLong >= 1600 && pLong <= 2300, pLong);
   check('per-mile rate falls with distance', (pLong / 2900) < (pMid / 470) && (pMid / 470) < (pShort / 30), { long: +(pLong / 2900).toFixed(2), mid: +(pMid / 470).toFixed(2), short: +(pShort / 30).toFixed(2) });
   check('short local run hits the minimum price', pShort === 250, pShort);
+  const cfgAdd = (await api('GET', '/api/settings/calculator', null, { auth: false })).data.addons;
+  const pUrgent = await priceVia([{ type: 'sedan', condition: 'operable', urgent: true }], 20);
+  const pBoth = await priceVia([{ type: 'sedan', condition: 'operable', urgent: true, modified: true }], 20);
+  const pInop = await priceVia([{ type: 'sedan', condition: 'inoperable' }], 20);
+  check('urgent / modified / inoperable add their full fee on top of the minimum', pUrgent === 250 + cfgAdd.urgent && pBoth === 250 + cfgAdd.urgent + cfgAdd.modified && pInop === 250 + cfgAdd.inoperable, { pUrgent, pBoth, pInop, cfgAdd });
+  r = await api('POST', '/api/price', { vehicles: [{ type: 'sedan', condition: 'operable', urgent: true, modified: true }], distance: 20 }, { auth: false });
+  check('public price lists the extras with amounts and a transport figure that adds up', r.data.transport === 250 && r.data.addons.length === 2 && r.data.addons.every(x => /Urgent|Modified/.test(x.label)) && r.data.transport + r.data.addons.reduce((s, x) => s + x.amount, 0) === r.data.total && !r.data.lines, r.data);
   const pEnclosed = await priceVia(sedan, 2900, { transportType: 'enclosed' });
   check('enclosed costs more than open', pEnclosed > pLong * 1.3, { open: pLong, enclosed: pEnclosed });
   const p1001 = await priceVia(sedan, 1001), p1000 = await priceVia(sedan, 1000);
@@ -534,7 +541,7 @@ async function sendAndAuthorize(id, fee) {
   r = await api('POST', '/api/quotes', { name: 'Quote Tester', email: 'quote-test@example.test', phone: '555-0199', vehicle: { year: '2021', make: 'Ford', model: 'F-150', type: 'pickup', condition: 'operable' }, distance: 300, pickup: 'Louisville, KY', delivery: 'Nashville, TN', transportType: 'enclosed' }, { auth: false });
   const cfgQ = (await api('GET', '/api/settings/calculator', null, { auth: false })).data;
   const expectedQ = await priceVia([{ type: 'pickup', condition: 'operable' }], 300, { transportType: 'enclosed' });
-  check('quote priced on the server and saved', r.status === 200 && r.data.success && r.data.total === expectedQ && /^[a-f0-9]{48}$/.test(r.data.quoteId) && Array.isArray(r.data.breakdown) && r.data.breakdown.length >= 1, r.data && { t: r.data.total, e: expectedQ });
+  check('quote priced on the server and saved', r.status === 200 && r.data.success && r.data.total === expectedQ && /^[a-f0-9]{48}$/.test(r.data.quoteId) && Array.isArray(r.data.addons) && !r.data.breakdown, r.data && { t: r.data.total, e: expectedQ });
   const qMail = lastMailTo('quote-test@example.test');
   check('quote emailed to the customer with a Book link', !!qMail && qMail.subject.includes('Your Mcships quote') && qMail.text.includes('/payment?quote=' + r.data.quoteId), qMail && qMail.subject);
   check('team notified of the new quote', !!lastMailTo('admin@mcships.test') && /New website quote/.test(lastMailTo('admin@mcships.test').subject));
