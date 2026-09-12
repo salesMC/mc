@@ -560,7 +560,8 @@ async function sendAndAuthorize(id, fee) {
   check('quote email lists both vehicles', q2Mail && /2 vehicles/.test(q2Mail.text) && /F-150/.test(q2Mail.text) && /Camry/.test(q2Mail.text), q2Mail && q2Mail.text.slice(0, 200));
   const q2 = (await api('GET', '/api/quotes/' + r.data.quoteId, null, { auth: false })).data;
   check('quote link carries both vehicles for checkout', q2.vehicles.length === 2 && q2.vehicles[1].make === 'Toyota' && q2.vehicles[1].condition === 'inoperable' && q2.vehicle.make === 'Ford', q2.vehicles);
-  await pool.execute('DELETE FROM quotes WHERE token = ?', [r.data.quoteId]);
+  r = await api('DELETE', '/api/quotes/' + r.data.quoteId);
+  check('admin can remove a quote', r.status === 200 && r.data.success === true);
   r = await api('GET', '/api/leads?q=quote-two&page=1');
   for (const l of ((r.data && r.data.leads) || [])) await api('DELETE', '/api/leads/' + l.id);
   r = await api('GET', '/api/leads?q=quote-test&page=1');

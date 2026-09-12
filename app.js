@@ -539,13 +539,20 @@ async function assessLocation(P, address, lat, lng) {
   try { const [rows] = await pool.execute('SELECT * FROM location_ratings WHERE rating_key = ?', [key]); row = rows[0] || null; } catch (e) {}
   const metro = hasCoords ? nearestMetro(+lat, +lng) : null;
   let ai = row ? { tier: row.ai_tier, reasons: safeJson(row.ai_reasons) || [], flags: safeJson(row.ai_flags) || {} } : null;
-  if (!row) {
+  // A row with no AI answer and no metro distance is an earlier failure (API down, key missing): try again, don't trust it
+  const stale = row && row.ai_tier == null && row.metro_miles == null && row.override_tier == null;
+  if (!row || stale) {
     ai = P.difficulty.aiEnabled ? await aiAssessLocation(address, hasCoords ? +lat : null, hasCoords ? +lng : null, metro) : null;
     try {
-      await pool.execute(
-        'INSERT IGNORE INTO location_ratings (rating_key, address, lat, lng, metro_name, metro_miles, ai_tier, ai_reasons, ai_flags) VALUES (?,?,?,?,?,?,?,?,?)',
-        [key, address, hasCoords ? +lat : null, hasCoords ? +lng : null, metro ? metro.name : null, metro ? metro.miles : null, ai ? ai.tier : null, JSON.stringify(ai ? ai.reasons : []), JSON.stringify(ai ? ai.flags : {})]);
-    } catch (e) { console.error('location_ratings insert:', e.message); }
+      if (stale && ai) {
+        await pool.execute('UPDATE location_ratings SET ai_tier = ?, ai_reasons = ?, ai_flags = ?, metro_name = ?, metro_miles = ? WHERE rating_key = ?',
+          [ai.tier, JSON.stringify(ai.reasons), JSON.stringify(ai.flags), metro ? metro.name : null, metro ? metro.miles : null, key]);
+      } else if (!row) {
+        await pool.execute(
+          'INSERT IGNORE INTO location_ratings (rating_key, address, lat, lng, metro_name, metro_miles, ai_tier, ai_reasons, ai_flags) VALUES (?,?,?,?,?,?,?,?,?)',
+          [key, address, hasCoords ? +lat : null, hasCoords ? +lng : null, metro ? metro.name : null, metro ? metro.miles : null, ai ? ai.tier : null, JSON.stringify(ai ? ai.reasons : []), JSON.stringify(ai ? ai.flags : {})]);
+      }
+    } catch (e) { console.error('location_ratings save:', e.message); }
   }
   let metroTier = 0;
   if (metro) { const mm = P.difficulty.metroMiles; metroTier = metro.miles >= mm[3] ? 3 : metro.miles >= mm[2] ? 2 : metro.miles >= mm[1] ? 1 : 0; }
@@ -3580,6 +3587,14 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
     console.error('POST /api/quotes:', err);
     res.status(500).json({ success: false, message: 'Could not create the quote right now' });
   }
+});
+
+// Admin: drop a quote (test runs, spam) so it leaves the dashboard and gets no follow-ups
+app.delete('/api/quotes/:token', requireAdmin, async (req, res) => {
+  const token = String(req.params.token || '');
+  if (!/^[a-f0-9]{48}$/.test(token)) return res.status(404).json({ success: false });
+  try { const [r] = await pool.execute('DELETE FROM quotes WHERE token = ?', [token]); res.json({ success: r.affectedRows > 0 }); }
+  catch (err) { res.status(500).json({ success: false }); }
 });
 
 // Checkout prefill: everything the customer entered on the calculator

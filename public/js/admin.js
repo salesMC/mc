@@ -2380,7 +2380,7 @@ async function loadDashboard() {
     const section = (id, icon, title, sub, rows, empty) => { document.getElementById(id).innerHTML = `
       <h3 class="text-lg font-semibold text-white mb-1"><i class="fas ${icon} text-[var(--orange)] mr-2"></i>${title} <span class="text-muted text-sm font-normal">(${rows.length})</span></h3>
       <p class="text-xs text-muted mb-4">${sub}</p>
-      ${rows.length ? `<div class="overflow-x-auto"><table class="w-full text-sm"><tbody class="text-dim">${rows.join('')}</tbody></table></div>` : `<p class="text-muted text-sm">${empty}</p>`}`; };
+      ${rows.length ? (rows[0].startsWith('<tr') ? `<div class="overflow-x-auto"><table class="w-full text-sm"><tbody class="text-dim">${rows.join('')}</tbody></table></div>` : `<div class="text-sm">${rows.join('')}</div>`) : `<p class="text-muted text-sm">${empty}</p>`}`; };
 
     section('homePickups', 'fa-truck-pickup', 'Pickups due', 'Scheduled today or in the next two days and not yet picked up. Click Picked up on the order when the carrier has the vehicle.',
       d.pickups.map(o => row(o, `<span class="${o.pickupDate <= d.today ? 'text-[var(--orange)] font-semibold' : 'text-white'}">${esc(o.pickupDate || '')}</span>`)), 'Nothing due.');
@@ -2388,12 +2388,25 @@ async function loadDashboard() {
       d.holdsExpiring.map(o => row(o, `<span class="text-red-400">${o.holdExpiresAt ? new Date(o.holdExpiresAt).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric' }) : ''}</span>`)), 'No holds about to expire.');
     section('homeAwaiting', 'fa-envelope-open', 'Awaiting the customer', 'Confirmation emailed, card not entered yet. A quick call closes most of these.',
       d.awaitingCard.map(o => row(o, `<span class="text-muted text-xs">sent ${o.confirmSentAt ? new Date(o.confirmSentAt).toLocaleDateString() : ''}</span>`)), 'Nobody waiting.');
-    const qrows = d.quotes.map(q => `<tr>
-      <td><div class="text-white">${esc(q.name || q.email)}</div><div class="text-[11px] text-muted">${esc(q.email)}${q.phone ? ' · ' + esc(q.phone) : ''}</div></td>
-      <td class="text-xs col-hide-mobile">${esc(q.vehicle || '')}<div class="text-muted">${esc((q.pickup || '').split(',').slice(0, 2).join(','))} → ${esc((q.delivery || '').split(',').slice(0, 2).join(','))} · ${q.distance || 0} mi</div></td>
-      <td class="text-white font-semibold whitespace-nowrap">${money(q.total)}</td>
-      <td class="text-xs text-muted whitespace-nowrap">${new Date(q.createdAt).toLocaleDateString()}${q.followups ? ` · ${q.followups} follow-up${q.followups > 1 ? 's' : ''} sent` : ''}</td>
-      <td class="text-right whitespace-nowrap"><a class="pay-action" href="tel:${esc(q.phone || '')}" title="Call"><i class="fas fa-phone"></i></a><a class="pay-action" href="mailto:${esc(q.email)}?subject=${encodeURIComponent('Your Mcships quote')}" title="Email"><i class="fas fa-envelope"></i></a><button class="pay-action" onclick="copyText('${esc(location.origin + '/payment?quote=' + q.token)}', this)" title="Copy their Book link"><i class="fas fa-link"></i></button></td></tr>`);
+    const short = s => esc((s || '').split(',').slice(0, 2).join(','));
+    const qrows = d.quotes.map(q => `<div class="py-3 border-b border-[var(--line)] flex flex-wrap items-start gap-x-5 gap-y-1">
+      <div class="min-w-[200px] flex-1">
+        <div class="text-white font-medium">${esc(q.name || q.email)}</div>
+        <div class="text-xs text-muted break-all">${esc(q.email)}${q.phone ? ' · ' + esc(q.phone) : ''}</div>
+      </div>
+      <div class="min-w-[220px] flex-[2] text-xs text-dim">
+        <div class="text-white">${esc(q.vehicle || '')}</div>
+        <div>${short(q.pickup)} → ${short(q.delivery)} · ${Number(q.distance || 0).toLocaleString()} mi</div>
+        <div class="text-muted">${new Date(q.createdAt).toLocaleDateString()}${q.followups ? ` · ${q.followups} follow-up${q.followups > 1 ? 's' : ''} sent` : ''}</div>
+      </div>
+      <div class="flex items-center gap-2 ml-auto">
+        <span class="text-white font-semibold whitespace-nowrap mr-2">${money(q.total)}</span>
+        <a class="pay-action" href="tel:${esc(q.phone || '')}" title="Call"><i class="fas fa-phone"></i></a>
+        <a class="pay-action" href="mailto:${esc(q.email)}?subject=${encodeURIComponent('Your Mcships quote')}" title="Email"><i class="fas fa-envelope"></i></a>
+        <button class="pay-action" onclick="copyText('${esc(location.origin + '/payment?quote=' + q.token)}', this)" title="Copy their Book link"><i class="fas fa-link"></i></button>
+        <button class="pay-action pay-action-danger" onclick="dismissQuote('${esc(q.token)}', this)" title="Remove this quote (no follow-up emails)"><i class="fas fa-times"></i></button>
+      </div>
+    </div>`);
     section('homeQuotes', 'fa-file-invoice-dollar', 'Website quotes not booked', 'Last 14 days. The site emails them a reminder on day 2 and day 6 automatically.', qrows, 'No open quotes.');
     section('homeRecent', 'fa-clock-rotate-left', 'Recent orders', `${d.counts.newOrders7} new order${d.counts.newOrders7 === 1 ? '' : 's'} and ${d.counts.leads7} new lead${d.counts.leads7 === 1 ? '' : 's'} in the last 7 days.`,
       d.recent.map(o => row(o, `<span class="status-badge ${{ 'New': 'bg-blue-500/10 text-blue-400', 'In Work': 'bg-amber-500/10 text-amber-400', 'Done': 'bg-lime-500/10 text-lime-400', 'Canceled': 'bg-red-500/10 text-red-400' }[o.status] || 'bg-blue-500/10 text-blue-400'}">${esc(o.status || 'New')}</span>`)), 'No orders yet.');
@@ -2598,3 +2611,13 @@ async function sendTestSms() {
 }
 // Know whether texting is on before the order popup renders (one small call per page)
 fetch('/api/sms/status').then(r => r.json()).then(st => { window.MC_SMS_READY = !!st.configured; }).catch(() => {});
+
+async function dismissQuote(token, btn) {
+  if (!confirm('Remove this quote? It disappears from this list and gets no follow-up emails.')) return;
+  try {
+    const r = await fetch('/api/quotes/' + encodeURIComponent(token), { method: 'DELETE' });
+    const d = await r.json();
+    if (!d.success) return alert('Could not remove');
+    loadDashboard();
+  } catch (e) { alert('Could not remove'); }
+}
