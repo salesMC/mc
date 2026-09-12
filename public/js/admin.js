@@ -488,13 +488,13 @@ async function loadPricingSettings() {
 
       <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">
         <h4 class="font-semibold text-white mb-1"><i class="fas fa-weight-hanging text-[var(--orange)] mr-2"></i>Heavy vehicles <span class="text-muted text-sm font-normal">— a Hummer EV weighs what two sedans weigh and takes that much of the truck's payload</span></h4>
-        <p class="text-xs text-muted mb-4">The engine looks up the curb weight of each year/make/model once (AI, cached; fix any number in the Vehicle weights list below) and adds a percentage to that vehicle's transport price. Tiers apply from the weight listed upward. ${d.aiConfigured ? '<span class="text-lime-300">Weight lookup is on.</span>' : '<span class="text-amber-300">Weight lookup needs ANTHROPIC_API_KEY in Railway.</span>'}</p>
+        <p class="text-xs text-muted mb-4">The engine looks up the curb weight of each year/make/model once (AI, cached; fix any number in the Vehicle weights list below) and adds a percentage to that vehicle's transport price. Tiers apply from the weight listed upward; the "Everything else" row (from 0 lb) applies to every vehicle that isn't in a heavier tier, whether or not we know its weight. ${d.aiConfigured ? '<span class="text-lime-300">Weight lookup is on.</span>' : '<span class="text-amber-300">Weight lookup needs ANTHROPIC_API_KEY in Railway.</span>'}</p>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
           <div><label class="label-dark">Weight surcharge on</label><select id="pWeightOn" class="input-admin"><option value="true" ${P.weight.enabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.weight.enabled ? 'selected' : ''}>No</option></select></div>
           <div><label class="label-dark">Look up weights with AI</label><select id="pWeightAi" class="input-admin"><option value="true" ${P.weight.aiEnabled ? 'selected' : ''}>Yes</option><option value="false" ${!P.weight.aiEnabled ? 'selected' : ''}>No</option></select></div>
         </div>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          ${[0, 1, 2, 3].map(i => { const t = P.weight.tiers[i] || { minLbs: '', pct: '' }; return `<div class="p-3 rounded-lg" style="border:1px solid var(--line)"><div class="text-xs text-muted uppercase tracking-wider mb-2">${['Full-size truck / SUV', 'Heavy', 'Very heavy', 'Two-car weight'][i]}</div>
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+          ${[0, 1, 2, 3, 4].map(i => { const t = P.weight.tiers[i] || { minLbs: '', pct: '' }; return `<div class="p-3 rounded-lg" style="border:1px solid var(--line)"><div class="text-xs text-muted uppercase tracking-wider mb-2">${['Everything else', 'Full-size truck / SUV', 'Heavy', 'Very heavy', 'Two-car weight'][i]}</div>
             <label class="label-dark">From (lb)</label><input id="pWeightLbs${i}" type="number" step="100" value="${t.minLbs}" class="input-admin mb-2">
             <label class="label-dark">Add (%)</label><input id="pWeightPct${i}" type="number" step="1" value="${t.pct}" class="input-admin"></div>`; }).join('')}
         </div>
@@ -539,7 +539,7 @@ function readPricingForm() {
       fees: { 1: parseFloat(g('pDiffFee1')), 2: parseFloat(g('pDiffFee2')), 3: parseFloat(g('pDiffFee3')) },
       metroMiles: { 1: parseFloat(g('pDiffMiles1')), 2: parseFloat(g('pDiffMiles2')), 3: parseFloat(g('pDiffMiles3')) } },
     weight: { enabled: g('pWeightOn') === 'true', aiEnabled: g('pWeightAi') === 'true',
-      tiers: [0, 1, 2, 3].map(i => ({ minLbs: parseFloat(g('pWeightLbs' + i)), pct: parseFloat(g('pWeightPct' + i)) })).filter(t => t.minLbs > 0 && t.pct >= 0) },
+      tiers: [0, 1, 2, 3, 4].map(i => ({ minLbs: parseFloat(g('pWeightLbs' + i)), pct: parseFloat(g('pWeightPct' + i)) })).filter(t => t.minLbs >= 0 && t.pct >= 0) },
     lanes: (() => { const out = {}; document.querySelectorAll('#laneGrid input[data-lane]').forEach(i => { const v = parseFloat(i.value); if (v && v !== 1) out[i.dataset.lane] = v; }); return out; })()
   };
 }

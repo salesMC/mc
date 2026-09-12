@@ -461,7 +461,7 @@ const DEFAULT_PRICING = {
   // Hard-to-reach pickup/delivery: tier from distance to the nearest metro and/or the AI check
   difficulty: { enabled: true, aiEnabled: true, fees: { 1: 300, 2: 450, 3: 600 }, metroMiles: { 1: 60, 2: 120, 3: 220 } },
   // Heavy vehicles: curb weight per model (AI lookup, cached, overridable) → % on that vehicle's transport price
-  weight: { enabled: true, aiEnabled: true, tiers: [{ minLbs: 5000, pct: 8 }, { minLbs: 6000, pct: 20 }, { minLbs: 7500, pct: 40 }, { minLbs: 9000, pct: 60 }] },
+  weight: { enabled: true, aiEnabled: true, tiers: [{ minLbs: 0, pct: 8 }, { minLbs: 5000, pct: 15 }, { minLbs: 6000, pct: 25 }, { minLbs: 7500, pct: 45 }, { minLbs: 9000, pct: 65 }] },  // minLbs 0 = every vehicle, known weight or not
   // Region-to-region multipliers ("FROM>TO"); anything not listed is 1.00
   lanes: { 'FL>NE': 1.08, 'FL>MW': 1.06, 'FL>MA': 1.06, 'NE>FL': 0.96, 'MW>FL': 0.96, 'MA>FL': 0.97, 'MT>PW': 1.04, 'PW>MT': 1.04, 'CE>NE': 1.05, 'NE>CE': 1.05, 'CE>PW': 1.04, 'PW>CE': 1.04, 'TX>PW': 0.98, 'PW>TX': 0.98 }
 };
@@ -576,9 +576,10 @@ async function lookupVehicleWeight(P, v) {
   return lbs ? { lbs, source: row.override_lbs != null ? 'override' : (row.source || 'ai'), note: row.note || '' } : null;
 }
 function weightTier(P, lbs) {
-  if (!P.weight || !P.weight.enabled || !lbs) return null;
+  if (!P.weight || !P.weight.enabled) return null;
+  const w = lbs || 0;   // unknown weight counts as light: only a 0-lb tier can apply
   let hit = null;
-  for (const t of P.weight.tiers) if (lbs >= t.minLbs) hit = t;
+  for (const t of P.weight.tiers) if (w >= t.minLbs) hit = t;
   return hit && hit.pct > 0 ? hit : null;
 }
 
@@ -650,7 +651,7 @@ function sanitizePricing(v) {
     weight: (() => {
       const w = v.weight || {};
       const src = Array.isArray(w.tiers) && w.tiers.length ? w.tiers : D.weight.tiers;
-      const tiers = src.map(t => ({ minLbs: num(t && t.minLbs, 1000, 40000, null), pct: num(t && t.pct, 0, 400, null) })).filter(t => t.minLbs != null && t.pct != null).sort((x, y) => x.minLbs - y.minLbs).slice(0, 5);
+      const tiers = src.map(t => ({ minLbs: num(t && t.minLbs, 0, 40000, null), pct: num(t && t.pct, 0, 400, null) })).filter(t => t.minLbs != null && t.pct != null).sort((x, y) => x.minLbs - y.minLbs).slice(0, 6);
       return { enabled: !(w.enabled === false || w.enabled === 'false'), aiEnabled: !(w.aiEnabled === false || w.aiEnabled === 'false'), tiers: tiers.length ? tiers : D.weight.tiers };
     })(),
     lanes: (() => { const out = {}; const src = v.lanes && typeof v.lanes === 'object' ? v.lanes : D.lanes; for (const [k, val] of Object.entries(src)) { if (/^[A-Z]{2}>[A-Z]{2}$/.test(k)) { const n = num(val, 0.5, 2, null); if (n != null && n !== 1) out[k] = n; } } return out; })()
@@ -719,12 +720,12 @@ function priceQuote(ctx, input) {
     if (enclosed) base *= P.enclosedMultiplier;
     const w = input.weights && input.weights[i];
     const wt = weightTier(P, w && w.lbs);
-    if (wt) { base *= 1 + wt.pct / 100; weights.push({ vehicle: i, lbs: w.lbs, pct: wt.pct, source: w.source }); }
+    if (wt) { base *= 1 + wt.pct / 100; weights.push({ vehicle: i, lbs: w ? w.lbs : null, pct: wt.pct, source: w ? w.source : 'none' }); }
     let price = base;
     if (i > 0 && P.multiVehicleDiscountPct) price *= (1 - P.multiVehicleDiscountPct / 100);
     price = Math.round(price);
     const label = [v.year, v.make, v.model].filter(Boolean).join(' ') || (v.type || 'vehicle');
-    lines.push({ label: `Vehicle ${i + 1}: ${label} — ${miles.toLocaleString()} mi × $${cpm.toFixed(2)} + base $${cfg.baseFee}${mult !== 1 ? ', ×' + mult + ' size' : ''}${enclosed ? ', ×' + P.enclosedMultiplier + ' enclosed' : ''}${wt ? `, +${wt.pct}% heavy (≈${w.lbs.toLocaleString()} lb)` : ''}${i > 0 && P.multiVehicleDiscountPct ? ', −' + P.multiVehicleDiscountPct + '% extra vehicle' : ''}`, amount: price });
+    lines.push({ label: `Vehicle ${i + 1}: ${label} — ${miles.toLocaleString()} mi × $${cpm.toFixed(2)} + base $${cfg.baseFee}${mult !== 1 ? ', ×' + mult + ' size' : ''}${enclosed ? ', ×' + P.enclosedMultiplier + ' enclosed' : ''}${wt ? (wt.minLbs > 0 ? `, +${wt.pct}% heavy (≈${w.lbs.toLocaleString()} lb)` : `, +${wt.pct}% weight base${w ? ' (≈' + w.lbs.toLocaleString() + ' lb)' : ''}`) : ''}${i > 0 && P.multiVehicleDiscountPct ? ', −' + P.multiVehicleDiscountPct + '% extra vehicle' : ''}`, amount: price });
     subtotal += price;
     const add = (key, text, amt) => { amt = Math.round(Number(amt) || 0); if (amt > 0) addons.push({ vehicle: i, key, label: (nVeh > 1 ? `Vehicle ${i + 1}: ` : '') + text, amount: amt }); };
     if (v.condition === 'inoperable') add('inoperable', 'Inoperable (winch loading)', cfg.addons.inoperable);

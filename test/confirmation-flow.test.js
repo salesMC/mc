@@ -296,17 +296,19 @@ async function sendAndAuthorize(id, fee) {
   await pool.execute('DELETE FROM vehicle_weights WHERE weight_key = ?', [wKey]);
   const pTruck = await priceVia([{ year: '2024', make: 'Zzz', model: 'Testtruck', type: 'pickup', condition: 'operable' }], 470); // no weight on file (AI off in tests)
   const pUnknown = await priceVia([hummer], 470);
-  check('no weight on file → no surcharge', pUnknown === pTruck, { pUnknown, pTruck });
+  check('no weight on file → same as any light vehicle', pUnknown === pTruck, { pUnknown, pTruck });
+  r = await api('POST', '/api/price', { vehicles: [hummer], distance: 470 });
+  check('light / unknown vehicles carry the base weight tier', r.data.lines.some(l => /\+8% weight base/.test(l.label)), r.data.lines.map(l => l.label));
   await pool.execute("INSERT INTO vehicle_weights (weight_key, year, make, model, curb_lbs, note, source) VALUES (?,?,?,?,?,?,?)", [wKey, '2024', 'GMC', 'Hummer EV', 9063, 'test seed', 'ai']);
   const pHeavy = await priceVia([hummer], 470);
-  check('9,000+ lb vehicle costs ~60% more transport than a normal pickup', pHeavy > pTruck * 1.5 && pHeavy < pTruck * 1.7, { pHeavy, pTruck, ratio: pHeavy / pTruck });
+  check('9,000+ lb vehicle costs ~53% more transport than a normal pickup (1.65 / 1.08)', pHeavy > pTruck * 1.45 && pHeavy < pTruck * 1.6, { pHeavy, pTruck, ratio: pHeavy / pTruck });
   r = await api('POST', '/api/price', { vehicles: [hummer], distance: 470 });
-  check('admin breakdown shows the weight and percent', r.data.lines.some(l => /\+60% heavy \(≈9,063 lb\)/.test(l.label)) && r.data.factors.weights && r.data.factors.weights[0].lbs === 9063, r.data.lines.map(l => l.label));
+  check('admin breakdown shows the weight and percent', r.data.lines.some(l => /\+65% heavy \(≈9,063 lb\)/.test(l.label)) && r.data.factors.weights && r.data.factors.weights[0].lbs === 9063, r.data.lines.map(l => l.label));
   r = await api('GET', '/api/vehicle-weights?q=Hummer');
   const wRow = r.data.find(x => x.model === 'Hummer EV');
   r = await api('PATCH', '/api/vehicle-weights/' + wRow.id, { overrideLbs: 7000 });
   const pOverrideW = await priceVia([hummer], 470);
-  check('admin weight override changes the tier (7,000 lb → +20%)', r.data.success && pOverrideW < pHeavy && pOverrideW > pTruck, { pOverrideW, pHeavy, pTruck });
+  check('admin weight override changes the tier (7,000 lb → +25%)', r.data.success && pOverrideW < pHeavy && pOverrideW > pTruck, { pOverrideW, pHeavy, pTruck });
   await pool.execute('DELETE FROM vehicle_weights WHERE weight_key = ?', [wKey]);
   // hard-to-reach fee never shows to the customer
   r = await api('POST', '/api/price', { vehicles: sedan, distance: 470, pickup: '100 Main St, Louisville, KY 40202, USA', pickupLat: 38.2527, pickupLng: -85.7585, delivery: 'Ranch Rd, Eureka, NV 89316, USA', deliveryLat: 39.5, deliveryLng: -116.5 }, { auth: false });
