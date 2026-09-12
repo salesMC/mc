@@ -111,9 +111,9 @@ async function sendViaGmail({ from, to, subject, html, text }) {
 
 // Customer-facing mail: Gmail when connected (falls back to Resend/SMTP on error).
 // Internal alerts (to ADMIN_NOTIFY_EMAIL) always use Resend/SMTP so the Gmail quota is kept for customers.
-async function sendMail({ to, subject, html, text }) {
+async function sendMail({ to, subject, html, text, internal = false }) {
   const from = process.env.MAIL_FROM || process.env.SMTP_USER || 'sales@mcships.com';
-  const internal = process.env.ADMIN_NOTIFY_EMAIL && String(to).toLowerCase() === process.env.ADMIN_NOTIFY_EMAIL.toLowerCase();
+  // Team alerts (internal: true) always go through Resend; everything addressed to a person goes through the connected Gmail
   if (!internal && process.env.MAIL_DISABLE_GMAIL !== '1' && (await gmailConnection())) {
     try { await sendViaGmail({ from, to, subject, html, text }); return { sent: true, via: 'gmail' }; }
     catch (e) { console.error('Gmail send failed, falling back:', e.message); }
@@ -1306,7 +1306,7 @@ async function orderRowForIntent(piId) {
 }
 async function notifyAdmin(subject, html, text) {
   if (!process.env.ADMIN_NOTIFY_EMAIL) return;
-  await sendMail({ to: process.env.ADMIN_NOTIFY_EMAIL, subject, html: emailShell(html), text }).catch(e => console.error('admin notify:', e.message));
+  await sendMail({ to: process.env.ADMIN_NOTIFY_EMAIL, internal: true, subject, html: emailShell(html), text }).catch(e => console.error('admin notify:', e.message));
 }
 async function handleStripeEvent(event) {
   const obj = event.data.object || {};
@@ -1868,7 +1868,7 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
       const order = rows && rows[0] ? mapOrderRow(rows[0], false) : null;
       if (order && contact.email) trackingUrl(rows[0], req).then(u => sendMail({ to: contact.email, ...bookingEmail(order, u) })).catch(e => console.error('booking mail:', e.message));
       if (order) sendMail({
-        to: process.env.ADMIN_NOTIFY_EMAIL,
+        to: process.env.ADMIN_NOTIFY_EMAIL, internal: true,
         subject: `🚗 New website order ${id} – ${money(total)} paid – ${contact.fullName}`,
         html: emailShell(`<p><strong>${escHtml(contact.fullName)}</strong> just booked and paid <strong>${money(total)}</strong> on the website.</p>${summaryTableHtml(order)}<p><a href="${appUrl(req)}/admin/orders?open=${encodeURIComponent(id)}" style="background:#ff6a3d;color:#fff;text-decoration:none;padding:12px 22px;border-radius:8px;font-weight:600;display:inline-block">Open order ${escHtml(id)}</a></p>`),
         text: `${contact.fullName} booked and paid ${money(total)} on the website.\n\n${summaryText(order)}\n\nOpen: ${appUrl(req)}/admin/orders?open=${encodeURIComponent(id)}`
@@ -2017,7 +2017,7 @@ async function expireCardHolds() {
         const order = mapOrderRow(row, false);
         const name = (order.contact || {}).fullName || 'the customer';
         sendMail({
-          to: process.env.ADMIN_NOTIFY_EMAIL,
+          to: process.env.ADMIN_NOTIFY_EMAIL, internal: true,
           subject: `⏰ Card hold expired – order ${order.id}`,
           html: emailShell(`<p>The ${HOLD_DAYS}-day card hold for <strong>${escHtml(name)}</strong> (order ${escHtml(order.id)}) expired before pickup. The card was removed automatically.</p><p>If the pickup is still on, open the order in the admin panel and send a new confirmation.</p>${summaryTableHtml(order)}`),
           text: `The ${HOLD_DAYS}-day card hold for ${name} (order ${order.id}) expired before pickup and the card was removed. Send a new confirmation if the pickup is still on.`
@@ -2312,7 +2312,7 @@ app.post('/api/confirm/:token/complete', publicLimiter, async (req, res) => {
       if (c.email) await sendMail({ to: c.email, ...receiptEmail(order, pi.amount / 100, await trackingUrl(row, req)) });
       if (process.env.ADMIN_NOTIFY_EMAIL) {
         await sendMail({
-          to: process.env.ADMIN_NOTIFY_EMAIL,
+          to: process.env.ADMIN_NOTIFY_EMAIL, internal: true,
           subject: `✅ ${c.fullName || 'Customer'} confirmed pickup – order ${order.id}`,
           html: emailShell(`<p><strong>${escHtml(c.fullName || 'Customer')}</strong> agreed to the pickup terms and authorized a hold of <strong>${money(pi.amount / 100)}</strong> for order ${escHtml(order.id)}.</p>${summaryTableHtml(order)}<p>Open the admin panel to mark it picked up when the carrier has the vehicle.</p>`),
           text: `${c.fullName || 'Customer'} confirmed pickup for order ${order.id} (hold ${money(pi.amount / 100)}).\n\n${summaryText(order)}`
@@ -3445,7 +3445,7 @@ app.post('/api/leads', publicLimiter, async (req, res) => {
     res.json({ success: true });
     if (result.affectedRows && process.env.ADMIN_NOTIFY_EMAIL) {
       sendMail({
-        to: process.env.ADMIN_NOTIFY_EMAIL,
+        to: process.env.ADMIN_NOTIFY_EMAIL, internal: true,
         subject: `✉️ New lead: ${email}`,
         html: emailShell(`<p>Someone left their email on the website.</p><p><strong>${escHtml(email)}</strong><br><span style="color:#666">Source: ${escHtml(source)}</span></p><p>Reply from sales@mcships.com while they're still interested.</p>`),
         text: `New lead from the website: ${email} (source: ${source})`
@@ -3565,7 +3565,7 @@ app.post('/api/quotes', publicLimiter, async (req, res) => {
       const alertTable = `<table cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e5e7eb;border-radius:8px;margin:18px 0">` +
         alertRows.map(([k, v]) => `<tr><td style="padding:8px 12px;color:#6b7280;font-size:13px;white-space:nowrap;vertical-align:top;border-bottom:1px solid #f3f4f6">${k}</td><td style="padding:8px 12px;color:#111827;font-size:14px;border-bottom:1px solid #f3f4f6">${v}</td></tr>`).join('') + `</table>`;
       sendMail({
-        to: process.env.ADMIN_NOTIFY_EMAIL,
+        to: process.env.ADMIN_NOTIFY_EMAIL, internal: true,
         subject: `New website quote ${money(total)} – ${name || email}`,
         html: emailShell(`<h1 style="margin:0 0 12px;font-size:20px">New website quote</h1>
           <p>Someone just priced a transport on mcships.com. They received the quote by email with a Book link.</p>
