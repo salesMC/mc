@@ -1622,12 +1622,15 @@ function wizVehiclePrice(v) {
   for (const t of config.tiers) { if (miles <= (t.max == null ? Infinity : t.max)) { cpm = t.rate; break; } }
   let s = config.baseFee + cpm * miles;
   if (config.multipliers[v.type]) s *= config.multipliers[v.type];
-  if (v.condition === 'inoperable') s += config.addons.inoperable;
-  if (v.modified) s += config.addons.modified;
-  if (v.urgent)   s += config.addons.urgent;
-  return Math.round(s);
+  return { transport: Math.round(s), addons: (v.condition === 'inoperable' ? config.addons.inoperable : 0) + (v.modified ? config.addons.modified : 0) + (v.urgent ? config.addons.urgent : 0) };
 }
-function wizComputedTotal() { return wiz.serverPrice ? wiz.serverPrice.total : wiz.vehicles.reduce((sum, v) => sum + wizVehiclePrice(v), 0); }
+const WIZ_MIN_PRICE = 250; // rough local floor; the server's real minimum wins once it answers
+function wizComputedTotal() {
+  if (wiz.serverPrice) return wiz.serverPrice.total;
+  const parts = wiz.vehicles.map(wizVehiclePrice);
+  const transport = Math.max(WIZ_MIN_PRICE, parts.reduce((s, p) => s + p.transport, 0));
+  return transport + parts.reduce((s, p) => s + p.addons, 0);
+}
 // Ask the server engine (fuel/season/timing/market) for the real number + breakdown
 async function wizFetchServerPrice() {
   try {
@@ -1651,8 +1654,9 @@ function wizUpdateRunningTotal() {
   const t = document.getElementById('wizRunningTotal');
   const label = t && t.previousElementSibling;
   const final = wizFinalTotal(), computed = wizComputedTotal();
-  if (t) t.textContent = '$' + final.toLocaleString();
-  if (label) label.textContent = final !== computed ? 'Quoted (adjusted)' : 'Estimated';
+  const hasRoute = (Number(wiz.distance) || 0) > 0;
+  if (t) t.textContent = hasRoute ? '$' + final.toLocaleString() : '—';
+  if (label) label.textContent = !hasRoute ? 'Price after route' : final !== computed ? 'Quoted (adjusted)' : 'Estimated';
 }
 
 // ---- Step 3: Quote ----
@@ -1674,7 +1678,7 @@ function wizQuoteHTML() {
         </div>
         ${v.damages ? `<div class="text-xs text-amber-400 mt-1"><i class="fas fa-triangle-exclamation mr-1"></i>${esc(v.damages)}</div>` : ''}
       </div>
-      <div class="text-right shrink-0"><div class="text-dim font-semibold">${wiz.serverPrice && wiz.serverPrice.lines[i] ? money(wiz.serverPrice.lines[i].amount) : '$' + wizVehiclePrice(v).toLocaleString()}</div><div class="text-[10px] text-muted uppercase tracking-wider">calculated</div></div>
+      <div class="text-right shrink-0"><div class="text-dim font-semibold">${wiz.serverPrice && wiz.serverPrice.lines[i] ? money(wiz.serverPrice.lines[i].amount) : '$' + (wizVehiclePrice(v).transport + wizVehiclePrice(v).addons).toLocaleString()}</div><div class="text-[10px] text-muted uppercase tracking-wider">calculated</div></div>
     </div>`).join('');
   const engineLines = wiz.serverPrice ? wiz.serverPrice.lines.slice(wiz.vehicles.length) : [];
   const engineHTML = engineLines.length ? `
