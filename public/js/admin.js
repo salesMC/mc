@@ -442,7 +442,7 @@ async function loadPricingSettings() {
           <div><label class="label-dark">Max discount (%)</label><input id="pFuelMin" type="number" step="1" value="${P.fuel.minPct}" class="input-admin"></div>
           <div><label class="label-dark">Max surcharge (%)</label><input id="pFuelMax" type="number" step="1" value="${P.fuel.maxPct}" class="input-admin"></div>
         </div>
-        <p class="text-xs text-muted mt-3">Example: baseline $3.60, 3% per $0.25 → diesel at $4.10 adds 6% to every quote; at $3.35 it takes 3% off.</p>
+        <p class="text-xs text-muted mt-3">Example: baseline $5.95, 3% per $0.25 → diesel at $6.45 adds 6% to every quote; at $5.70 it takes 3% off. Set the baseline to the diesel price on the day you last calibrated the base rates.</p>
       </div>
 
       <div class="p-5 rounded-xl mb-8" style="background: rgba(255,255,255,0.03); border: 1px solid var(--line);">

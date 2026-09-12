@@ -364,7 +364,7 @@ const DEFAULT_PRICING = {
   minimumPrice: 250,            // floor per order
   enclosedMultiplier: 1.45,     // enclosed trailer vs open
   multiVehicleDiscountPct: 5,   // off each extra vehicle on the same route
-  fuel: { enabled: true, baselineDiesel: 3.60, pctPerQuarter: 3, minPct: -10, maxPct: 25 },   // % per $0.25 of diesel vs baseline
+  fuel: { enabled: true, baselineDiesel: 5.95, pctPerQuarter: 3, minPct: -10, maxPct: 25 },   // % per $0.25 of diesel vs the price on the day the curve was calibrated (Sep 2026)
   season: { 1: 1.06, 2: 1.04, 3: 1.02, 4: 1.00, 5: 1.03, 6: 1.06, 7: 1.06, 8: 1.04, 9: 1.00, 10: 1.02, 11: 1.04, 12: 1.06 },
   timing: { shortNoticeDays: 2, shortNoticePct: 8, flexibleDays: 5, flexiblePct: -3 },
   marketPct: 0,                 // your hand on the wheel: +/- % on everything
