@@ -177,6 +177,8 @@
       #totalPriceSidebar { font-size: 1.5rem !important; margin-top: 0 !important; }
       #vehicleCountSidebar { font-size: 0.7rem !important; }
     }
+    /* No route yet → no total, on every screen size (beats the mobile display:flex rule above) */
+    #sidebarTotalBox[hidden] { display: none !important; }
 
     /* ══════════════════════════════════════════
        SMALL PHONE  (≤ 639 px)
