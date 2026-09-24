@@ -290,6 +290,13 @@ async function sendAndAuthorize(id, fee) {
   check('lane table: out of Florida costs more than into Florida', pFLNE > pPlain1300 && pNEFL < pPlain1300 && pFLNE > pNEFL, { out: pFLNE, into: pNEFL, plain: pPlain1300 });
   r = await api('POST', '/api/price', { vehicles: sedan, distance: 1300, pickup: '1 Biscayne Blvd, Miami, FL 33132, USA', delivery: '1 Main St, Hartford, CT 06103, USA' });
   check('lane line shows the regions', r.data.lines.some(l => /Lane Florida → Northeast/.test(l.label)), r.data.lines.map(l => l.label));
+  // ---- Year / Make / Model pickers ----
+  r = await api('GET', '/api/vehicles/makes', null, { auth: false });
+  check('makes list served (Ford, Tesla, Ram present, sorted)', r.status === 200 && r.data.makes.includes('Ford') && r.data.makes.includes('Tesla') && r.data.makes.includes('Ram') && r.data.makes.length > 50);
+  r = await api('GET', '/api/vehicles/models', null, { auth: false });
+  check('models need a make', r.status === 400);
+  r = await api('GET', '/api/vehicles/models?make=Zzzunknown', null, { auth: false });
+  check('unknown make → empty list, free text allowed', r.status === 200 && Array.isArray(r.data.models) && r.data.models.length === 0);
   // ---- VIN → vehicle type mapping (what NHTSA returns → our types) ----
   const { vehicleTypeFromVin } = require('../public/js/vin-type.js');
   const vt = (BodyClass, VehicleType, GVWR, Model) => vehicleTypeFromVin({ BodyClass, VehicleType, GVWR, Model });

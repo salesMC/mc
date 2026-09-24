@@ -54,6 +54,7 @@
     .upload-zone:hover { border-color: var(--orange); background: #1C2128; }
   </style>
   <script src="/js/vin-type.js?v=<%= assetVersion %>"></script>
+  <script src="/js/combo.js?v=<%= assetVersion %>"></script>
 </head>
 <body>
 
@@ -114,6 +115,16 @@
             <input type="text" id="vin" placeholder="17-digit VIN" maxlength="17" class="input-dark uppercase">
             <div id="vin-result" class="mt-2 hidden text-sm"></div>
             <div id="vin-error" class="mt-2 hidden text-sm"></div>
+          </div>
+
+          <!-- Year / Make / Model -->
+          <div>
+            <label class="label-dark">Year, make &amp; model <span class="text-muted font-normal">(optional, makes the price more accurate)</span></label>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <input type="text" id="vYear" placeholder="Year" class="input-dark" inputmode="numeric" autocomplete="off">
+              <input type="text" id="vMake" placeholder="Make" class="input-dark" autocomplete="off">
+              <input type="text" id="vModel" placeholder="Model" class="input-dark" autocomplete="off">
+            </div>
           </div>
 
           <!-- Vehicle Type -->
@@ -467,6 +478,11 @@ function getVehicleTypeLabel(type) {
           if (v && v.Make) {
             const t = vehicleTypeFromVin(v);
             if (t) document.getElementById('vehicleType').value = t;
+            await mcVehicleMakes();
+            if (v.ModelYear) document.getElementById('vYear').value = v.ModelYear;
+            document.getElementById('vMake').value = mcPrettyMake(v.Make);
+            if (v.Model) document.getElementById('vModel').value = v.Model;
+            modelCombo.reload();
             vinResult.innerHTML = `${v.ModelYear || ''} ${v.Make} ${v.Model || ''}${t ? ' · ' + VIN_TYPE_LABELS[t] + ' selected' : ''}`;
             vinResult.classList.remove('hidden');
           } else {
@@ -527,6 +543,13 @@ function getVehicleTypeLabel(type) {
       setTimeout(() => document.getElementById('qName').focus(), 50);
     });
 
+    // ==================== YEAR / MAKE / MODEL PICKERS ====================
+    const yearCombo = mcCombo(document.getElementById('vYear'), { items: mcYears(), onSelect: () => modelCombo.reload() });
+    const makeCombo = mcCombo(document.getElementById('vMake'), { items: mcVehicleMakes, onSelect: () => { document.getElementById('vModel').value = ''; modelCombo.reload(); } });
+    const modelCombo = mcCombo(document.getElementById('vModel'), { items: () => mcVehicleModels(document.getElementById('vMake').value, document.getElementById('vYear').value), emptyText: 'Pick a make first, or just type the model.' });
+    document.getElementById('vYear').addEventListener('change', () => modelCombo.reload());
+    mcVehicleMakes(); // warm the list
+
     // ==================== EXTRA VEHICLES ====================
     const VEHICLE_TYPE_OPTIONS = [['sedan', 'Sedan / Compact SUV'], ['mid-suv', 'Mid-size SUV'], ['mini-van', 'Mini Van'], ['full-suv', 'Full-size SUV'], ['pickup', 'Pick-up Truck'], ['cargo-van', 'Cargo Van'], ['passenger-van', 'Passenger Van'], ['other', 'Other']];
     let extraVehicles = [];   // [{ desc, type, condition }]
@@ -566,10 +589,8 @@ function getVehicleTypeLabel(type) {
 
     // What the calculator knows about the vehicle, in the shape checkout uses
     function collectVehicle() {
-      const vinText = (document.getElementById('vin-result')?.textContent || '').split('·')[0].trim(); // "2020 TOYOTA Camry" when the VIN decoded
-      const m = vinText.match(/^(\d{4})\s+(\S+)\s*(.*)$/);
       return {
-        year: m ? m[1] : '', make: m ? m[2] : '', model: m ? m[3] : '',
+        year: document.getElementById('vYear').value.trim(), make: document.getElementById('vMake').value.trim(), model: document.getElementById('vModel').value.trim(),
         vin: (document.getElementById('vin').value || '').trim().toUpperCase(),
         type: document.getElementById('vehicleType').value,
         condition: document.querySelector('input[name="condition"]:checked').value,

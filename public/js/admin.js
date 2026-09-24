@@ -1471,6 +1471,14 @@ function wizRenderVehicle(i) {
     clearTimeout(vinTimer);
     if (e.target.value.trim().length === 17) vinTimer = setTimeout(() => wizDecodeVin(i), 500);
   });
+  // Make / model pickers (type to filter; models follow make + year)
+  if (window.mcCombo) {
+    const mk = document.getElementById('wv-make-' + i), md = document.getElementById('wv-model-' + i), yr = document.getElementById('wv-year-' + i);
+    const modelC = mcCombo(md, { items: () => mcVehicleModels(mk.value, yr.value), emptyText: 'Pick a make first, or just type the model.', onSelect: () => wizSaveVehicle(i) });
+    mcCombo(mk, { items: mcVehicleMakes, onSelect: () => { md.value = ''; wizSaveVehicle(i); modelC.reload(); } });
+    yr.addEventListener('change', () => modelC.reload());
+    mk._modelCombo = modelC;
+  }
 }
 
 function wizSaveVehicle(i) {
@@ -1511,6 +1519,7 @@ async function wizDecodeVin(i) {
     if (d.year)  document.getElementById('wv-year-'  + i).value = d.year;
     if (d.make)  document.getElementById('wv-make-'  + i).value = d.make;
     if (d.model) document.getElementById('wv-model-' + i).value = d.model;
+    { const mk = document.getElementById('wv-make-' + i); if (mk && mk._modelCombo) mk._modelCombo.reload(); }
     if (d.mcType) { const sel = document.getElementById('wv-type-' + i); if (sel) sel.value = d.mcType; }
     ok.innerHTML = `<i class="fas fa-check mr-1"></i>${esc(d.label)}${d.trim ? ' · ' + esc(d.trim) : ''}${d.mcType ? ' · ' + esc(VEHICLE_TYPE_LABELS[d.mcType] || d.mcType) + ' selected' : (d.bodyClass ? ' · ' + esc(d.bodyClass) : '')}`;
     wizSaveVehicle(i); wizUpdateRunningTotal();

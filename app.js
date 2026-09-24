@@ -4431,6 +4431,50 @@ app.post('/api/exchange/listings', requireShipper, async (req, res) => {
 
 // VIN decode via NHTSA
 const { vehicleTypeFromVin } = require('./public/js/vin-type.js');
+
+// ---- Year / Make / Model lists for the pickers. Makes are a curated US-market list with
+// NHTSA make IDs (looking models up by ID keeps trailer makers and body shops out of the list).
+const VEHICLE_MAKES = [['Acura',475],['Alfa Romeo',493],['Aston Martin',440],['Audi',582],['Bentley',583],['BMW',452],['Buick',468],['Cadillac',469],['Chevrolet',467],['Chrysler',477],['Dodge',476],['Ferrari',603],['Fiat',492],['Fisker',11856],['Ford',460],['Genesis',5083],['GMC',472],['Honda',474],['Hummer',951],['Hyundai',498],['Infiniti',480],['Isuzu',542],['Jaguar',442],['Jeep',483],['Kia',499],['Lamborghini',502],['Land Rover',444],['Lexus',515],['Lincoln',464],['Lotus',466],['Lucid',10919],['Maserati',443],['Mazda',473],['McLaren',2236],['Mercedes-Benz',449],['Mercury',465],['Mini',456],['Mitsubishi',481],['Nissan',478],['Oldsmobile',4162],['Plymouth',2409],['Polestar',10224],['Pontiac',536],['Porsche',584],['Ram',496],['Rivian',10887],['Rolls-Royce',445],['Saab',572],['Saturn',1056],['Smart',504],['Subaru',523],['Suzuki',509],['Tesla',441],['Toyota',448],['Volkswagen',482],['Volvo',485]];
+const MAKE_ID = Object.fromEntries(VEHICLE_MAKES.map(([n, id]) => [n.toLowerCase(), id]));
+function prettyMake(name) {
+  name = String(name || '').trim(); if (!name) return name;
+  const hit = VEHICLE_MAKES.find(([n]) => n.toLowerCase() === name.toLowerCase());
+  return hit ? hit[0] : name.toLowerCase().replace(/(^|[\s-])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+}
+const modelsCache = new Map(); // "makeId|year" → { at, models }
+const MODEL_JUNK = /chassis|motorhome|incomplete|cutaway|stripped|commercial|cab & chassis|bus\b/i;
+async function vpicModels(makeId, year) {
+  const key = `${makeId}|${year || ''}`;
+  const hit = modelsCache.get(key);
+  if (hit && Date.now() - hit.at < 7 * 86400000) return hit.models;
+  const url = year
+    ? `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeIdYear/makeId/${makeId}/modelyear/${year}?format=json`
+    : `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeId/${makeId}?format=json`;
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 12000);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal });
+    const j = await r.json();
+    const names = [...new Set((j.Results || []).map(x => String(x.Model_Name || '').trim()).filter(n => n && !MODEL_JUNK.test(n)))];
+    names.sort((x, y) => x.localeCompare(y, 'en', { numeric: true, sensitivity: 'base' }));
+    modelsCache.set(key, { at: Date.now(), models: names });
+    return names;
+  } finally { clearTimeout(timer); }
+}
+const lookupLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 600 });
+app.get('/api/vehicles/makes', (req, res) => { res.setHeader('Cache-Control', 'public, max-age=86400'); res.json({ makes: VEHICLE_MAKES.map(([n]) => n) }); });
+app.get('/api/vehicles/models', lookupLimiter, async (req, res) => {
+  const make = str(req.query.make, 60).trim();
+  const year = /^(19|20)\d{2}$/.test(String(req.query.year || '')) ? String(req.query.year) : '';
+  const id = MAKE_ID[make.toLowerCase()];
+  if (!make) return res.status(400).json({ success: false, message: 'make is required' });
+  if (!id) return res.json({ success: true, make, models: [] });   // unknown make: free text
+  try {
+    let models = await vpicModels(id, year);
+    if (!models.length && year) models = await vpicModels(id, '');   // no data for that year: fall back to all years
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.json({ success: true, make, year, models });
+  } catch (e) { console.error('models lookup:', e.message); res.json({ success: false, make, models: [] }); }
+});
 app.get('/api/vin/:vin', publicLimiter, async (req, res) => {
   const vin = String(req.params.vin || '').trim().toUpperCase();
   if (!/^[A-HJ-NPR-Z0-9]{11,17}$/i.test(vin)) {
@@ -4442,7 +4486,7 @@ app.get('/api/vin/:vin', publicLimiter, async (req, res) => {
     const data = await resp.json();
     const r = (data.Results && data.Results[0]) || {};
     const year = r.ModelYear || null;
-    const make = r.Make || null;
+    const make = r.Make ? prettyMake(r.Make) : null;
     const model = r.Model || null;
     const type = r.VehicleType || r.BodyClass || null;
     const label = [year, make, model].filter(Boolean).join(' ');

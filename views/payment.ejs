@@ -237,6 +237,7 @@
     }
   </style>
   <script src="/js/vin-type.js?v=<%= assetVersion %>"></script>
+  <script src="/js/combo.js?v=<%= assetVersion %>"></script>
 </head>
 <body>
 
@@ -632,6 +633,11 @@
         if (make)  make.value  = v.make  || '';
         if (model) model.value = v.model || '';
         if (vin)   vin.value   = v.vin   || '';
+        // Make / model pickers: type to filter; models follow the make and year
+        const modelC = mcCombo(model, { items: () => mcVehicleModels(make.value, yearSelect.value), emptyText: 'Pick a make first, or just type the model.', onSelect: val => { formData.vehicles[i].model = val; } });
+        mcCombo(make, { items: mcVehicleMakes, onSelect: val => { formData.vehicles[i].make = val; model.value = ''; formData.vehicles[i].model = ''; modelC.reload(); } });
+        yearSelect.addEventListener('change', () => modelC.reload());
+        make._modelCombo = modelC;
 
         document.getElementById('vehicleType-' + i).value = v.type || 'sedan';
         const condEl = document.querySelector(`input[name="condition-${i}"][value="${v.condition || 'operable'}"]`);
@@ -787,9 +793,11 @@
           if (vehicle?.Make) {
             resultDiv.textContent = `${vehicle.ModelYear || ''} ${vehicle.Make} ${vehicle.Model || ''}`;
             resultDiv.classList.remove('hidden');
+            await mcVehicleMakes();
             if (vehicle.ModelYear) document.getElementById('year-' + i).value = vehicle.ModelYear;
-            if (vehicle.Make)      document.getElementById('make-' + i).value = vehicle.Make;
+            if (vehicle.Make)      document.getElementById('make-' + i).value = mcPrettyMake(vehicle.Make);
             if (vehicle.Model)     document.getElementById('model-'+ i).value = vehicle.Model;
+            const mk = document.getElementById('make-' + i); if (mk && mk._modelCombo) mk._modelCombo.reload();
             const t = vehicleTypeFromVin(vehicle);
             if (t) {
               const sel = document.getElementById('vehicleType-' + i);
