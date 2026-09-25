@@ -297,6 +297,26 @@ async function sendAndAuthorize(id, fee) {
   check('models need a make', r.status === 400);
   r = await api('GET', '/api/vehicles/models?make=Zzzunknown', null, { auth: false });
   check('unknown make → empty list, free text allowed', r.status === 200 && Array.isArray(r.data.models) && r.data.models.length === 0);
+  // ---- Quoted price honored at checkout (7 days, same vehicle + route; dates don't matter) ----
+  const qVeh = [{ year: '2025', make: 'Ford', model: 'F-150', type: 'full-suv', condition: 'operable' }];
+  const qBody = { vehicles: qVeh, distance: 163, transportType: 'open', pickup: 'Oxmoor Center, Louisville, KY', delivery: 'Toyota of Gallatin, Gallatin, TN', pickupLat: 38.24, pickupLng: -85.62, deliveryLat: 36.38, deliveryLng: -86.45 };
+  r = await api('POST', '/api/quotes', { name: 'Lock Tester', email: 'quote-lock@example.test', phone: '555-0177', ...qBody }, { auth: false });
+  const lockTok = r.data.quoteId, lockTotal = r.data.total;
+  const soon = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const pRushQ = await priceVia(qVeh, 163, { transportType: 'open', pickupDate: soon, pickupLat: 38.24, pickupLng: -85.62, deliveryLat: 36.38, deliveryLng: -86.45 });
+  check('without the quote, a next-day pickup costs more (short notice)', pRushQ > lockTotal, { pRushQ, lockTotal });
+  r = await api('POST', '/api/price', { ...qBody, pickupDate: soon, quoteToken: lockTok }, { auth: false });
+  check('with the quote link, the quoted price stands whatever the dates', r.data.quoteLocked === true && r.data.total === lockTotal, r.data);
+  r = await api('POST', '/api/create-payment-intent', { ...qBody, pickupDate: soon, quoteToken: lockTok }, { auth: false });
+  check('the card is charged the quoted amount', r.data.success && r.data.amount === lockTotal && S.intents[r.data.paymentIntentId].metadata.quoteToken === lockTok, r.data);
+  r = await api('POST', '/api/price', { ...qBody, vehicles: [{ ...qVeh[0], type: 'pickup', urgent: true }], pickupDate: soon, quoteToken: lockTok }, { auth: false });
+  check('change the vehicle → live price, flagged as changed', r.data.quoteLocked === false && r.data.quoteChanged === true && r.data.total !== lockTotal, r.data);
+  await pool.execute('UPDATE quotes SET created_at = DATE_SUB(NOW(), INTERVAL 8 DAY) WHERE token = ?', [lockTok]);
+  r = await api('POST', '/api/price', { ...qBody, pickupDate: soon, quoteToken: lockTok }, { auth: false });
+  check('after 7 days → live price, flagged as expired', r.data.quoteLocked === false && r.data.quoteExpired === true && r.data.total === pRushQ, r.data);
+  await pool.execute('DELETE FROM quotes WHERE token = ?', [lockTok]);
+  r = await api('GET', '/api/leads?q=quote-lock&page=1');
+  for (const l of ((r.data && r.data.leads) || [])) await api('DELETE', '/api/leads/' + l.id);
   // ---- VIN → vehicle type mapping (what NHTSA returns → our types) ----
   const { vehicleTypeFromVin } = require('../public/js/vin-type.js');
   const vt = (BodyClass, VehicleType, GVWR, Model) => vehicleTypeFromVin({ BodyClass, VehicleType, GVWR, Model });

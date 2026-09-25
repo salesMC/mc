@@ -805,6 +805,43 @@ async function computeQuoteLive(vehicles, distance, opts = {}) {
   if (ctx.pricing.weight.enabled) input.weights = await Promise.all((vehicles || []).map(v => lookupVehicleWeight(ctx.pricing, v).catch(() => null)));
   return priceQuote(ctx, input);
 }
+// Checkout pricing with the quote honored: same vehicles + same route within 7 days → the quoted total,
+// whatever dates the customer picks. Otherwise (changed, expired, no quote) → live price.
+const QUOTE_VALID_DAYS = 7;
+function quoteMatchesInput(q, vehicles, distance, opts) {
+  if ((q.transport_type || 'open') !== (opts.transportType || 'open')) return false;
+  const qd = Number(q.distance) || 0;
+  if (Math.abs(qd - distance) > Math.max(5, qd * 0.03)) return false;
+  const qv = quoteVehicles(q.vehicle_json);
+  if (qv.length !== vehicles.length) return false;
+  const sig = v => [v.type || 'sedan', v.condition === 'inoperable' ? 'inop' : 'op', v.modified ? 'mod' : '', v.urgent ? 'urg' : '', String(v.year || ''), String(v.make || '').toLowerCase(), String(v.model || '').toLowerCase()].join('|');
+  for (let i = 0; i < qv.length; i++) if (sig(qv[i]) !== sig(vehicles[i])) return false;
+  const near = (la1, ln1, la2, ln2) => [la1, ln1, la2, ln2].every(n => Number.isFinite(Number(n))) && Math.abs(la1 - la2) < 0.02 && Math.abs(ln1 - ln2) < 0.02;
+  const sameText = (x, y) => String(x || '').trim().toLowerCase() === String(y || '').trim().toLowerCase();
+  const pickOk = near(q.pickup_lat, q.pickup_lng, opts.pickupLat, opts.pickupLng) || sameText(q.pickup, opts.pickup);
+  const delOk = near(q.delivery_lat, q.delivery_lng, opts.deliveryLat, opts.deliveryLng) || sameText(q.delivery, opts.delivery);
+  return pickOk && delOk;
+}
+async function computeCheckoutPrice(quoteToken, vehicles, distance, opts = {}) {
+  const priced = await computeQuoteLive(vehicles, distance, opts);
+  const out = { ...priced, quoteLocked: false, quoteExpired: false, quoteChanged: false };
+  const token = str(quoteToken, 64);
+  if (!/^[a-f0-9]{48}$/.test(token)) return out;
+  let q = null;
+  try { const [rows] = await pool.execute('SELECT * FROM quotes WHERE token = ?', [token]); q = rows[0] || null; } catch (e) {}
+  if (!q) return out;
+  const ageDays = (Date.now() - new Date(q.created_at).getTime()) / 86400000;
+  if (ageDays > QUOTE_VALID_DAYS) { out.quoteExpired = true; return out; }
+  if (!quoteMatchesInput(q, vehicles, distance, opts)) { out.quoteChanged = true; return out; }
+  const quoted = Math.round(Number(q.total));
+  if (quoted > 0 && quoted !== priced.total) {
+    out.lines = [...priced.lines, { label: `Quoted price honored (quote of ${new Date(q.created_at).toLocaleDateString('en-US')}, valid ${QUOTE_VALID_DAYS} days)`, amount: quoted - priced.total }];
+    out.transport = Math.max(0, priced.transport + (quoted - priced.total));
+    out.total = quoted;
+  }
+  out.quoteLocked = true; out.quoteDate = q.created_at;
+  return out;
+}
 // Address/coordinate fields from a request body, sanitized
 function locationOpts(b) {
   const n = (x) => { const v = Number(x); return Number.isFinite(v) ? v : undefined; };
@@ -1915,7 +1952,7 @@ app.post('/api/orders', publicLimiter, async (req, res) => {
     try {
       if (isAdmin && b.pricing && typeof b.pricing === 'object') pricingJson = JSON.stringify({ lines: Array.isArray(b.pricing.lines) ? b.pricing.lines.slice(0, 30) : [], factors: b.pricing.factors || {}, cpm: b.pricing.cpm, quotedTotal: total });
       else if (!isAdmin) {
-        const rec = await computeQuoteLive(vehicles, distance || 0, { transportType, pickupDate, mustDeliverBy, pickup: location.pickup, delivery: location.delivery, pickupLat: Number(loc.pickupLat), pickupLng: Number(loc.pickupLng), deliveryLat: Number(loc.deliveryLat), deliveryLng: Number(loc.deliveryLng) });
+        const rec = await computeCheckoutPrice(b.quoteToken, vehicles, distance || 0, { transportType, pickupDate, mustDeliverBy, pickup: location.pickup, delivery: location.delivery, pickupLat: Number(loc.pickupLat), pickupLng: Number(loc.pickupLng), deliveryLat: Number(loc.deliveryLat), deliveryLng: Number(loc.deliveryLng) });
         pricingJson = JSON.stringify({ lines: rec.lines, factors: rec.factors, cpm: rec.cpm, quotedTotal: total });
       }
     } catch (e) { console.error('pricing record:', e.message); }
@@ -3325,13 +3362,15 @@ app.post('/api/price', publicLimiter, async (req, res) => {
     if (!vehicles || !vehicles.length) return res.status(400).json({ success: false, message: 'At least one vehicle is required' });
     const distance = Number(req.body.distance);
     if (!(distance >= 0 && distance <= 6000)) return res.status(400).json({ success: false, message: 'Invalid distance' });
-    const priced = await computeQuoteLive(vehicles, distance, {
+    const priced = await computeCheckoutPrice(req.body.quoteToken, vehicles, distance, {
       transportType: req.body.transportType === 'enclosed' ? 'enclosed' : 'open',
       pickupDate: str(req.body.pickupDate, 10), mustDeliverBy: str(req.body.mustDeliverBy, 10), ...locationOpts(req.body)
     });
     const isAdmin = !!(req.session && req.session.role === 'admin');
     const feesTotal = (priced.fees || []).reduce((s, f) => s + f.amount, 0);
-    res.json({ success: true, total: priced.total, transport: priced.transport + feesTotal, addons: priced.addons, requiresCall: priced.requiresCall, ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors, fees: priced.fees } : {}) });
+    res.json({ success: true, total: priced.total, transport: priced.transport + feesTotal, addons: priced.addons, requiresCall: priced.requiresCall,
+      quoteLocked: priced.quoteLocked, quoteExpired: priced.quoteExpired, quoteChanged: priced.quoteChanged,
+      ...(isAdmin ? { subtotal: priced.subtotal, cpm: priced.cpm, lines: priced.lines, factors: priced.factors, fees: priced.fees } : {}) });
   } catch (err) { console.error('POST /api/price:', err); res.status(500).json({ success: false }); }
 });
 
@@ -3432,7 +3471,7 @@ app.post('/api/create-payment-intent', publicLimiter, async (req, res) => {
 
     const transportType = req.body.transportType === 'enclosed' ? 'enclosed' : 'open';
     const pickupDate = str(req.body.pickupDate, 10), mustDeliverBy = str(req.body.mustDeliverBy, 10);
-    const priced = await computeQuoteLive(vehicles, distance, { transportType, pickupDate, mustDeliverBy, ...locationOpts(req.body) });
+    const priced = await computeCheckoutPrice(req.body.quoteToken, vehicles, distance, { transportType, pickupDate, mustDeliverBy, ...locationOpts(req.body) });
     const subtotal = priced.total;
     const promo = req.body.promoCode ? await findActivePromo(req.body.promoCode) : null;
     const discount = promoDiscount(promo, subtotal);
@@ -3452,7 +3491,8 @@ app.post('/api/create-payment-intent', publicLimiter, async (req, res) => {
         vehicles: String(vehicles.length),
         subtotal: String(subtotal),
         promoCode: promo ? promo.code : '',
-        discount: String(discount)
+        discount: String(discount),
+        quoteToken: priced.quoteLocked ? str(req.body.quoteToken, 64) : ''
       }
     });
     res.json({ success: true, clientSecret: paymentIntent.client_secret, paymentIntentId: paymentIntent.id, amount: total, subtotal, discount });
