@@ -541,15 +541,22 @@ async function aiVehicleWeight(year, make, model) {
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: process.env.AI_MODEL || 'claude-sonnet-5', max_tokens: 120,
-        system: 'You classify a production vehicle for a car-hauler pricing system. Reply with JSON only: {"curbWeightLbs": number|null, "bodyType": "sedan"|"mid-suv"|"full-suv"|"mini-van"|"pickup"|"cargo-van"|"passenger-van"|"other"|null, "note": "short"}. curbWeightLbs = typical curb weight, heaviest common trim if trims vary a lot. bodyType: sedan = cars, coupes, hatchbacks, wagons and compact crossovers (CR-V, RAV4, Equinox); mid-suv = mid-size SUVs (Explorer, Grand Cherokee, Highlander, Pilot); full-suv = full-size SUVs (Tahoe, Expedition, Yukon, Sequoia, Escalade); mini-van = minivans; pickup = all pickup trucks; cargo-van = work vans; passenger-van = 8+ seat vans; other = motorcycles, RVs, box trucks, anything else. Unknown model → nulls.',
+        system: 'You classify a production vehicle for a car-hauler pricing system. Reply with JSON only: {"curbWeightLbs": number|null, "bodyType": "sedan"|"mid-suv"|"full-suv"|"mini-van"|"pickup"|"cargo-van"|"passenger-van"|"other"|null, "note": "short"}. curbWeightLbs = typical curb weight, heaviest common trim if trims vary a lot. bodyType: sedan = cars, coupes, hatchbacks, wagons and compact crossovers (CR-V, RAV4, Equinox); mid-suv = mid-size SUVs (Explorer, Grand Cherokee, Highlander, Pilot); full-suv = full-size SUVs (Tahoe, Expedition, Yukon, Sequoia, Escalade); mini-van = minivans; pickup = all pickup trucks; cargo-van = work vans; passenger-van = 8+ seat vans; other = motorcycles, RVs, box trucks, anything else. A van name without "passenger"/"wagon"/"crew" is a cargo-van. Unknown model → nulls. Output exactly one JSON object and nothing else, no second object for other variants, no comments.',
         messages: [{ role: 'user', content: `${year || ''} ${make} ${model}`.trim() }]
       })
     });
     const j = await r.json();
+    if (!r.ok) throw new Error((j && j.error && j.error.message) || ('HTTP ' + r.status));
     const text = j && j.content && j.content[0] && j.content[0].text || '';
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) throw new Error('no JSON in AI reply');
-    const out = JSON.parse(m[0]);
+    // First balanced {...} object; if that still isn't clean JSON, pull the two fields out by hand
+    let out = null;
+    const m = text.match(/\{[^{}]*\}/);
+    if (m) { try { out = JSON.parse(m[0]); } catch (e) { out = null; } }
+    if (!out) {
+      const lbsM = text.match(/"curbWeightLbs"\s*:\s*"?(\d{3,5})/i), typeM = text.match(/"bodyType"\s*:\s*"([a-z-]+)"/i);
+      if (!lbsM && !typeM) throw new Error('no JSON in AI reply: ' + text.slice(0, 160).replace(/\s+/g, ' '));
+      out = { curbWeightLbs: lbsM ? Number(lbsM[1]) : null, bodyType: typeM ? typeM[1] : null, note: 'parsed loosely' };
+    }
     const lbs = Number(out.curbWeightLbs);
     const type = VEHICLE_TYPES.includes(out.bodyType) ? out.bodyType : null;
     return { lbs: Number.isFinite(lbs) && lbs >= 500 && lbs <= 40000 ? Math.round(lbs) : null, type, note: String(out.note || '').slice(0, 200) };
