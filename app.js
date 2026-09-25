@@ -808,14 +808,14 @@ async function computeQuoteLive(vehicles, distance, opts = {}) {
 // Checkout pricing with the quote honored: same vehicles + same route within 7 days → the quoted total,
 // whatever dates the customer picks. Otherwise (changed, expired, no quote) → live price.
 const QUOTE_VALID_DAYS = 7;
+// Same job = same number of vehicles, same size class per vehicle, same route. Options
+// (inoperable / modified / urgent / enclosed) are allowed to differ: they adjust the quoted price.
 function quoteMatchesInput(q, vehicles, distance, opts) {
-  if ((q.transport_type || 'open') !== (opts.transportType || 'open')) return false;
   const qd = Number(q.distance) || 0;
   if (Math.abs(qd - distance) > Math.max(5, qd * 0.03)) return false;
   const qv = quoteVehicles(q.vehicle_json);
   if (qv.length !== vehicles.length) return false;
-  const sig = v => [v.type || 'sedan', v.condition === 'inoperable' ? 'inop' : 'op', v.modified ? 'mod' : '', v.urgent ? 'urg' : '', String(v.year || ''), String(v.make || '').toLowerCase(), String(v.model || '').toLowerCase()].join('|');
-  for (let i = 0; i < qv.length; i++) if (sig(qv[i]) !== sig(vehicles[i])) return false;
+  for (let i = 0; i < qv.length; i++) if ((qv[i].type || 'sedan') !== (vehicles[i].type || 'sedan')) return false;
   const near = (la1, ln1, la2, ln2) => [la1, ln1, la2, ln2].every(n => Number.isFinite(Number(n))) && Math.abs(la1 - la2) < 0.02 && Math.abs(ln1 - ln2) < 0.02;
   const sameText = (x, y) => String(x || '').trim().toLowerCase() === String(y || '').trim().toLowerCase();
   const pickOk = near(q.pickup_lat, q.pickup_lng, opts.pickupLat, opts.pickupLng) || sameText(q.pickup, opts.pickup);
@@ -833,12 +833,17 @@ async function computeCheckoutPrice(quoteToken, vehicles, distance, opts = {}) {
   const ageDays = (Date.now() - new Date(q.created_at).getTime()) / 86400000;
   if (ageDays > QUOTE_VALID_DAYS) { out.quoteExpired = true; return out; }
   if (!quoteMatchesInput(q, vehicles, distance, opts)) { out.quoteChanged = true; return out; }
-  const quoted = Math.round(Number(q.total));
-  if (quoted > 0 && quoted !== priced.total) {
-    out.lines = [...priced.lines, { label: `Quoted price honored (quote of ${new Date(q.created_at).toLocaleDateString('en-US')}, valid ${QUOTE_VALID_DAYS} days)`, amount: quoted - priced.total }];
-    out.transport = Math.max(0, priced.transport + (quoted - priced.total));
-    out.total = quoted;
-  }
+  // Quoted transport = quoted total minus the options that were in the quote; then today's options go back on top
+  const ctx = await getPricingContext();
+  const addonTotal = list => list.reduce((s, v) => s + (v.condition === 'inoperable' ? ctx.cfg.addons.inoperable : 0) + (v.modified ? ctx.cfg.addons.modified : 0) + (v.urgent ? ctx.cfg.addons.urgent : 0), 0);
+  let transport = Math.round(Number(q.total)) - addonTotal(quoteVehicles(q.vehicle_json));
+  const wasEnclosed = (q.transport_type || 'open') === 'enclosed', isEnclosed = (opts.transportType || 'open') === 'enclosed';
+  if (wasEnclosed !== isEnclosed) transport = transport * (isEnclosed ? ctx.pricing.enclosedMultiplier : 1 / ctx.pricing.enclosedMultiplier);
+  transport = Math.max(ctx.pricing.minimumPrice, Math.round(transport));
+  const nowAddons = (priced.addons || []).reduce((s, x) => s + x.amount, 0);
+  const total = transport + nowAddons;
+  if (total !== priced.total) out.lines = [...priced.lines, { label: `Quoted price honored (quote of ${new Date(q.created_at).toLocaleDateString('en-US')}, valid ${QUOTE_VALID_DAYS} days)${wasEnclosed !== isEnclosed ? (isEnclosed ? ', switched to enclosed' : ', switched to open') : ''}`, amount: total - priced.total }];
+  out.transport = transport; out.fees = []; out.total = total;
   out.quoteLocked = true; out.quoteDate = q.created_at;
   return out;
 }

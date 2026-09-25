@@ -309,8 +309,13 @@ async function sendAndAuthorize(id, fee) {
   check('with the quote link, the quoted price stands whatever the dates', r.data.quoteLocked === true && r.data.total === lockTotal, r.data);
   r = await api('POST', '/api/create-payment-intent', { ...qBody, pickupDate: soon, quoteToken: lockTok }, { auth: false });
   check('the card is charged the quoted amount', r.data.success && r.data.amount === lockTotal && S.intents[r.data.paymentIntentId].metadata.quoteToken === lockTok, r.data);
+  const cfgL = (await api('GET', '/api/settings/calculator', null, { auth: false })).data;
+  r = await api('POST', '/api/price', { ...qBody, vehicles: [{ ...qVeh[0], urgent: true, modified: true }], pickupDate: soon, quoteToken: lockTok }, { auth: false });
+  check('adding urgent + modified → quoted price plus those two fees, still locked', r.data.quoteLocked === true && r.data.total === lockTotal + cfgL.addons.urgent + cfgL.addons.modified, { got: r.data.total, want: lockTotal + cfgL.addons.urgent + cfgL.addons.modified });
+  r = await api('POST', '/api/price', { ...qBody, transportType: 'enclosed', pickupDate: soon, quoteToken: lockTok }, { auth: false });
+  check('switching to enclosed → quoted price × enclosed multiplier, still locked', r.data.quoteLocked === true && r.data.total === Math.round(lockTotal * 1.45), { got: r.data.total, want: Math.round(lockTotal * 1.45) });
   r = await api('POST', '/api/price', { ...qBody, vehicles: [{ ...qVeh[0], type: 'pickup', urgent: true }], pickupDate: soon, quoteToken: lockTok }, { auth: false });
-  check('change the vehicle → live price, flagged as changed', r.data.quoteLocked === false && r.data.quoteChanged === true && r.data.total !== lockTotal, r.data);
+  check('change the vehicle type → live price, flagged as changed', r.data.quoteLocked === false && r.data.quoteChanged === true && r.data.total !== lockTotal, r.data);
   await pool.execute('UPDATE quotes SET created_at = DATE_SUB(NOW(), INTERVAL 8 DAY) WHERE token = ?', [lockTok]);
   r = await api('POST', '/api/price', { ...qBody, pickupDate: soon, quoteToken: lockTok }, { auth: false });
   check('after 7 days → live price, flagged as expired', r.data.quoteLocked === false && r.data.quoteExpired === true && r.data.total === pRushQ, r.data);

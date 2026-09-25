@@ -1474,9 +1474,9 @@
       const state = d.quoteLocked ? 'locked' : d.quoteExpired ? 'expired' : d.quoteChanged ? 'changed' : '';
       if (state === quoteBannerState) return; quoteBannerState = state;
       const t = '$' + Number(d.total).toLocaleString();
-      if (state === 'locked') b.querySelector('.qb-text').innerHTML = '<strong class="text-white">Your quoted price is honored: ' + t + '</strong><div class="text-dim mt-1">Same vehicle, same route, so the price from your quote stands no matter which dates you pick. Add photos or notes if you like, choose your dates, check the summary, and pay.</div>';
+      if (state === 'locked') b.querySelector('.qb-text').innerHTML = '<strong class="text-white">Your quoted price is honored: ' + t + '</strong><div class="text-dim mt-1">Same vehicle, same route, so the price from your quote stands no matter which dates you pick. Only extras you add here, like urgent delivery or enclosed transport, go on top. Choose your dates, check the summary, and pay.</div>';
       else if (state === 'expired') { b.style.cssText = 'background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.35);'; b.querySelector('.qb-text').innerHTML = '<strong class="text-white">Your quote has expired. Today\'s price is ' + t + '</strong><div class="text-dim mt-1">Quotes are good for 7 days. Everything else from your quote is still filled in.</div>'; }
-      else if (state === 'changed') { b.style.cssText = 'background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.35);'; b.querySelector('.qb-text').innerHTML = '<strong class="text-white">Details changed, price updated: ' + t + '</strong><div class="text-dim mt-1">The vehicle or route differs from your quote, so this is today\'s price for what you entered now.</div>'; }
+      else if (state === 'changed') { b.style.cssText = 'background: rgba(251,191,36,0.08); border: 1px solid rgba(251,191,36,0.35);'; b.querySelector('.qb-text').innerHTML = '<strong class="text-white">Details changed, price updated: ' + t + '</strong><div class="text-dim mt-1">The vehicle type or the route differs from your quote, so this is today\'s price for what you entered now.</div>'; }
     }
     async function loadQuoteFromLink() {
       const token = new URLSearchParams(location.search).get('quote') || '';
