@@ -508,7 +508,7 @@ function nearestMetro(lat, lng) {
 async function aiAssessLocation(address, lat, lng, metro) {
   const key = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!key) return null;
-  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 12000);
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 25000);
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', signal: ctrl.signal,
@@ -534,7 +534,7 @@ async function aiAssessLocation(address, lat, lng, metro) {
 async function aiVehicleWeight(year, make, model) {
   const key = (process.env.ANTHROPIC_API_KEY || '').trim();
   if (!key) return null;
-  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 12000);
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 25000);
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST', signal: ctrl.signal,
@@ -4500,7 +4500,7 @@ async function vpicModels(makeId, year) {
   const url = year
     ? `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeIdYear/makeId/${makeId}/modelyear/${year}?format=json`
     : `https://vpic.nhtsa.dot.gov/api/vehicles/GetModelsForMakeId/${makeId}?format=json`;
-  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 12000);
+  const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), 25000);
   try {
     const r = await fetch(url, { signal: ctrl.signal });
     const j = await r.json();
