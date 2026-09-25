@@ -541,7 +541,7 @@ async function aiVehicleWeight(year, make, model) {
       headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
         model: process.env.AI_MODEL || 'claude-sonnet-5', max_tokens: 120,
-        system: 'You give the typical curb weight of a production vehicle in pounds for a car-hauler pricing system. Reply with JSON only: {"curbWeightLbs": number|null, "note": "short"}. Use the heaviest common trim if trims vary a lot. If the model is unknown or not a road vehicle, use null.',
+        system: 'You classify a production vehicle for a car-hauler pricing system. Reply with JSON only: {"curbWeightLbs": number|null, "bodyType": "sedan"|"mid-suv"|"full-suv"|"mini-van"|"pickup"|"cargo-van"|"passenger-van"|"other"|null, "note": "short"}. curbWeightLbs = typical curb weight, heaviest common trim if trims vary a lot. bodyType: sedan = cars, coupes, hatchbacks, wagons and compact crossovers (CR-V, RAV4, Equinox); mid-suv = mid-size SUVs (Explorer, Grand Cherokee, Highlander, Pilot); full-suv = full-size SUVs (Tahoe, Expedition, Yukon, Sequoia, Escalade); mini-van = minivans; pickup = all pickup trucks; cargo-van = work vans; passenger-van = 8+ seat vans; other = motorcycles, RVs, box trucks, anything else. Unknown model → nulls.',
         messages: [{ role: 'user', content: `${year || ''} ${make} ${model}`.trim() }]
       })
     });
@@ -551,7 +551,8 @@ async function aiVehicleWeight(year, make, model) {
     if (!m) throw new Error('no JSON in AI reply');
     const out = JSON.parse(m[0]);
     const lbs = Number(out.curbWeightLbs);
-    return { lbs: Number.isFinite(lbs) && lbs >= 500 && lbs <= 40000 ? Math.round(lbs) : null, note: String(out.note || '').slice(0, 200) };
+    const type = VEHICLE_TYPES.includes(out.bodyType) ? out.bodyType : null;
+    return { lbs: Number.isFinite(lbs) && lbs >= 500 && lbs <= 40000 ? Math.round(lbs) : null, type, note: String(out.note || '').slice(0, 200) };
   } catch (e) { console.error('aiVehicleWeight:', e.message); return null; }
   finally { clearTimeout(timer); }
 }
@@ -562,18 +563,21 @@ async function lookupVehicleWeight(P, v) {
   const key = crypto.createHash('sha256').update(keyStr).digest('hex');
   let row = null;
   try { const [rows] = await pool.execute('SELECT * FROM vehicle_weights WHERE weight_key = ?', [key]); row = rows[0] || null; } catch (e) {}
-  if (!row && P.weight.aiEnabled) {
+  // Ask the AI when the model is new, or when an older row has no body type yet (added later)
+  const needsAsk = !row || (row.body_type == null && row.source === 'ai' && row.override_lbs == null);
+  if (needsAsk && P.weight.aiEnabled) {
     const ai = await aiVehicleWeight(year, make, model);
     if (ai) {
       try {
-        await pool.execute('INSERT IGNORE INTO vehicle_weights (weight_key, year, make, model, curb_lbs, note, source) VALUES (?,?,?,?,?,?,?)', [key, year || null, make, model, ai.lbs, ai.note || null, 'ai']);
+        if (row) await pool.execute('UPDATE vehicle_weights SET body_type = ?, curb_lbs = COALESCE(curb_lbs, ?), note = COALESCE(note, ?) WHERE weight_key = ?', [ai.type, ai.lbs, ai.note || null, key]);
+        else await pool.execute('INSERT IGNORE INTO vehicle_weights (weight_key, year, make, model, curb_lbs, body_type, note, source) VALUES (?,?,?,?,?,?,?,?)', [key, year || null, make, model, ai.lbs, ai.type, ai.note || null, 'ai']);
         const [rows] = await pool.execute('SELECT * FROM vehicle_weights WHERE weight_key = ?', [key]); row = rows[0] || null;
-      } catch (e) { console.error('vehicle_weights insert:', e.message); }
+      } catch (e) { console.error('vehicle_weights save:', e.message); }
     }
   }
   if (!row) return null;
   const lbs = row.override_lbs != null ? Number(row.override_lbs) : (row.curb_lbs != null ? Number(row.curb_lbs) : null);
-  return lbs ? { lbs, source: row.override_lbs != null ? 'override' : (row.source || 'ai'), note: row.note || '' } : null;
+  return { lbs: lbs || null, type: row.body_type || null, source: row.override_lbs != null ? 'override' : (row.source || 'ai'), note: row.note || '' };
 }
 function weightTier(P, lbs) {
   if (!P.weight || !P.weight.enabled) return null;
@@ -718,7 +722,7 @@ function priceQuote(ctx, input) {
     const mult = cfg.multipliers[v.type] || 1;
     base *= mult;
     if (enclosed) base *= P.enclosedMultiplier;
-    const w = input.weights && input.weights[i];
+    const w = input.weights && input.weights[i] && input.weights[i].lbs ? input.weights[i] : null;
     const wt = weightTier(P, w && w.lbs);
     if (wt) { base *= 1 + wt.pct / 100; weights.push({ vehicle: i, lbs: w ? w.lbs : null, pct: wt.pct, source: w ? w.source : 'none' }); }
     let price = base;
@@ -1039,6 +1043,7 @@ async function initDB() {
     for (const [col, def] of [['pickup_lat', 'DECIMAL(9,6)'], ['pickup_lng', 'DECIMAL(9,6)'], ['delivery_lat', 'DECIMAL(9,6)'], ['delivery_lng', 'DECIMAL(9,6)'], ['followup1_at', 'DATETIME'], ['followup2_at', 'DATETIME']]) {
       try { await conn.execute(`ALTER TABLE quotes ADD COLUMN ${col} ${def}`); } catch (e) { /* exists */ }
     }
+    try { await conn.execute('ALTER TABLE vehicle_weights ADD COLUMN body_type VARCHAR(20)'); } catch (e) { /* exists */ }
 
     // Таблица клиентов (CRM) — orders link to a customer by contact.email
     await conn.execute(`
@@ -3399,7 +3404,7 @@ app.get('/api/vehicle-weights', requireAdmin, async (req, res) => {
     const [rows] = q
       ? await pool.execute("SELECT * FROM vehicle_weights WHERE CONCAT_WS(' ', year, make, model) LIKE ? ORDER BY created_at DESC LIMIT 100", ['%' + q + '%'])
       : await pool.execute('SELECT * FROM vehicle_weights ORDER BY created_at DESC LIMIT 100');
-    res.json(rows.map(r => ({ id: r.id, year: r.year, make: r.make, model: r.model, curbLbs: r.curb_lbs, note: r.note, source: r.source, overrideLbs: r.override_lbs, createdAt: r.created_at })));
+    res.json(rows.map(r => ({ id: r.id, year: r.year, make: r.make, model: r.model, curbLbs: r.curb_lbs, bodyType: r.body_type, note: r.note, source: r.source, overrideLbs: r.override_lbs, createdAt: r.created_at })));
   } catch (err) { res.json([]); }
 });
 app.patch('/api/vehicle-weights/:id', requireAdmin, async (req, res) => {
@@ -4519,6 +4524,16 @@ app.get('/api/vehicles/models', lookupLimiter, async (req, res) => {
     res.setHeader('Cache-Control', 'public, max-age=3600');
     res.json({ success: true, make, year, models });
   } catch (e) { console.error('models lookup:', e.message); res.json({ success: false, make, models: [] }); }
+});
+// What kind of vehicle is "2024 Ford F-150"? Body type + weight from the cached AI lookup (used to auto-pick the type)
+app.get('/api/vehicles/info', lookupLimiter, async (req, res) => {
+  try {
+    const v = { year: str(req.query.year, 4), make: str(req.query.make, 60), model: str(req.query.model, 60) };
+    if (!v.make || !v.model) return res.status(400).json({ success: false, message: 'make and model are required' });
+    const P = await getPricing();
+    const info = await lookupVehicleWeight(P, v);
+    res.json({ success: true, type: info ? info.type : null, lbs: info ? info.lbs : null });
+  } catch (e) { res.json({ success: true, type: null, lbs: null }); }
 });
 app.get('/api/vin/:vin', publicLimiter, async (req, res) => {
   const vin = String(req.params.vin || '').trim().toUpperCase();

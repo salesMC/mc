@@ -633,7 +633,12 @@
         if (model) model.value = v.model || '';
         if (vin)   vin.value   = v.vin   || '';
         // Make / model pickers: type to filter; models follow the make and year
-        const modelC = mcCombo(model, { items: () => mcVehicleModels(make.value, yearSelect.value), emptyText: 'Pick a make first, or just type the model.', onSelect: val => { formData.vehicles[i].model = val; } });
+        const modelC = mcCombo(model, { items: () => mcVehicleModels(make.value, yearSelect.value), emptyText: 'Pick a make first, or just type the model.', onSelect: async val => {
+          formData.vehicles[i].model = val;
+          const info = await mcVehicleInfo(yearSelect.value, make.value, val);
+          const sel = document.getElementById('vehicleType-' + i);
+          if (info && info.type && sel) { sel.value = info.type; formData.vehicles[i].type = info.type; calculateAndUpdateTotal(); }
+        } });
         mcCombo(make, { items: mcVehicleMakes, onSelect: val => { formData.vehicles[i].make = val; model.value = ''; formData.vehicles[i].model = ''; modelC.reload(); } });
         yearSelect.addEventListener('change', () => modelC.reload());
         make._modelCombo = modelC;

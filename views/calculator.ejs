@@ -140,6 +140,7 @@
               <option value="passenger-van">Passenger Van</option>
               <option value="other">Other</option>
             </select>
+            <div id="typeAutoNote" class="hidden mt-2 text-xs text-muted"></div>
           </div>
 
           <!-- Condition -->
@@ -546,7 +547,18 @@ function getVehicleTypeLabel(type) {
     // ==================== YEAR / MAKE / MODEL PICKERS ====================
     const yearCombo = mcCombo(document.getElementById('vYear'), { items: mcYears(), onSelect: () => modelCombo.reload() });
     const makeCombo = mcCombo(document.getElementById('vMake'), { items: mcVehicleMakes, onSelect: () => { document.getElementById('vModel').value = ''; modelCombo.reload(); } });
-    const modelCombo = mcCombo(document.getElementById('vModel'), { items: () => mcVehicleModels(document.getElementById('vMake').value, document.getElementById('vYear').value), emptyText: 'Pick a make first, or just type the model.' });
+    const modelCombo = mcCombo(document.getElementById('vModel'), { items: () => mcVehicleModels(document.getElementById('vMake').value, document.getElementById('vYear').value), emptyText: 'Pick a make first, or just type the model.', onSelect: autoTypeFromModel });
+    // Model picked without a VIN → look the body type up and set Vehicle Type
+    let typeReq = 0;
+    async function autoTypeFromModel() {
+      const seq = ++typeReq, note = document.getElementById('typeAutoNote');
+      const info = await mcVehicleInfo(document.getElementById('vYear').value, document.getElementById('vMake').value, document.getElementById('vModel').value);
+      if (seq !== typeReq || !info || !info.type) return;
+      document.getElementById('vehicleType').value = info.type;
+      note.textContent = 'Set from the model: ' + getVehicleTypeLabel(info.type) + '. Change it if that\'s wrong.';
+      note.classList.remove('hidden');
+    }
+    document.getElementById('vehicleType').addEventListener('change', () => document.getElementById('typeAutoNote').classList.add('hidden'));
     document.getElementById('vYear').addEventListener('change', () => modelCombo.reload());
     mcVehicleMakes(); // warm the list
 

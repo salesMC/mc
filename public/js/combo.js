@@ -105,6 +105,12 @@
     catch (e) { modelsCache[key] = []; }
     return modelsCache[key];
   };
+  // Body type + weight for a year/make/model (cached on the server): used to auto-pick the vehicle type
+  window.mcVehicleInfo = async function (year, make, model) {
+    make = String(make || '').trim(); model = String(model || '').trim();
+    if (!make || !model) return null;
+    try { const d = await (await fetch('/api/vehicles/info?year=' + encodeURIComponent(year || '') + '&make=' + encodeURIComponent(make) + '&model=' + encodeURIComponent(model))).json(); return d.success ? d : null; } catch (e) { return null; }
+  };
   // "FORD" (as the VIN decoder returns it) → "Ford" using the site's make list
   window.mcPrettyMake = function (name) {
     name = String(name || '').trim(); if (!name) return '';

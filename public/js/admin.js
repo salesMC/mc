@@ -564,8 +564,8 @@ async function loadVehicleWeights() {
   try {
     const rows = await (await fetch('/api/vehicle-weights' + (q ? '?q=' + encodeURIComponent(q) : ''))).json();
     if (!rows.length) { box.innerHTML = '<p class="text-muted text-sm">No vehicles looked up yet. Weights appear as customers get quotes with a year, make and model.</p>'; return; }
-    box.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Vehicle</th><th>Curb weight</th><th>Note</th><th>Override (lb)</th></tr></thead><tbody class="text-dim">
-      ${rows.map(r => `<tr><td class="text-white">${esc([r.year, r.make, r.model].filter(Boolean).join(' '))}</td>
+    box.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr><th>Vehicle</th><th>Type</th><th>Curb weight</th><th>Note</th><th>Override (lb)</th></tr></thead><tbody class="text-dim">
+      ${rows.map(r => `<tr><td class="text-white">${esc([r.year, r.make, r.model].filter(Boolean).join(' '))}</td><td class="text-xs">${esc(VEHICLE_TYPE_LABELS[r.bodyType] || r.bodyType || '—')}</td>
         <td class="text-xs">${r.curbLbs ? r.curbLbs.toLocaleString() + ' lb' : '<span class="text-amber-300">unknown</span>'}${r.overrideLbs ? ` <span class="text-lime-300">→ ${r.overrideLbs.toLocaleString()} lb (yours)</span>` : ''}</td>
         <td class="text-xs text-muted max-w-[280px] truncate" title="${esc(r.note || '')}">${esc(r.note || '')}</td>
         <td><input type="number" step="100" value="${r.overrideLbs || ''}" placeholder="auto" class="input-admin py-1 text-xs w-28" onchange="overrideWeight(${r.id}, this.value)"></td></tr>`).join('')}
@@ -1474,7 +1474,12 @@ function wizRenderVehicle(i) {
   // Make / model pickers (type to filter; models follow make + year)
   if (window.mcCombo) {
     const mk = document.getElementById('wv-make-' + i), md = document.getElementById('wv-model-' + i), yr = document.getElementById('wv-year-' + i);
-    const modelC = mcCombo(md, { items: () => mcVehicleModels(mk.value, yr.value), emptyText: 'Pick a make first, or just type the model.', onSelect: () => wizSaveVehicle(i) });
+    const modelC = mcCombo(md, { items: () => mcVehicleModels(mk.value, yr.value), emptyText: 'Pick a make first, or just type the model.', onSelect: async (val) => {
+      wizSaveVehicle(i);
+      const info = await mcVehicleInfo(yr.value, mk.value, val);
+      const sel = document.getElementById('wv-type-' + i);
+      if (info && info.type && sel) { sel.value = info.type; wizSaveVehicle(i); wizUpdateRunningTotal(); }
+    } });
     mcCombo(mk, { items: mcVehicleMakes, onSelect: () => { md.value = ''; wizSaveVehicle(i); modelC.reload(); } });
     yr.addEventListener('change', () => modelC.reload());
     mk._modelCombo = modelC;

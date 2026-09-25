@@ -336,7 +336,13 @@ async function sendAndAuthorize(id, fee) {
   check('no weight on file → same as any light vehicle', pUnknown === pTruck, { pUnknown, pTruck });
   r = await api('POST', '/api/price', { vehicles: [hummer], distance: 470 });
   check('light / unknown vehicles carry the base weight tier', r.data.lines.some(l => /\+8% weight base/.test(l.label)), r.data.lines.map(l => l.label));
-  await pool.execute("INSERT INTO vehicle_weights (weight_key, year, make, model, curb_lbs, note, source) VALUES (?,?,?,?,?,?,?)", [wKey, '2024', 'Zzz', 'Heavytest', 9063, 'test seed', 'ai']);
+  r = await api('GET', '/api/vehicles/info?year=2024&make=Zzz&model=Heavytest', null, { auth: false });
+  check('vehicle info with nothing on file → no type (AI off in tests)', r.status === 200 && r.data.success && r.data.type === null);
+  await pool.execute("INSERT INTO vehicle_weights (weight_key, year, make, model, curb_lbs, body_type, note, source) VALUES (?,?,?,?,?,?,?,?)", [wKey, '2024', 'Zzz', 'Heavytest', 9063, 'pickup', 'test seed', 'ai']);
+  r = await api('GET', '/api/vehicles/info?year=2024&make=Zzz&model=Heavytest', null, { auth: false });
+  check('vehicle info returns the cached body type and weight', r.data.type === 'pickup' && r.data.lbs === 9063, r.data);
+  r = await api('GET', '/api/vehicles/info?make=Zzz', null, { auth: false });
+  check('vehicle info needs make and model', r.status === 400);
   const pHeavy = await priceVia([hummer], 470);
   check('9,000+ lb vehicle costs ~53% more transport than a normal pickup (1.65 / 1.08)', pHeavy > pTruck * 1.45 && pHeavy < pTruck * 1.6, { pHeavy, pTruck, ratio: pHeavy / pTruck });
   r = await api('POST', '/api/price', { vehicles: [hummer], distance: 470 });
